@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import {
-  NAlert,
   NButton,
   NCard,
   NDataTable,
-  NIcon,
   NPopconfirm,
-  NStatistic,
   NTabs,
   NTabPane,
   NTag,
@@ -14,8 +11,7 @@ import {
   useMessage,
   type DataTableColumns
 } from 'naive-ui'
-import { Trash } from '@vicons/ionicons5'
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import SourceLrcSelect from './SourceLrcSelect.vue'
 import type {
   AudioJobItem,
@@ -26,7 +22,6 @@ import type {
 import {
   allSourcesInSameDir,
   countPendingSourcePick,
-  countReadyToCopy,
   pickSourceLrc,
   type SourceSelection
 } from '@shared/sourcePick'
@@ -37,6 +32,8 @@ const props = defineProps<{
   result: JobResult
   searchRoots: string[]
   lrcDirs: string[]
+  /** 占满右侧栏高度，表格区域自适应滚动 */
+  fillHeight?: boolean
 }>()
 
 /** 用户对「多个源歌词」的选择（歌名指定 + 优先源子文件夹） */
@@ -46,16 +43,38 @@ const sourceSelection = defineModel<SourceSelection>('sourceSelection', {
 
 const emit = defineEmits<{
   refresh: []
-  executeCopy: []
 }>()
+
+const selectedOrphanKeys = defineModel<string[]>('selectedOrphanKeys', {
+  default: () => []
+})
 
 const message = useMessage()
 const activeTab = ref('all')
-const selectedOrphanKeys = ref<string[]>([])
-const deleting = ref(false)
 const copyingAudioPath = ref<string | null>(null)
 /** 源歌词选择变更后递增，强制表格重绘 */
 const pickRevision = ref(0)
+/** 表格 max-height = 窗口高度 − 固定偏移（含顶栏、Tab、边距等） */
+const TABLE_HEIGHT_OFFSET = 200
+
+const tableMaxHeight = ref(400)
+
+function updateTableMaxHeight(): void {
+  if (!props.fillHeight) return
+  tableMaxHeight.value = Math.max(
+    160,
+    Math.floor(window.innerHeight - TABLE_HEIGHT_OFFSET)
+  )
+}
+
+onMounted(() => {
+  updateTableMaxHeight()
+  window.addEventListener('resize', updateTableMaxHeight)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateTableMaxHeight)
+})
 
 const audioStatusMeta: Record<
   AudioItemStatus,
@@ -72,25 +91,13 @@ const audioStatusMeta: Record<
 const stats = computed(() => props.result.stats)
 const isPreview = computed(() => !props.result.execute)
 
-const readyToCopyCount = computed(() =>
-  countReadyToCopy(props.result.audioItems, sourceSelection.value)
-)
-
 const pendingPickCount = computed(() =>
   countPendingSourcePick(props.result.audioItems, sourceSelection.value)
 )
 
-const needCopy = computed(
-  () => isPreview.value && readyToCopyCount.value > 0
-)
-const noCopyNeeded = computed(
-  () =>
-    isPreview.value &&
-    readyToCopyCount.value === 0 &&
-    pendingPickCount.value === 0
-)
-const needPickFirst = computed(
-  () => isPreview.value && pendingPickCount.value > 0
+watch(
+  () => [props.fillHeight, props.result, activeTab.value],
+  () => void nextTick(updateTableMaxHeight)
 )
 
 function resolveSourcePath(row: AudioJobItem): string | undefined {
@@ -331,279 +338,217 @@ const plainOrphan = computed(() =>
   props.result.orphanLrcItems.map((r) => ({ ...r, key: r.lrcPath }))
 )
 
-async function deleteSelectedOrphans(): Promise<void> {
-  if (selectedOrphanKeys.value.length === 0) {
-    message.warning('请先勾选要删除的多余歌词')
-    return
-  }
-  deleting.value = true
-  try {
-    const res = await window.electronAPI.deleteOrphanLrc({
-      lrcPaths: selectedOrphanKeys.value
-    })
-    if (res.deleted > 0) {
-      message.success(`已删除 ${res.deleted} 个文件`)
-    }
-    if (res.errors.length > 0) {
-      message.error(`${res.errors.length} 个文件删除失败`)
-    }
-    selectedOrphanKeys.value = []
-    emit('refresh')
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    message.error(msg)
-  } finally {
-    deleting.value = false
-  }
-}
 </script>
 
 <template>
-  <NCard class="results-panel" :bordered="false" size="small">
+  <NCard
+    class="results-panel"
+    :class="{ 'results-panel--fill': fillHeight }"
+    :bordered="false"
+    size="small"
+  >
     <template #header>
       <div class="results-header">
-        <span>扫描结果</span>
-        <span class="scan-meta">
-          共 {{ stats.audioTotal }} 首音频 · {{ stats.orphanLrc }} 个多余歌词
+        <span class="results-title">扫描结果</span>
+        <span class="scan-stats">
+          <template v-if="isPreview">可复制 {{ stats.canCopy }}</template>
+          <template v-else>已复制 {{ stats.copied }}</template>
+          · 已匹配 {{ stats.matched }}
+          · 无源 {{ stats.noLrcSource }}
+          <template v-if="pendingPickCount"> · 待选 {{ pendingPickCount }}</template>
+          <template v-if="stats.copyErrors"> · 失败 {{ stats.copyErrors }}</template>
+          · 共 {{ stats.audioTotal }} 首 · 多余 {{ stats.orphanLrc }}
         </span>
       </div>
     </template>
 
-    <NAlert
-      v-if="needPickFirst"
-      type="warning"
-      :bordered="false"
-      class="copy-alert"
-      title="部分歌曲有多个源歌词，请先选择"
+    <div
+      class="tabs-fill-host"
+      :class="{ 'tabs-fill-host--fill': fillHeight }"
     >
-      「待选源」表示 LRC 源里有多条同名歌词。请在列表 <strong>选择源歌词</strong> 下拉框中指定使用哪一个；
-      选定某个源子文件夹后，会自动应用到其它待选歌曲（优先使用该文件夹下的歌词）。
-      仍有 <strong>{{ pendingPickCount }}</strong> 首待选择。
-    </NAlert>
-
-    <NAlert
-      v-if="needCopy"
-      type="info"
-      :bordered="false"
-      class="copy-alert"
-      title="需要将匹配的歌词复制到目标文件夹"
+    <NTabs
+      v-model:value="activeTab"
+      type="line"
+      class="result-tabs"
+      :class="{ 'result-tabs--fill': fillHeight }"
     >
-      有 <strong>{{ readyToCopyCount }}</strong> 首音频可从 LRC 源复制歌词到目标文件夹（目标目录中尚未有）。
-      请点击上方 <strong>执行复制</strong> 批量处理，或在列表中逐首点击「复制歌词」。
-      <template #footer>
-        <NButton type="primary" size="small" @click="emit('executeCopy')">
-          执行复制
-        </NButton>
-      </template>
-    </NAlert>
-
-    <NAlert
-      v-else-if="noCopyNeeded"
-      type="success"
-      :bordered="false"
-      class="copy-alert"
-      title="无需复制歌词到目标文件夹"
-    >
-      <template v-if="stats.matched > 0">
-        共 {{ stats.matched }} 首音频在目标文件夹中已有同级同名歌词，无需再从 LRC 源复制。
-      </template>
-      <template v-else-if="stats.noLrcSource > 0">
-        没有可从 LRC 源复制的匹配项；{{ stats.noLrcSource }} 首音频在源中找不到同名歌词。
-      </template>
-      <template v-else>
-        当前扫描结果中没有待复制的匹配项。
-      </template>
-    </NAlert>
-
-    <NAlert
-      v-else-if="!isPreview && stats.copied > 0"
-      type="success"
-      :bordered="false"
-      class="copy-alert"
-      title="复制已完成"
-    >
-      已将 {{ stats.copied }} 个歌词文件复制到对应音频所在目录。
-    </NAlert>
-
-    <div class="stats-row">
-      <NStatistic
-        v-if="isPreview"
-        label="可复制"
-        :value="stats.canCopy"
-        class="stat stat-primary"
-      />
-      <NStatistic
-        v-else
-        label="已复制"
-        :value="stats.copied"
-        class="stat stat-primary"
-      />
-      <NStatistic label="已匹配" :value="stats.matched" class="stat stat-ok" />
-      <NStatistic label="无源歌词" :value="stats.noLrcSource" class="stat" />
-      <NStatistic
-        v-if="pendingPickCount"
-        label="待选源"
-        :value="pendingPickCount"
-        class="stat"
-      />
-      <NStatistic
-        v-if="stats.copyErrors"
-        label="复制失败"
-        :value="stats.copyErrors"
-        class="stat"
-      />
-    </div>
-
-    <NTabs v-model:value="activeTab" type="line" animated class="result-tabs">
-      <NTabPane name="all" :tab="`全部音频 (${stats.audioTotal})`">
-        <NDataTable
-          :key="`all-${pickRevision}`"
-          :columns="audioColumns"
-          :data="plainAudio"
-          size="small"
-          striped
-        />
+      <NTabPane name="all" :tab="`全部 (${stats.audioTotal})`">
+        <div class="tab-pane-body">
+          <NDataTable
+            :key="`all-${pickRevision}`"
+            :columns="audioColumns"
+            :data="plainAudio"
+            :max-height="fillHeight ? tableMaxHeight : undefined"
+            size="small"
+            striped
+          />
+        </div>
       </NTabPane>
 
       <NTabPane name="matched" :tab="`已匹配 (${matchedAudio.length})`">
-        <NDataTable
-          :key="`matched-${pickRevision}`"
-          :columns="audioColumns"
-          :data="matchedAudio"
-          size="small"
-          striped
-        />
+        <div class="tab-pane-body">
+          <NDataTable
+            :key="`matched-${pickRevision}`"
+            :columns="audioColumns"
+            :data="matchedAudio"
+            :max-height="fillHeight ? tableMaxHeight : undefined"
+            size="small"
+            striped
+          />
+        </div>
       </NTabPane>
 
       <NTabPane name="copy" :tab="`待复制 (${canCopyAudio.length})`">
-        <NDataTable
-          :key="`copy-${pickRevision}`"
-          :columns="audioColumns"
-          :data="canCopyAudio"
-          size="small"
-          striped
-        />
+        <div class="tab-pane-body">
+          <NDataTable
+            :key="`copy-${pickRevision}`"
+            :columns="audioColumns"
+            :data="canCopyAudio"
+            :max-height="fillHeight ? tableMaxHeight : undefined"
+            size="small"
+            striped
+          />
+        </div>
       </NTabPane>
 
       <NTabPane name="pick" :tab="`待选源 (${pickSourceAudio.length})`">
-        <p class="tab-hint">
-          这些歌曲在 LRC 源中有多个同名歌词，请在下拉框中选择；选定文件夹后会影响其它待选歌曲。
-        </p>
-        <NDataTable
-          :key="`pick-${pickRevision}`"
-          :columns="audioColumns"
-          :data="pickSourceAudio"
-          size="small"
-          striped
-        />
+        <div class="tab-pane-body">
+          <NDataTable
+            :key="`pick-${pickRevision}`"
+            :columns="audioColumns"
+            :data="pickSourceAudio"
+            :max-height="fillHeight ? tableMaxHeight : undefined"
+            size="small"
+            striped
+          />
+        </div>
       </NTabPane>
 
       <NTabPane name="missing" :tab="`缺歌词 (${needLrcAudio.length})`">
-        <NDataTable
-          :key="`missing-${pickRevision}`"
-          :columns="audioColumns"
-          :data="needLrcAudio"
-          size="small"
-          striped
-        />
+        <div class="tab-pane-body">
+          <NDataTable
+            :key="`missing-${pickRevision}`"
+            :columns="audioColumns"
+            :data="needLrcAudio"
+            :max-height="fillHeight ? tableMaxHeight : undefined"
+            size="small"
+            striped
+          />
+        </div>
       </NTabPane>
 
-      <NTabPane name="orphan" :tab="`多余歌词 (${stats.orphanLrc})`">
-        <div class="orphan-toolbar">
-          <NPopconfirm @positive-click="deleteSelectedOrphans">
-            <template #trigger>
-              <NButton
-                type="error"
-                size="small"
-                :disabled="selectedOrphanKeys.length === 0"
-                :loading="deleting"
-              >
-                <template #icon>
-                  <NIcon><Trash /></NIcon>
-                </template>
-                删除选中 ({{ selectedOrphanKeys.length }})
-              </NButton>
-            </template>
-            确定删除选中的 {{ selectedOrphanKeys.length }} 个多余歌词文件？此操作不可恢复。
-          </NPopconfirm>
-          <span class="orphan-hint">同级目录无同名音频</span>
+      <NTabPane name="orphan" :tab="`多余 (${stats.orphanLrc})`">
+        <div class="tab-pane-body">
+          <NDataTable
+            v-model:checked-row-keys="selectedOrphanKeys"
+            :columns="orphanColumns"
+            :data="plainOrphan"
+            :row-key="(row: { key: string }) => row.key"
+            :max-height="fillHeight ? tableMaxHeight : undefined"
+            size="small"
+            striped
+          />
         </div>
-        <NDataTable
-          v-model:checked-row-keys="selectedOrphanKeys"
-          :columns="orphanColumns"
-          :data="plainOrphan"
-          :row-key="(row: { key: string }) => row.key"
-          :max-height="280"
-          size="small"
-          striped
-        />
       </NTabPane>
     </NTabs>
+    </div>
   </NCard>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
 .results-panel {
-  margin-top: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+  background: $surface-panel;
+  border: 1px solid $border-subtle;
+  border-radius: $radius-panel;
+
+  &--fill {
+    flex: 1;
+    min-height: 0;
+    margin-left: 16px;
+    display: flex;
+    flex-direction: column;
+
+    :deep(.n-card-header) {
+      flex-shrink: 0;
+    }
+
+    :deep(.n-card__content) {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+  }
 }
 
 .results-header {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
   font-weight: 600;
+  line-height: 1.3;
 }
 
-.scan-meta {
-  font-size: 12px;
+.results-title {
+  font-size: 14px;
+}
+
+.scan-stats {
+  font-size: 11px;
   font-weight: 400;
   opacity: 0.55;
 }
 
-.copy-alert {
-  margin-bottom: 14px;
-}
-
-.copy-alert strong {
-  color: #8bb9ff;
-}
-
-.stats-row {
+.tabs-fill-host--fill {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 20px 28px;
-  margin-bottom: 12px;
-}
-
-.stat :deep(.n-statistic-value) {
-  font-size: 22px;
-}
-
-.stat-primary :deep(.n-statistic-value) {
-  color: #6ea8fe;
-}
-
-.stat-ok :deep(.n-statistic-value) {
-  color: #63e6be;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .result-tabs {
-  margin-top: 4px;
+  margin-top: 2px;
+
+  &--fill {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+
+    :deep(.n-tabs) {
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.n-tabs-nav) {
+      flex-shrink: 0;
+    }
+
+    :deep(.n-tabs-pane-wrapper) {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    :deep(.n-tab-pane) {
+      height: 100%;
+      padding-top: 8px !important;
+      box-sizing: border-box;
+    }
+  }
 }
 
-.orphan-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.orphan-hint {
-  font-size: 12px;
-  opacity: 0.5;
+.tab-pane-body {
+  height: 100%;
+  min-height: 0;
 }
 
 .path-cell {
@@ -612,7 +557,7 @@ async function deleteSelectedOrphans(): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: Consolas, 'Cascadia Code', monospace;
+  font-family: $font-mono;
   font-size: 12px;
 }
 </style>

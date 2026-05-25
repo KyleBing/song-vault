@@ -1,0 +1,47 @@
+/** 持久化配置文件名（保存在用户主目录） */
+export const APP_CONFIG_FILE_NAME = 'config_search_match_replace.json'
+
+export const APP_CONFIG_VERSION = 1 as const
+
+export interface AppConfig {
+  version: typeof APP_CONFIG_VERSION
+  /** 音频搜索目标目录 */
+  searchRoots: string[]
+  /** LRC 源目录 */
+  lrcDirs: string[]
+}
+
+export function createDefaultAppConfig(): AppConfig {
+  return {
+    version: APP_CONFIG_VERSION,
+    searchRoots: [],
+    lrcDirs: []
+  }
+}
+
+function uniqueStrings(items: unknown): string[] {
+  if (!Array.isArray(items)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of items) {
+    if (typeof item !== 'string') continue
+    const p = item.trim()
+    if (!p || seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+  }
+  return out
+}
+
+/** 从磁盘 JSON 解析并规范化 */
+export function normalizeAppConfig(raw: unknown): AppConfig {
+  if (!raw || typeof raw !== 'object') {
+    return createDefaultAppConfig()
+  }
+  const obj = raw as Record<string, unknown>
+  return {
+    version: APP_CONFIG_VERSION,
+    searchRoots: uniqueStrings(obj.searchRoots),
+    lrcDirs: uniqueStrings(obj.lrcDirs)
+  }
+}

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { AppConfig } from '../shared/appConfig'
 import type {
   CopyLrcParams,
   CopyLrcResult,
@@ -33,6 +34,21 @@ const api = {
     const result = await ipcRenderer.invoke(
       'copy-lrc-to-audio',
       toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  loadAppConfig: async (): Promise<{ config: AppConfig; filePath: string }> => {
+    const result = await ipcRenderer.invoke('load-app-config')
+    return toIpcPlain(result)
+  },
+
+  saveAppConfig: async (
+    config: AppConfig
+  ): Promise<{ filePath: string }> => {
+    const result = await ipcRenderer.invoke(
+      'save-app-config',
+      toIpcPlain(config)
     )
     return toIpcPlain(result)
   }

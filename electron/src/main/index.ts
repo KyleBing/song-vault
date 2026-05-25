@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain } from 'electron'
 import { join } from 'path'
 import {
   copyLrcToAudio,
@@ -9,9 +9,80 @@ import {
   type RunJobParams
 } from '../shared/lrcJob'
 import { toIpcPlain } from '../shared/serialize'
+import { getAppConfigPath, loadAppConfig, saveAppConfig } from './appConfigStore'
+import type { AppConfig } from '../shared/appConfig'
 
 /** 是否为开发模式（未打包） */
 const isDev = !app.isPackaged
+
+const IPC_CHANNELS = [
+  'pick-directory',
+  'run-job',
+  'delete-orphan-lrc',
+  'copy-lrc-to-audio',
+  'load-app-config',
+  'save-app-config'
+] as const
+
+/** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
+function registerIpcHandlers(): void {
+  for (const channel of IPC_CHANNELS) {
+    ipcMain.removeHandler(channel)
+  }
+
+  ipcMain.handle('pick-directory', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('run-job', async (_, params: RunJobParams) => {
+    return toIpcPlain(runJob(toIpcPlain(params)))
+  })
+
+  ipcMain.handle('delete-orphan-lrc', async (_, params: DeleteOrphanParams) => {
+    return toIpcPlain(deleteOrphanLrc(toIpcPlain(params)))
+  })
+
+  ipcMain.handle('copy-lrc-to-audio', async (_, params: CopyLrcParams) => {
+    return toIpcPlain(copyLrcToAudio(toIpcPlain(params)))
+  })
+
+  ipcMain.handle('load-app-config', () => {
+    return toIpcPlain({
+      config: loadAppConfig(),
+      filePath: getAppConfigPath()
+    })
+  })
+
+  ipcMain.handle('save-app-config', (_, config: AppConfig) => {
+    saveAppConfig(toIpcPlain(config))
+    return toIpcPlain({ filePath: getAppConfigPath() })
+  })
+}
+
+registerIpcHandlers()
+
+const DEVTOOLS_ACCELERATOR = 'CommandOrControl+Shift+I'
+
+/** Ctrl+Shift+I（macOS 为 Cmd+Shift+I）切换开发者工具 */
+function registerDevToolsShortcut(): void {
+  if (globalShortcut.isRegistered(DEVTOOLS_ACCELERATOR)) {
+    globalShortcut.unregister(DEVTOOLS_ACCELERATOR)
+  }
+  const ok = globalShortcut.register(DEVTOOLS_ACCELERATOR, () => {
+    const win =
+      BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    if (win && !win.isDestroyed()) {
+      win.webContents.toggleDevTools()
+    }
+  })
+  if (!ok) {
+    console.warn(`未能注册全局快捷键: ${DEVTOOLS_ACCELERATOR}`)
+  }
+}
 
 /** 创建并加载主窗口 */
 function createWindow(): void {
@@ -43,31 +114,21 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  ipcMain.handle('pick-directory', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory']
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
-  })
-
-  ipcMain.handle('run-job', async (_, params: RunJobParams) => {
-    return toIpcPlain(runJob(toIpcPlain(params)))
-  })
-
-  ipcMain.handle('delete-orphan-lrc', async (_, params: DeleteOrphanParams) => {
-    return toIpcPlain(deleteOrphanLrc(toIpcPlain(params)))
-  })
-
-  ipcMain.handle('copy-lrc-to-audio', async (_, params: CopyLrcParams) => {
-    return toIpcPlain(copyLrcToAudio(toIpcPlain(params)))
-  })
-
+  registerDevToolsShortcut()
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// 主进程热重载时 whenReady 不会再次触发，需补注册快捷键
+if (app.isReady()) {
+  registerDevToolsShortcut()
+}
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {

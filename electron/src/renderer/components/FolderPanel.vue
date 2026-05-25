@@ -87,13 +87,15 @@ function removeAt(index: number): void {
   </NCard>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
 .folder-panel {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+  background: $surface-panel;
+  border: 1px solid $border-subtle;
+  border-radius: $radius-panel;
 }
 
 .panel-header {
@@ -134,7 +136,7 @@ function removeAt(index: number): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  font-family: Consolas, 'Cascadia Code', monospace;
+  font-family: $font-mono;
 }
 
 .remove-btn {

@@ -9,7 +9,8 @@ import {
   type GlobalThemeOverrides
 } from 'naive-ui'
 import { MusicalNotes, Play, Search } from '@vicons/ionicons5'
-import { computed, ref, toRaw } from 'vue'
+import { computed, onMounted, ref, toRaw, watch } from 'vue'
+import { APP_CONFIG_VERSION, type AppConfig } from '@shared/appConfig'
 import type { JobResult } from '@shared/lrcJob'
 import {
   countReadyToCopy,
@@ -17,8 +18,8 @@ import {
 } from '@shared/sourcePick'
 import FolderPanel from './components/FolderPanel.vue'
 import ResultsPanel from './components/ResultsPanel.vue'
+import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
 
-/** Naive UI 深色主题覆盖（主色、圆角等） */
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#6ea8fe',
@@ -33,25 +34,20 @@ const themeOverrides: GlobalThemeOverrides = {
   }
 }
 
-/** 用户选择的 LRC 源文件夹路径列表 */
 const lrcDirs = ref<string[]>([])
-/** 用户选择的音频搜索根目录列表 */
 const searchRoots = ref<string[]>([])
-/** 是否正在调用主进程执行任务 */
+/** 已完成启动配置加载，避免恢复时触发多余写入 */
+const configHydrated = ref(false)
 const loading = ref(false)
-/** 最近一次任务结果（预览或执行） */
 const result = ref<JobResult | null>(null)
-/** 最近一次预览结果，用于判断能否执行复制 */
 const lastPreview = ref<JobResult | null>(null)
-/** 用户对多个源歌词的选择（预览后、复制前） */
 const sourceSelection = ref<SourceSelection>({ sourceOverrides: {} })
+const selectedOrphanKeys = ref<string[]>([])
 
-/** 是否已具备预览条件（两类目录均至少一个） */
 const canPreview = computed(
   () => lrcDirs.value.length > 0 && searchRoots.value.length > 0
 )
 
-/** 是否允许执行复制（预览过且存在待复制项） */
 const canExecute = computed(() => {
   if (!lastPreview.value || lastPreview.value.empty) return false
   return (
@@ -59,7 +55,10 @@ const canExecute = computed(() => {
   )
 })
 
-/** 调用主进程运行任务；execute 为 false 时仅预览 */
+const showResults = computed(
+  () => result.value !== null && !result.value.empty
+)
+
 async function run(execute: boolean): Promise<void> {
   if (!canPreview.value) return
   loading.value = true
@@ -83,175 +82,318 @@ async function run(execute: boolean): Promise<void> {
   }
 }
 
-/** 预览匹配，不写文件 */
 function preview(): void {
   sourceSelection.value = { sourceOverrides: {} }
+  selectedOrphanKeys.value = []
   void run(false)
 }
 
-/** 按预览结果执行复制 */
 function executeCopy(): void {
   void run(true)
 }
+
+function buildAppConfig(): AppConfig {
+  return {
+    version: APP_CONFIG_VERSION,
+    searchRoots: [...searchRoots.value],
+    lrcDirs: [...lrcDirs.value]
+  }
+}
+
+async function persistFolderConfig(): Promise<void> {
+  if (!configHydrated.value) return
+  try {
+    await window.electronAPI.saveAppConfig(buildAppConfig())
+  } catch (err) {
+    console.error('保存目录配置失败', err)
+  }
+}
+
+onMounted(async () => {
+  try {
+    const { config } = await window.electronAPI.loadAppConfig()
+    searchRoots.value = [...config.searchRoots]
+    lrcDirs.value = [...config.lrcDirs]
+  } catch (err) {
+    console.error('加载目录配置失败', err)
+  } finally {
+    configHydrated.value = true
+  }
+})
+
+watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
 </script>
 
 <template>
-  <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides">
-    <NMessageProvider>
+  <NConfigProvider
+    class="app-root"
+    :theme="darkTheme"
+    :theme-overrides="themeOverrides"
+  >
+    <NMessageProvider class="app-root">
       <div class="app-shell">
-        <header class="app-header">
-          <div class="brand">
-            <div class="brand-icon">
-              <NIcon :size="26"><MusicalNotes /></NIcon>
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="brand">
+              <div class="brand-icon">
+                <NIcon :size="22"><MusicalNotes /></NIcon>
+              </div>
+              <div class="brand-text">
+                <h1>LRC 歌词归位</h1>
+                <p>匹配并复制歌词到音频旁</p>
+              </div>
             </div>
-            <div>
-              <h1>LRC 歌词归位</h1>
-              <p>以目标文件夹中的音频为主，匹配并复制 LRC 源歌词到同级目录</p>
-            </div>
-          </div>
-        </header>
 
-        <main class="app-main">
-          <section class="folder-panels">
-            <FolderPanel
-              v-model="searchRoots"
-              title="音频搜索目标"
-              hint="递归搜索子目录，自动跳过 LRC 源目录"
-              empty-text="请添加至少一个搜索目标文件夹"
-            />
-            <FolderPanel
-              v-model="lrcDirs"
-              title="LRC 源文件夹"
-              hint="递归扫描子文件夹中的 .lrc，可添加多个"
-              empty-text="请添加至少一个 LRC 源文件夹"
-            />
+            <div class="sidebar-scroll">
+              <FolderPanel
+                v-model="searchRoots"
+                title="音频搜索目标"
+                hint="递归子目录，跳过 LRC 源"
+                empty-text="添加搜索目标"
+              />
+              <FolderPanel
+                v-model="lrcDirs"
+                title="LRC 源文件夹"
+                hint="递归扫描 .lrc"
+                empty-text="添加 LRC 源"
+              />
+
+              <section class="toolbar">
+                <NButton
+                  block
+                  size="medium"
+                  :disabled="!canPreview || loading"
+                  @click="preview"
+                >
+                  <template #icon>
+                    <NIcon><Search /></NIcon>
+                  </template>
+                  预览匹配
+                </NButton>
+                <NButton
+                  block
+                  type="primary"
+                  size="medium"
+                  :disabled="!canExecute || loading"
+                  @click="executeCopy"
+                >
+                  <template #icon>
+                    <NIcon><Play /></NIcon>
+                  </template>
+                  执行复制
+                </NButton>
+              </section>
+
+              <ScanAlertsPanel
+                :result="result"
+                :source-selection="sourceSelection"
+                :selected-orphan-keys="selectedOrphanKeys"
+                @deleted="preview"
+              />
+            </div>
+
+            <p class="sidebar-foot">
+              以音频为主 · 同级同名即已匹配
+            </p>
+          </aside>
+
+          <section class="results-pane">
+            <NSpin :show="loading" class="results-spin">
+              <ResultsPanel
+                v-if="showResults"
+                v-model:source-selection="sourceSelection"
+                v-model:selected-orphan-keys="selectedOrphanKeys"
+                :result="result!"
+                :search-roots="searchRoots"
+                :lrc-dirs="lrcDirs"
+                fill-height
+                @refresh="preview"
+              />
+              <div v-else-if="result?.empty" class="pane-placeholder">
+                <p class="placeholder-title">未找到音频</p>
+                <p class="placeholder-desc">请检查搜索目标文件夹是否正确</p>
+              </div>
+              <div v-else class="pane-placeholder">
+                <p class="placeholder-title">扫描结果</p>
+                <p class="placeholder-desc">
+                  在左侧添加文件夹后，点击「预览匹配」在此查看列表
+                </p>
+              </div>
+            </NSpin>
           </section>
-
-          <section class="toolbar">
-            <NButton
-              size="medium"
-              :disabled="!canPreview || loading"
-              @click="preview"
-            >
-              <template #icon>
-                <NIcon><Search /></NIcon>
-              </template>
-              预览匹配
-            </NButton>
-            <NButton
-              type="primary"
-              size="medium"
-              :disabled="!canExecute || loading"
-              @click="executeCopy"
-            >
-              <template #icon>
-                <NIcon><Play /></NIcon>
-              </template>
-              执行复制
-            </NButton>
-          </section>
-
-          <NSpin :show="loading">
-            <ResultsPanel
-              v-if="result && !result.empty"
-              v-model:source-selection="sourceSelection"
-              :result="result"
-              :search-roots="searchRoots"
-              :lrc-dirs="lrcDirs"
-              @refresh="preview"
-              @execute-copy="executeCopy"
-            />
-            <div v-else-if="result?.empty" class="empty-result">
-              搜索范围内未找到音频文件
-            </div>
-          </NSpin>
-        </main>
-
-        <footer class="app-footer">
-          以音频为主列表 · 已匹配指同级同名歌词与音频并存 · 可删除无音频配对的多余歌词
-        </footer>
+        </div>
       </div>
     </NMessageProvider>
   </NConfigProvider>
 </template>
 
-<style scoped>
-.app-shell {
+<style lang="scss" scoped>
+@use './styles/variables' as *;
+
+.app-root {
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(110, 168, 254, 0.18), transparent),
-    #0f1117;
+
+  :deep(.n-message-provider) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
-.app-header {
-  padding: 24px 28px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+.app-shell {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 45% at 12% -8%, $glow-primary, transparent),
+    radial-gradient(ellipse 50% 40% at 95% 100%, $glow-accent, transparent),
+    $color-bg;
+}
+
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 340px;
+  height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid $border-sidebar;
+  background: $surface-sidebar;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  flex-shrink: 0;
 }
 
 .brand-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #6ea8fe 0%, #9b7ede 100%);
+  width: 40px;
+  height: 40px;
+  border-radius: $radius-icon;
+  background: linear-gradient(135deg, $color-primary 0%, $color-accent 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: 0 8px 24px rgba(110, 168, 254, 0.35);
+  flex-shrink: 0;
 }
 
-.brand h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+.brand-text {
+  h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    opacity: 0.55;
+  }
 }
 
-.brand p {
-  margin: 4px 0 0;
-  font-size: 13px;
-  opacity: 0.6;
-}
-
-.app-main {
+.sidebar-scroll {
   flex: 1;
-  overflow: auto;
-  padding: 20px 28px 12px;
-}
-
-.folder-panels {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 12px;
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
+
+  :deep(.folder-panel) {
+    flex: none;
+  }
 }
 
 .toolbar {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.sidebar-foot {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 12px 20px 16px;
+  font-size: 11px;
+  opacity: 0.38;
+  line-height: 1.4;
+}
+
+.results-pane {
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.results-spin {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  :deep(.n-spin-container),
+  :deep(.n-spin-content) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.pane-placeholder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  margin-top: 20px;
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: $radius-panel;
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.empty-result {
-  margin-top: 24px;
-  text-align: center;
-  opacity: 0.5;
-  font-size: 14px;
+.placeholder-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.7;
 }
 
-.app-footer {
-  padding: 12px 28px 16px;
-  font-size: 12px;
-  opacity: 0.4;
+.placeholder-desc {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.45;
   text-align: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  max-width: 280px;
 }
 </style>

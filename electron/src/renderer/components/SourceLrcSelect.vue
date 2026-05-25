@@ -39,7 +39,9 @@ function onChange(v: string | null): void {
   />
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
 .source-lrc-select {
   width: 100%;
   min-width: 160px;

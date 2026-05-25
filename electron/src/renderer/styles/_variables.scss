@@ -1,0 +1,25 @@
+$color-bg: #0f1117;
+$color-text: #e8eaed;
+$color-primary: #6ea8fe;
+$color-primary-light: #8bb9ff;
+$color-accent: #9b7ede;
+$color-success: #63e6be;
+
+$font-ui:
+  'Segoe UI',
+  'PingFang SC',
+  'Microsoft YaHei',
+  system-ui,
+  sans-serif;
+$font-mono: Consolas, 'Cascadia Code', monospace;
+
+$radius-panel: 14px;
+$radius-icon: 12px;
+
+$border-subtle: rgba(255, 255, 255, 0.06);
+$border-sidebar: rgba(255, 255, 255, 0.07);
+$surface-panel: rgba(255, 255, 255, 0.03);
+$surface-sidebar: rgba(0, 0, 0, 0.18);
+
+$glow-primary: rgba(110, 168, 254, 0.14);
+$glow-accent: rgba(155, 126, 222, 0.08);

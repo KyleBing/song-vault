@@ -16,6 +16,17 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [vue()]
+    plugins: [vue()],
+    css: {
+      preprocessorOptions: {
+        scss: {
+          includePaths: [resolve(__dirname, 'src/renderer/styles')]
+        }
+      }
+    },
+    server: {
+      port: 5217,
+      strictPort: true
+    }
   }
 })
