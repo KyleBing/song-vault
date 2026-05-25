@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { NAlert, NButton, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { Trash } from '@vicons/ionicons5'
-import { computed, ref } from 'vue'
+import { computed, ref, unref } from 'vue'
 import type { JobResult } from '@shared/lrcJob'
 import type { SourceSelection } from '@shared/sourcePick'
 import { useScanAlerts } from '@renderer/composables/useScanAlerts'
+import { plainStringList } from '@renderer/utils/ipcPayload'
 
 const props = defineProps<{
   result: JobResult | null
@@ -20,14 +21,14 @@ const message = useMessage()
 const deleting = ref(false)
 
 async function deleteOrphans(): Promise<void> {
-  const keys = props.selectedOrphanKeys ?? []
-  if (keys.length === 0) {
+  const lrcPaths = plainStringList(unref(props.selectedOrphanKeys))
+  if (lrcPaths.length === 0) {
     message.warning('请先在右侧「多余」页勾选要删除的歌词')
     return
   }
   deleting.value = true
   try {
-    const res = await window.electronAPI.deleteOrphanLrc({ lrcPaths: keys })
+    const res = await window.electronAPI.deleteOrphanLrc({ lrcPaths })
     if (res.deleted > 0) {
       message.success(`已删除 ${res.deleted} 个文件`)
     }

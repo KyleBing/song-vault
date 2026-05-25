@@ -126,11 +126,10 @@ watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
 
 <template>
   <NConfigProvider
-    class="app-root"
     :theme="darkTheme"
     :theme-overrides="themeOverrides"
   >
-    <NMessageProvider class="app-root">
+    <NMessageProvider>
       <div class="app-shell">
         <div class="workspace">
           <aside class="sidebar">
@@ -229,20 +228,6 @@ watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
 
 <style lang="scss" scoped>
 @use './styles/variables' as *;
-
-.app-root {
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-
-  :deep(.n-message-provider) {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-}
 
 .app-shell {
   flex: 1;

@@ -213,6 +213,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
   {
     title: '音频',
     key: 'audioPath',
+    minWidth: 220,
     ellipsis: { tooltip: false },
     render(row) {
       return pathCell(row.audioPath, shortAudio(row.audioPath))
@@ -306,7 +307,7 @@ const orphanColumns: DataTableColumns<OrphanLrcItem> = [
   {
     title: '说明',
     key: 'message',
-    width: 140
+    width: 220
   }
 ]
 
