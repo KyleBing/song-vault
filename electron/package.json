@@ -1,0 +1,28 @@
+{
+  "name": "lrc-copy-tool",
+  "version": "1.0.0",
+  "description": "将 LRC 歌词复制到同名音频所在目录",
+  "main": "./out/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@vicons/ionicons5": "^0.12.0",
+    "naive-ui": "^2.40.1",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^33.2.1",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vue-tsc": "^2.1.10"
+  }
+}
