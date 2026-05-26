@@ -8,8 +8,16 @@ import {
   darkTheme,
   type GlobalThemeOverrides
 } from 'naive-ui'
-import { MusicalNotes, Play, Search } from '@vicons/ionicons5'
-import { computed, onMounted, ref, toRaw, watch } from 'vue'
+import { MusicalNotes, Play, Search, SettingsOutline } from '@vicons/ionicons5'
+import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useLayoutStore } from '@renderer/stores/layout'
+import {
+  loadAppConfigOnce,
+  saveAppConfig
+} from '@renderer/lib/appConfigClient'
+import { useThemeStore } from '@renderer/stores/theme'
+import SettingsPanel from './components/SettingsPanel.vue'
 import { APP_CONFIG_VERSION, type AppConfig } from '@shared/appConfig'
 import type { JobResult } from '@shared/lrcJob'
 import {
@@ -19,13 +27,28 @@ import {
 import FolderPanel from './components/FolderPanel.vue'
 import ResultsPanel from './components/ResultsPanel.vue'
 import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
+import styleTokens from './styles/variables.module.scss'
+
+const layoutStore = useLayoutStore()
+const themeStore = useThemeStore()
+const { appearance } = storeToRefs(themeStore)
+
+const naiveTheme = computed(() =>
+  appearance.value === 'dark' ? darkTheme : null
+)
+
+const showSettings = ref(false)
+
+function onWindowResize(): void {
+  layoutStore.updateInsets()
+}
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#6ea8fe',
     primaryColorHover: '#8bb9ff',
     primaryColorPressed: '#5a94eb',
-    borderRadius: '10px',
+    borderRadius: styleTokens.borderRadius,
     fontFamily:
       "'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
   },
@@ -96,22 +119,26 @@ function buildAppConfig(): AppConfig {
   return {
     version: APP_CONFIG_VERSION,
     searchRoots: [...searchRoots.value],
-    lrcDirs: [...lrcDirs.value]
+    lrcDirs: [...lrcDirs.value],
+    appearance: appearance.value
   }
 }
 
 async function persistFolderConfig(): Promise<void> {
   if (!configHydrated.value) return
   try {
-    await window.electronAPI.saveAppConfig(buildAppConfig())
+    await saveAppConfig(buildAppConfig())
   } catch (err) {
     console.error('保存目录配置失败', err)
   }
 }
 
 onMounted(async () => {
+  layoutStore.updateInsets()
+  window.addEventListener('resize', onWindowResize)
+
   try {
-    const { config } = await window.electronAPI.loadAppConfig()
+    const config = await loadAppConfigOnce()
     searchRoots.value = [...config.searchRoots]
     lrcDirs.value = [...config.lrcDirs]
   } catch (err) {
@@ -121,17 +148,28 @@ onMounted(async () => {
   }
 })
 
-watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
+onUnmounted(() => {
+  window.removeEventListener('resize', onWindowResize)
+})
+
+watch([searchRoots, lrcDirs, appearance], () => void persistFolderConfig(), {
+  deep: true
+})
 </script>
 
 <template>
   <NConfigProvider
-    :theme="darkTheme"
+    :theme="naiveTheme"
     :theme-overrides="themeOverrides"
   >
     <NMessageProvider>
       <div class="app-shell">
-        <div class="workspace">
+        <SettingsPanel
+          v-if="showSettings"
+          class="settings-layer"
+          @close="showSettings = false"
+        />
+        <div v-else class="workspace">
           <aside class="sidebar">
             <div class="brand">
               <div class="brand-icon">
@@ -191,9 +229,23 @@ watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
               />
             </div>
 
-            <p class="sidebar-foot">
-              以音频为主 · 同级同名即已匹配
-            </p>
+            <div class="sidebar-foot">
+              <NButton
+                quaternary
+                block
+                size="small"
+                class="settings-btn"
+                @click="showSettings = true"
+              >
+                <template #icon>
+                  <NIcon><SettingsOutline /></NIcon>
+                </template>
+                设置
+              </NButton>
+              <p class="sidebar-foot-note">
+                以音频为主 · 同级同名即已匹配
+              </p>
+            </div>
           </aside>
 
           <section class="results-pane">
@@ -317,10 +369,28 @@ watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
   padding-top: 4px;
 }
 
+.settings-layer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .sidebar-foot {
   flex-shrink: 0;
+  padding: 8px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-btn {
+  justify-content: flex-start;
+}
+
+.sidebar-foot-note {
   margin: 0;
-  padding: 12px 20px 16px;
+  padding: 0 8px;
   font-size: 11px;
   opacity: 0.38;
   line-height: 1.4;
@@ -362,9 +432,9 @@ watch([searchRoots, lrcDirs], () => void persistFolderConfig(), { deep: true })
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border: 1px dashed var(--app-placeholder-border);
   border-radius: $radius-panel;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--app-placeholder-bg);
 }
 
 .placeholder-title {

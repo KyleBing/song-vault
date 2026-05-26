@@ -55,7 +55,7 @@ function removeAt(index: number): void {
     </template>
 
     <NList v-if="paths.length" class="path-list" bordered>
-      <NListItem v-for="(p, index) in paths" :key="p">
+      <NListItem size="small" v-for="(p, index) in paths" :key="p">
         <div class="path-row">
           <NIcon class="path-icon" :size="18"><FolderOpen /></NIcon>
           <NTooltip trigger="hover" :style="{ maxWidth: '520px' }">
@@ -136,6 +136,7 @@ function removeAt(index: number): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+  line-height: 1;
   font-family: $font-mono;
 }
 

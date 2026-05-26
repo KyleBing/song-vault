@@ -1,5 +1,5 @@
-$color-bg: #0f1117;
-$color-text: #e8eaed;
+$color-bg: var(--app-bg);
+$color-text: var(--app-text);
 $color-primary: #6ea8fe;
 $color-primary-light: #8bb9ff;
 $color-accent: #9b7ede;
@@ -13,13 +13,16 @@ $font-ui:
   sans-serif;
 $font-mono: Consolas, 'Cascadia Code', monospace;
 
+/** Naive UI --n-border-radius */
+$border-radius: 5px;
+
 $radius-panel: 14px;
 $radius-icon: 12px;
 
-$border-subtle: rgba(255, 255, 255, 0.06);
-$border-sidebar: rgba(255, 255, 255, 0.07);
-$surface-panel: rgba(255, 255, 255, 0.03);
-$surface-sidebar: rgba(0, 0, 0, 0.18);
+$border-subtle: var(--app-border-subtle);
+$border-sidebar: var(--app-border-sidebar);
+$surface-panel: var(--app-surface-panel);
+$surface-sidebar: var(--app-surface-sidebar);
 
-$glow-primary: rgba(110, 168, 254, 0.14);
-$glow-accent: rgba(155, 126, 222, 0.08);
+$glow-primary: var(--app-glow-primary);
+$glow-accent: var(--app-glow-accent);

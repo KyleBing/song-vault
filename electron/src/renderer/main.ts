@@ -1,5 +1,28 @@
+import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
 import './styles/global.scss'
+import { loadAppConfigOnce, readThemeCache } from './lib/appConfigClient'
+import { useThemeStore } from './stores/theme'
 
-createApp(App).mount('#app')
+async function bootstrap(): Promise<void> {
+  const cachedAppearance = readThemeCache()
+  document.documentElement.dataset.theme = cachedAppearance
+
+  const pinia = createPinia()
+  const themeStore = useThemeStore(pinia)
+  themeStore.hydrate(cachedAppearance)
+
+  try {
+    const config = await loadAppConfigOnce()
+    themeStore.hydrate(config.appearance)
+  } catch (err) {
+    console.error('启动时加载主题失败', err)
+  }
+
+  const app = createApp(App)
+  app.use(pinia)
+  app.mount('#app')
+}
+
+void bootstrap()

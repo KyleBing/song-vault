@@ -3,19 +3,33 @@ export const APP_CONFIG_FILE_NAME = 'config_search_match_replace.json'
 
 export const APP_CONFIG_VERSION = 1 as const
 
+export type AppAppearance = 'dark' | 'light'
+
+const APPEARANCE_VALUES: readonly AppAppearance[] = ['dark', 'light']
+
+export function isAppAppearance(value: unknown): value is AppAppearance {
+  return (
+    typeof value === 'string' &&
+    (APPEARANCE_VALUES as readonly string[]).includes(value)
+  )
+}
+
 export interface AppConfig {
   version: typeof APP_CONFIG_VERSION
   /** 音频搜索目标目录 */
   searchRoots: string[]
   /** LRC 源目录 */
   lrcDirs: string[]
+  /** 界面外观：深色 / 浅色 */
+  appearance: AppAppearance
 }
 
 export function createDefaultAppConfig(): AppConfig {
   return {
     version: APP_CONFIG_VERSION,
     searchRoots: [],
-    lrcDirs: []
+    lrcDirs: [],
+    appearance: 'light'
   }
 }
 
@@ -42,6 +56,9 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
   return {
     version: APP_CONFIG_VERSION,
     searchRoots: uniqueStrings(obj.searchRoots),
-    lrcDirs: uniqueStrings(obj.lrcDirs)
+    lrcDirs: uniqueStrings(obj.lrcDirs),
+    appearance: isAppAppearance(obj.appearance)
+      ? obj.appearance
+      : createDefaultAppConfig().appearance
   }
 }
