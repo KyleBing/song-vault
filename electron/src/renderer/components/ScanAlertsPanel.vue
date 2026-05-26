@@ -85,7 +85,6 @@ const showPanel = computed(() => hasResult.value)
       title="可复制歌词到目标"
     >
       有 <strong>{{ readyToCopyCount }}</strong> 首可从 LRC 源复制到目标目录。
-      点击上方 <strong>执行复制</strong> 批量处理，或在列表中逐首「复制歌词」。
     </NAlert>
 
     <NAlert

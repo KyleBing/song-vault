@@ -45,6 +45,18 @@ function onChange(v: string | null): void {
 
 .source-lrc-select {
   width: 100%;
-  min-width: 160px;
+  min-width: 0;
+  max-width: 100%;
+
+  :deep(.n-base-selection) {
+    min-width: 0;
+  }
+
+  :deep(.n-base-selection-label),
+  :deep(.n-base-selection-placeholder) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 </style>

@@ -37,6 +37,8 @@ export interface AppConfig {
   lrcDirs: string[]
   /** 待解码加密音乐源目录 */
   decodeSourceDirs: string[]
+  /** 音乐解密输出目录 */
+  decodeOutputDir: string
   /** 界面外观：深色 / 浅色 */
   appearance: AppAppearance
   /** 扫描与浏览时跳过的文件/文件夹名称规则 */
@@ -51,10 +53,15 @@ export function createDefaultAppConfig(): AppConfig {
     searchRoots: [],
     lrcDirs: [],
     decodeSourceDirs: [],
+    decodeOutputDir: '',
     appearance: 'light',
     pathFilterRules: createDefaultPathFilterRules(),
     fileListColumns: createDefaultFileListColumns()
   }
+}
+
+function optionalTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function uniqueStrings(items: unknown): string[] {
@@ -82,6 +89,7 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
     searchRoots: uniqueStrings(obj.searchRoots),
     lrcDirs: uniqueStrings(obj.lrcDirs),
     decodeSourceDirs: uniqueStrings(obj.decodeSourceDirs),
+    decodeOutputDir: optionalTrimmedString(obj.decodeOutputDir),
     appearance: isAppAppearance(obj.appearance)
       ? obj.appearance
       : createDefaultAppConfig().appearance,

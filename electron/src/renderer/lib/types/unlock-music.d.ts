@@ -46,6 +46,8 @@ declare module '@unlock/utils/utils' {
     data: DecryptResult,
     policy: FilenamePolicy
   ): string
+
+  export function RemoveBlobMusic(data: DecryptResult): void
 }
 
 declare module '@unlock/utils/storage' {

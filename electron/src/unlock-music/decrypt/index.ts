@@ -94,6 +94,5 @@ export async function Decrypt(file: FileInfo, config: Record<string, any>): Prom
 
   if (!rt_data.rawExt) rt_data.rawExt = raw.ext;
   if (!rt_data.rawFilename) rt_data.rawFilename = raw.name;
-  console.log(rt_data);
   return rt_data;
 }

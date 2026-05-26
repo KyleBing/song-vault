@@ -2,11 +2,15 @@
 import {
   NButton,
   NDataTable,
+  NEllipsis,
   NEmpty,
   NIcon,
   NInput,
+  NModal,
   NProgress,
+  NScrollbar,
   NSpin,
+  NTag,
   NTooltip,
   NTree,
   useMessage,
@@ -14,8 +18,6 @@ import {
 } from 'naive-ui'
 import {
   ArrowBack,
-  ArrowDown,
-  ArrowUp,
   FolderOpen,
   Key,
   Play,
@@ -23,7 +25,7 @@ import {
   TrashOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import { decryptMusicBatch } from '@renderer/lib/musicDecryptClient'
 import type { FileListColumnsSettings, PathFilterRule } from '@shared/appConfig'
@@ -35,19 +37,34 @@ import {
   buildSortKeyOptions,
   enrichItemsWithAudioMetrics,
   enrichItemsWithSearchTargetMatches,
+  formatFileSize,
+  handleDirFileSorterUpdate,
   normalizeDirAudioFileItem,
   sortDirAudioFiles,
+  toFiniteNumber,
   useDirFileTableColumns,
   type DirFileSortKey,
   type DirFileSortOrder
 } from '@renderer/composables/dirFileTable'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
+import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import {
+  applySortableHeaders,
+  handleTableSorterUpdate,
+  sortRows,
+  type TableSortOrder
+} from '@renderer/composables/useTableHeaderSort'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import MusicDecryptHelpModal from '@renderer/components/MusicDecryptHelpModal.vue'
 import { storage } from '@unlock/utils/storage'
 
 const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
   required: true
+})
+
+const decodeOutputDir = defineModel<string>('decodeOutputDir', {
+  required: true,
+  default: ''
 })
 
 const props = defineProps<{
@@ -65,11 +82,42 @@ const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 105)
 
+const queueTableWrapRef = ref<HTMLElement | null>(null)
+const maxHeightForQueueTable = ref(120)
+let queueTableResizeObserver: ResizeObserver | null = null
+
+function syncQueueTableMaxHeight(): void {
+  const el = queueTableWrapRef.value
+  maxHeightForQueueTable.value = el
+    ? Math.max(80, Math.floor(el.clientHeight)) - 100
+    : 120
+}
+
+function observeQueueTableWrap(el: HTMLElement | null): void {
+  queueTableResizeObserver?.disconnect()
+  queueTableResizeObserver = null
+  if (!el) return
+  queueTableResizeObserver = new ResizeObserver(() => syncQueueTableMaxHeight())
+  queueTableResizeObserver.observe(el)
+  syncQueueTableMaxHeight()
+}
+
+watch(queueTableWrapRef, (el) => observeQueueTableWrap(el))
+
+onUnmounted(() => queueTableResizeObserver?.disconnect())
+
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
 const dirFiles = ref<DirAudioFileItem[]>([])
-const selectedFileKeys = ref<string[]>([])
 const filesLoading = ref(false)
+
+const {
+  selectedKeys: selectedFileKeys,
+  clearSelection: clearFileSelection,
+  onUpdateCheckedRowKeys: onFileCheckedRowKeysUpdate,
+  onTableMouseDown,
+  rowProps: fileRowProps
+} = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
 
 const sortKey = ref<DirFileSortKey>('fileName')
 const sortOrder = ref<DirFileSortOrder>('asc')
@@ -80,15 +128,33 @@ const sortKeyOptions = computed(() =>
 
 const tableColumns = useDirFileTableColumns(
   'decode',
-  computed(() => props.fileListColumns)
+  computed(() => props.fileListColumns),
+  sortKey,
+  sortOrder
 )
 
 /** 待解密队列（可跨目录累积） */
 const decryptQueue = ref<string[]>([])
-const outputDir = ref('')
 const decrypting = ref(false)
 const decryptProgress = ref({ done: 0, total: 0 })
 const lastResult = ref<MusicDecryptBatchResult | null>(null)
+
+watch(
+  () => [decryptQueue.value.length, decrypting.value, lastResult.value] as const,
+  () => nextTick(() => syncQueueTableMaxHeight())
+)
+
+watch(
+  () => insets.value.windowHeight,
+  () => nextTick(() => syncQueueTableMaxHeight())
+)
+const showErrorModal = ref(false)
+const errorDetail = ref({ filePath: '', message: '' })
+
+function openErrorDetail(filePath: string, message: string): void {
+  errorDetail.value = { filePath, message: message || '未知错误' }
+  showErrorModal.value = true
+}
 
 const browseRoots = computed(() => [...decodeSourceDirs.value])
 const filtersForApi = computed(() =>
@@ -96,7 +162,10 @@ const filtersForApi = computed(() =>
 )
 
 const canDecrypt = computed(
-  () => decryptQueue.value.length > 0 && !!outputDir.value.trim() && !decrypting.value
+  () =>
+    decryptQueue.value.length > 0 &&
+    !!decodeOutputDir.value.trim() &&
+    !decrypting.value
 )
 
 const {
@@ -129,7 +198,7 @@ async function rebuildTreeKeepSelection(): Promise<void> {
 
 async function loadDirFiles(dirPath: string): Promise<void> {
   filesLoading.value = true
-  selectedFileKeys.value = []
+  clearFileSelection()
   try {
     const items = await window.electronAPI.listDirEncryptedMusicFiles({
       dirPath,
@@ -165,12 +234,32 @@ function onSelectKeys(keys: string[]): void {
   if (dir) void loadDirFiles(dir)
   else {
     dirFiles.value = []
-    selectedFileKeys.value = []
+    clearFileSelection()
   }
+}
+
+function onFileCheckedRowKeys(
+  keys: Array<string | number>,
+  _rows: object[],
+  meta: { row: object | undefined; action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll' }
+): void {
+  onFileCheckedRowKeysUpdate(
+    keys.map(String),
+    orderedFileKeys,
+    meta as { row: object | undefined; action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll' }
+  )
+}
+
+function fileTableRowProps(row: DirAudioFileItem) {
+  return fileRowProps(row, orderedFileKeys)
 }
 
 function shortPath(p: string): string {
   return relativeToRoots(p, decodeSourceDirs.value)
+}
+
+function fileNameOf(p: string): string {
+  return p.split(/[/\\]/).pop() ?? p
 }
 
 function pathCell(full: string, short: string) {
@@ -184,6 +273,21 @@ function pathCell(full: string, short: string) {
   )
 }
 
+function queueNameCell(fullPath: string) {
+  const name = fileNameOf(fullPath)
+  return h(
+    NEllipsis,
+    {
+      style: { maxWidth: '100%' },
+      tooltip: { placement: 'top-start' }
+    },
+    {
+      default: () => name,
+      tooltip: () => fullPath
+    }
+  )
+}
+
 function fileRowKey(row: DirAudioFileItem): string {
   return row.filePath
 }
@@ -192,51 +296,118 @@ const sortedDirFiles = computed(() =>
   sortDirAudioFiles(dirFiles.value, sortKey.value, sortOrder.value)
 )
 
-function toggleSortOrder(): void {
-  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+const orderedFileKeys = computed(() =>
+  sortedDirFiles.value.map((row) => row.filePath)
+)
+
+function onDirFileSorterUpdate(
+  sorter: Parameters<typeof handleDirFileSorterUpdate>[0]
+): void {
+  handleDirFileSorterUpdate(sorter, sortKey, sortOrder)
 }
 
-const queueColumns = computed<
-  DataTableColumns<{ filePath: string; status?: string }>
->(() => [
-  {
-    title: '待解密',
-    key: 'filePath',
-    minWidth: 200,
-    render(row) {
-      const name = row.filePath.split(/[/\\]/).pop() ?? row.filePath
-      return pathCell(row.filePath, name)
-    }
-  },
-  {
-    title: '状态',
-    key: 'status',
-    width: 100,
-    align: 'center',
-    render(row) {
-      return h(
-        'div',
-        { class: 'table-status-cell' },
-        row.status ?? '—'
-      )
-    }
+const queueSortKey = ref<'filePath' | 'status'>('filePath')
+const queueSortOrder = ref<TableSortOrder>('asc')
+
+function compareQueueRow(
+  a: { filePath: string; status?: 'success' | 'failed' },
+  b: { filePath: string; status?: 'success' | 'failed' },
+  key: string
+): number {
+  if (key === 'status') {
+    const rank = (s?: 'success' | 'failed') =>
+      s === 'failed' ? 2 : s === 'success' ? 1 : 0
+    return rank(a.status) - rank(b.status)
   }
-])
+  const aName = a.filePath.split(/[/\\]/).pop() ?? a.filePath
+  const bName = b.filePath.split(/[/\\]/).pop() ?? b.filePath
+  return aName.localeCompare(bName, undefined, { sensitivity: 'base' })
+}
+
+function onQueueSorterUpdate(
+  sorter: Parameters<typeof handleTableSorterUpdate>[0]
+): void {
+  handleTableSorterUpdate(sorter, queueSortKey, queueSortOrder, 'filePath')
+}
+
+const queueColumns = computed(() => {
+  const columns: DataTableColumns<{
+    filePath: string
+    status?: 'success' | 'failed'
+    errorMessage?: string
+  }> = [
+    {
+      title: '待解密',
+      key: 'filePath',
+      minWidth: 120,
+      render(row) {
+        return queueNameCell(row.filePath)
+      }
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 72,
+      align: 'center',
+      render(row) {
+        if (row.status === 'success') {
+          return h('div', { class: 'table-status-cell' }, [
+            h(NTag, { type: 'success', size: 'small', round: true }, () => '成功')
+          ])
+        }
+        if (row.status === 'failed') {
+          return h('div', { class: 'table-status-cell' }, [
+            h(
+              NTag,
+              {
+                type: 'error',
+                size: 'small',
+                round: true,
+                class: 'status-tag-clickable',
+                onClick: () =>
+                  openErrorDetail(row.filePath, row.errorMessage ?? '未知错误')
+              },
+              () => '失败'
+            )
+          ])
+        }
+        return h('div', { class: 'table-status-cell' }, '—')
+      }
+    }
+  ]
+  return applySortableHeaders(columns, {
+    sortKey: queueSortKey.value,
+    sortOrder: queueSortOrder.value,
+    isSortable: (key) => key === 'filePath' || key === 'status',
+    compare: (key) => (a, b) => compareQueueRow(a, b, key)
+  })
+})
 
 const queueRows = computed(() => {
-  const statusByPath = new Map<string, string>()
+  const outcomeByPath = new Map<
+    string,
+    MusicDecryptBatchResult['outcomes'][number]
+  >()
   if (lastResult.value) {
     for (const o of lastResult.value.outcomes) {
-      statusByPath.set(
-        o.inputPath,
-        o.ok ? '成功' : `失败: ${o.message ?? ''}`
-      )
+      outcomeByPath.set(o.inputPath, o)
     }
   }
-  return decryptQueue.value.map((filePath) => ({
-    filePath,
-    status: statusByPath.get(filePath)
-  }))
+  const rows = decryptQueue.value.map((filePath) => {
+    const outcome = outcomeByPath.get(filePath)
+    if (!outcome) {
+      return { filePath, status: undefined as 'success' | 'failed' | undefined }
+    }
+    if (outcome.ok) {
+      return { filePath, status: 'success' as const }
+    }
+    return {
+      filePath,
+      status: 'failed' as const,
+      errorMessage: outcome.message
+    }
+  })
+  return sortRows(rows, queueSortKey.value, queueSortOrder.value, compareQueueRow)
 })
 
 function addSelectedToQueue(): void {
@@ -258,7 +429,7 @@ async function pickFilesFromDialog(): Promise<void> {
 
 async function pickOutputDir(): Promise<void> {
   const dir = await window.electronAPI.pickDirectory()
-  if (dir) outputDir.value = dir
+  if (dir) decodeOutputDir.value = dir
 }
 
 function clearQueue(): void {
@@ -275,7 +446,7 @@ async function startDecrypt(): Promise<void> {
     const config = await storage.getAll()
     const result = await decryptMusicBatch(
       [...decryptQueue.value],
-      outputDir.value.trim(),
+      decodeOutputDir.value.trim(),
       config,
       (done, total) => {
         decryptProgress.value = { done, total }
@@ -294,6 +465,9 @@ async function startDecrypt(): Promise<void> {
     message.error(`解密失败: ${msg}`)
   } finally {
     decrypting.value = false
+    if (selectedDir.value) {
+      void loadDirFiles(selectedDir.value)
+    }
   }
 }
 
@@ -301,6 +475,42 @@ const progressPercent = computed(() => {
   const { done, total } = decryptProgress.value
   if (!total) return 0
   return Math.round((done / total) * 100)
+})
+
+const selectedDirStats = computed(() => {
+  let totalBytes = 0
+  let matchedCount = 0
+  for (const f of dirFiles.value) {
+    totalBytes += toFiniteNumber(f.sizeBytes)
+    if (f.sourceAudioChecked && (f.sourceAudioPaths?.length ?? 0) > 0) {
+      matchedCount++
+    }
+  }
+  const count = dirFiles.value.length
+  return {
+    count,
+    matchedCount,
+    sizeLabel: formatFileSize(totalBytes),
+    hasSearchRoots: props.searchRoots.length > 0
+  }
+})
+
+const selectedDirStatsText = computed(() => {
+  const { count, matchedCount, sizeLabel, hasSearchRoots } =
+    selectedDirStats.value
+  if (filesLoading.value) return '统计加载中…'
+  if (count === 0) return '0 个文件'
+  let text = `${count} 个 · ${sizeLabel}`
+  if (hasSearchRoots) {
+    const matchPart =
+      matchedCount === count
+        ? '均已匹配'
+        : matchedCount === 0
+          ? '未匹配'
+          : `${matchedCount} 已匹配`
+    text += ` · ${matchPart}`
+  }
+  return text
 })
 
 watch(
@@ -311,6 +521,16 @@ watch(
   },
   { deep: true }
 )
+
+watch(sortKey, async (key) => {
+  if (!dirFiles.value.length) return
+  const columnIds = columnsForKind(props.fileListColumns, 'decode')
+  dirFiles.value = await enrichItemsWithAudioMetrics(
+    dirFiles.value,
+    columnIds,
+    key
+  )
+})
 
 watch(sortKeyOptions, (opts) => {
   if (!opts.some((o) => o.value === sortKey.value)) {
@@ -345,6 +565,23 @@ onMounted(() => {
 
 <template>
   <div class="decode-page">
+    <NModal
+      v-model:show="showErrorModal"
+      preset="card"
+      title="解密失败"
+      class="decode-error-modal"
+      :style="{ width: 'min(560px, 92vw)' }"
+      :bordered="false"
+      :segmented="{ content: true, footer: false }"
+    >
+      <p class="error-detail-label">文件</p>
+      <p class="error-detail-file">{{ errorDetail.filePath }}</p>
+      <p class="error-detail-label">错误信息</p>
+      <NScrollbar style="max-height: min(50vh, 360px)">
+        <pre class="error-detail-message">{{ errorDetail.message }}</pre>
+      </NScrollbar>
+    </NModal>
+
     <div class="workspace">
       <aside class="sidebar">
         <header class="decode-header">
@@ -365,7 +602,13 @@ onMounted(() => {
           </div>
         </header>
 
-        <div class="sidebar-scroll">
+        <div
+          class="sidebar-scroll"
+          :class="{
+            'sidebar-scroll--has-queue':
+              decryptQueue.length > 0 || lastResult
+          }"
+        >
           <p v-if="!decodeSourceDirs.length" class="decode-hint">
             请先在「设置」中添加加密音乐浏览目录，再在左侧目录树中选择文件。
           </p>
@@ -374,7 +617,7 @@ onMounted(() => {
             <label class="field-label">保存到</label>
             <div class="output-row">
               <NInput
-                v-model:value="outputDir"
+                v-model:value="decodeOutputDir"
                 placeholder="选择解密后文件的保存文件夹"
                 size="small"
                 readonly
@@ -411,8 +654,11 @@ onMounted(() => {
             />
           </section>
 
-          <section v-if="decryptQueue.length" class="queue-section">
-            <div class="queue-head">
+          <section
+            v-if="decryptQueue.length || lastResult"
+            class="queue-section"
+          >
+            <div v-if="decryptQueue.length" class="queue-head">
               <span class="queue-title">待解密队列</span>
               <NButton
                 quaternary
@@ -426,19 +672,48 @@ onMounted(() => {
                 清空
               </NButton>
             </div>
-            <NDataTable
-              :columns="queueColumns"
-              :data="queueRows"
-              :max-height="180"
-              size="small"
-              striped
-            />
+            <div
+              v-if="decryptQueue.length"
+              ref="queueTableWrapRef"
+              class="queue-table-wrap"
+            >
+              <NDataTable
+                :columns="queueColumns"
+                :data="queueRows"
+                :max-height="maxHeightForQueueTable"
+                size="small"
+                striped
+                @update:sorter="onQueueSorterUpdate"
+              />
+            </div>
+            <p v-if="lastResult" class="decrypt-result-stats">
+              <span class="decrypt-result-label">解密完成</span>
+              <NTag
+                type="success"
+                size="small"
+                round
+                :bordered="false"
+              >
+                成功 {{ lastResult.succeeded }}
+              </NTag>
+              <NTag
+                v-if="lastResult.failed > 0"
+                type="error"
+                size="small"
+                round
+                :bordered="false"
+              >
+                失败 {{ lastResult.failed }}
+              </NTag>
+              <span
+                v-if="lastResult.failed > 0"
+                class="decrypt-result-hint"
+              >
+                失败项可点队列「失败」查看原因
+              </span>
+            </p>
           </section>
         </div>
-
-        <p class="sidebar-foot-note">
-          内置 unlock-music 解密 · JOOX 需在 localStorage 配置 UUID
-        </p>
       </aside>
 
       <section class="browser-pane">
@@ -457,23 +732,43 @@ onMounted(() => {
                 </template>
               </NButton>
             </div>
-            <NTree
-              v-if="treeData.length"
-              block-line
-              selectable
-              :data="treeData"
-              :expanded-keys="expandedKeys"
-              :selected-keys="selectedKeys"
-              :on-load="onLoadTreeNode"
-              @update:expanded-keys="onUpdateExpandedKeys"
-              @update:selected-keys="onSelectKeys"
-            />
-            <NEmpty
-              v-else
-              class="tree-empty"
-              description="请在设置中添加浏览目录"
-              size="small"
-            />
+            <div class="tree-body">
+              <NTree
+                v-if="treeData.length"
+                block-line
+                selectable
+                :data="treeData"
+                :expanded-keys="expandedKeys"
+                :selected-keys="selectedKeys"
+                :on-load="onLoadTreeNode"
+                @update:expanded-keys="onUpdateExpandedKeys"
+                @update:selected-keys="onSelectKeys"
+              />
+              <NEmpty
+                v-else
+                class="tree-empty"
+                description="请在设置中添加浏览目录"
+                size="small"
+              />
+            </div>
+            <footer v-if="selectedDir" class="tree-foot">
+              <NTooltip trigger="hover" :style="{ maxWidth: '420px' }">
+                <template #trigger>
+                  <p class="dir-stats">{{ selectedDirStatsText }}</p>
+                </template>
+                <template v-if="selectedDirStats.hasSearchRoots">
+                  当前目录（不含子文件夹）：{{ selectedDirStats.count }}
+                  个可解密文件，合计 {{ selectedDirStats.sizeLabel }}，{{
+                    selectedDirStats.matchedCount
+                  }}
+                  个在搜索目标中已有同名音频
+                </template>
+                <template v-else>
+                  当前目录（不含子文件夹）：{{ selectedDirStats.count }}
+                  个可解密文件，合计 {{ selectedDirStats.sizeLabel }}
+                </template>
+              </NTooltip>
+            </footer>
           </div>
 
           <div class="files-pane">
@@ -482,45 +777,12 @@ onMounted(() => {
                 {{ selectedDir ? shortPath(selectedDir) : '加密文件' }}
               </span>
               <div class="pane-actions files-head-actions">
-                <template v-if="selectedDir">
-                  <div class="sort-tabs" role="group" aria-label="排序方式">
-                    <NButton
-                      v-for="opt in sortKeyOptions"
-                      :key="opt.value"
-                      size="small"
-                      :type="sortKey === opt.value ? 'primary' : 'default'"
-                      :secondary="sortKey !== opt.value"
-                      @click="sortKey = opt.value"
-                    >
-                      {{ opt.label }}
-                    </NButton>
-                  </div>
-                  <NTooltip>
-                    <template #trigger>
-                      <NButton
-                        quaternary
-                        size="small"
-                        class="sort-order-btn"
-                        @click="toggleSortOrder"
-                      >
-                        <template #icon>
-                          <NIcon :size="16">
-                            <ArrowUp v-if="sortOrder === 'asc'" />
-                            <ArrowDown v-else />
-                          </NIcon>
-                        </template>
-                        {{ sortOrder === 'asc' ? '升序' : '降序' }}
-                      </NButton>
-                    </template>
-                    切换升序 / 降序
-                  </NTooltip>
-                </template>
                 <NButton
                   size="small"
                   :disabled="!selectedFileKeys.length"
                   @click="addSelectedToQueue"
                 >
-                  加入队列
+                  加入队列 ({{ selectedFileKeys.length }})
                 </NButton>
                 <NButton size="small" @click="pickFilesFromDialog">
                   从磁盘选择…
@@ -528,16 +790,24 @@ onMounted(() => {
               </div>
             </div>
             <NSpin :show="filesLoading" class="files-spin">
-              <NDataTable
+              <div
                 v-if="selectedDir && dirFiles.length"
-                :columns="tableColumns"
-                :data="sortedDirFiles"
-                :row-key="fileRowKey"
-                v-model:checked-row-keys="selectedFileKeys"
-                :max-height="maxHeightForTable"
-                size="small"
-                striped
-              />
+                class="files-table-wrap"
+                @mousedown.capture="onTableMouseDown"
+              >
+                <NDataTable
+                  :columns="tableColumns"
+                  :data="sortedDirFiles"
+                  :row-key="fileRowKey"
+                  :checked-row-keys="selectedFileKeys"
+                  :row-props="fileTableRowProps"
+                  :max-height="maxHeightForTable"
+                  size="small"
+                  striped
+                  @update:checked-row-keys="onFileCheckedRowKeys"
+                  @update:sorter="onDirFileSorterUpdate"
+                />
+              </div>
               <div v-else class="files-empty">
                 <p v-if="selectedDir && !filesLoading">当前目录没有可解密的文件</p>
                 <p v-else-if="!selectedDir">选择左侧目录查看加密音乐</p>
@@ -636,6 +906,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+
+  &--has-queue {
+    overflow: hidden;
+
+    .queue-section {
+      flex: 1;
+      min-height: 0;
+    }
+  }
 }
 
 .decode-hint {
@@ -674,6 +953,37 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+}
+
+.queue-table-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.decrypt-result-stats {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: $radius-icon;
+  background: var(--app-surface-raised);
+  border: 1px solid $border-subtle;
+}
+
+.decrypt-result-label {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.decrypt-result-hint {
+  opacity: 0.55;
+  font-size: 11px;
 }
 
 .queue-head {
@@ -685,15 +995,6 @@ onMounted(() => {
 .queue-title {
   font-size: 13px;
   font-weight: 600;
-}
-
-.sidebar-foot-note {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 8px 20px 16px;
-  font-size: 11px;
-  opacity: 0.38;
-  line-height: 1.4;
 }
 
 .browser-pane {
@@ -719,8 +1020,39 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 12px;
+  padding: 12px 12px 0;
   overflow: hidden;
+}
+
+.tree-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+
+  :deep(.n-tree) {
+    font-size: 13px;
+  }
+}
+
+.tree-foot {
+  flex-shrink: 0;
+  margin: 0 -12px;
+  padding: 3px 12px 5px;
+  border-top: 1px solid $border-subtle;
+}
+
+.dir-stats {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.25;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
 }
 
 .files-pane {
@@ -771,6 +1103,13 @@ onMounted(() => {
   }
 }
 
+.files-table-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .tree-empty {
   padding: 24px 0;
 }
@@ -789,6 +1128,20 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.queue-section :deep(.n-data-table-td) {
+  white-space: nowrap;
+}
+
+.queue-section :deep(.n-data-table-td[data-col-key='filePath']) {
+  overflow: hidden;
+  max-width: 0;
+
+  .n-ellipsis {
+    display: block;
+    min-width: 0;
+  }
+}
+
 .size-cell,
 .metric-cell,
 .time-cell {
@@ -802,6 +1155,37 @@ onMounted(() => {
   text-align: center;
 }
 
+.status-tag-clickable {
+  cursor: pointer;
+}
+
+.error-detail-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+.error-detail-file {
+  margin: 0 0 16px;
+  font-family: $font-mono;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.error-detail-message {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: $font-mono;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: $radius-icon;
+  background: var(--app-surface-raised);
+  border: 1px solid $border-subtle;
+}
+
 .time-cell,
 .size-cell {
   font-family: $font-mono;
@@ -812,23 +1196,5 @@ onMounted(() => {
 .files-head-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.sort-tabs {
-  display: inline-flex;
-  flex-shrink: 0;
-  border: 1px solid $border-subtle;
-  border-radius: $radius-icon;
-  overflow: hidden;
-
-  :deep(.n-button) {
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-
-    &:not(:last-child) {
-      border-right: 1px solid $border-subtle;
-    }
-  }
 }
 </style>

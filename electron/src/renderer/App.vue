@@ -41,7 +41,6 @@ import {
   countReadyToCopy,
   type SourceSelection
 } from '@shared/sourcePick'
-import FolderPanel from './components/FolderPanel.vue'
 import ResultsPanel from './components/ResultsPanel.vue'
 import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
 import styleTokens from './styles/variables.module.scss'
@@ -80,6 +79,7 @@ const themeOverrides: GlobalThemeOverrides = {
 const lrcDirs = ref<string[]>([])
 const searchRoots = ref<string[]>([])
 const decodeSourceDirs = ref<string[]>([])
+const decodeOutputDir = ref('')
 const pathFilterRules = ref<PathFilterRule[]>([])
 const fileListColumns = ref<FileListColumnsSettings>(
   createDefaultAppConfig().fileListColumns
@@ -152,6 +152,7 @@ function buildAppConfig(): AppConfig {
     searchRoots: [...toRaw(searchRoots.value)],
     lrcDirs: [...toRaw(lrcDirs.value)],
     decodeSourceDirs: [...toRaw(decodeSourceDirs.value)],
+    decodeOutputDir: decodeOutputDir.value.trim(),
     appearance: appearance.value,
     pathFilterRules: pathFilterRulesForSave(toRaw(pathFilterRules.value)),
     fileListColumns: {
@@ -180,6 +181,7 @@ onMounted(async () => {
     searchRoots.value = [...config.searchRoots]
     lrcDirs.value = [...config.lrcDirs]
     decodeSourceDirs.value = [...config.decodeSourceDirs]
+    decodeOutputDir.value = config.decodeOutputDir
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
   } catch (err) {
@@ -194,7 +196,15 @@ onUnmounted(() => {
 })
 
 watch(
-  [searchRoots, lrcDirs, decodeSourceDirs, pathFilterRules, fileListColumns, appearance],
+  [
+    searchRoots,
+    lrcDirs,
+    decodeSourceDirs,
+    decodeOutputDir,
+    pathFilterRules,
+    fileListColumns,
+    appearance
+  ],
   () => void persistFolderConfig(),
   { deep: true }
 )
@@ -210,6 +220,8 @@ watch(
         <SettingsPanel
           v-if="showSettings"
           v-model:path-filter-rules="pathFilterRules"
+          v-model:search-roots="searchRoots"
+          v-model:lrc-dirs="lrcDirs"
           v-model:decode-source-dirs="decodeSourceDirs"
           v-model:file-list-columns="fileListColumns"
           class="settings-layer"
@@ -226,6 +238,7 @@ watch(
         <MusicDecodePage
           v-else-if="showMusicDecode"
           v-model:decode-source-dirs="decodeSourceDirs"
+          v-model:decode-output-dir="decodeOutputDir"
           :search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
@@ -245,18 +258,14 @@ watch(
             </div>
 
             <div class="sidebar-scroll">
-              <FolderPanel
-                v-model="searchRoots"
-                title="音频搜索目标"
-                hint="递归子目录，跳过 LRC 源"
-                empty-text="添加搜索目标"
-              />
-              <FolderPanel
-                v-model="lrcDirs"
-                title="LRC 源文件夹"
-                hint="递归扫描 .lrc"
-                empty-text="添加 LRC 源"
-              />
+              <section v-if="!canPreview" class="config-hint">
+                <p class="config-hint-text">
+                  请在「设置」中配置音频搜索目标与 LRC 源文件夹
+                </p>
+                <NButton size="small" @click="showSettings = true">
+                  打开设置
+                </NButton>
+              </section>
 
               <section class="toolbar">
                 <NButton
@@ -354,7 +363,7 @@ watch(
               <div v-else class="pane-placeholder">
                 <p class="placeholder-title">扫描结果</p>
                 <p class="placeholder-desc">
-                  在左侧添加文件夹后，点击「预览匹配」在此查看列表
+                  在「设置」中配置文件夹后，点击「预览匹配」在此查看列表
                 </p>
               </div>
             </NSpin>
@@ -443,10 +452,24 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
 
-  :deep(.folder-panel) {
-    flex: none;
-  }
+.config-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: $radius-panel;
+  border: 1px dashed $border-subtle;
+  background: $surface-panel;
+}
+
+.config-hint-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.65;
 }
 
 .toolbar {

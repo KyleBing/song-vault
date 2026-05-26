@@ -15,8 +15,6 @@ import {
 import {
   Add,
   ArrowBack,
-  ArrowDown,
-  ArrowUp,
   CreateOutline,
   FolderOpen,
   Refresh,
@@ -33,8 +31,11 @@ import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
   buildSortKeyOptions,
   enrichItemsWithAudioMetrics,
+  handleDirFileSorterUpdate,
+  formatFileSize,
   normalizeDirAudioFileItem,
   sortDirAudioFiles,
+  toFiniteNumber,
   useDirFileTableColumns,
   type DirFileSortKey,
   type DirFileSortOrder
@@ -74,7 +75,9 @@ const sortKeyOptions = computed(() =>
 
 const tableColumns = useDirFileTableColumns(
   'source',
-  computed(() => props.fileListColumns)
+  computed(() => props.fileListColumns),
+  sortKey,
+  sortOrder
 )
 
 const browseRoots = computed(() => [...searchRoots.value])
@@ -213,13 +216,44 @@ const sortedAudioFiles = computed(() =>
   sortDirAudioFiles(audioFiles.value, sortKey.value, sortOrder.value)
 )
 
-function toggleSortOrder(): void {
-  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+function onDirFileSorterUpdate(
+  sorter: Parameters<typeof handleDirFileSorterUpdate>[0]
+): void {
+  handleDirFileSorterUpdate(sorter, sortKey, sortOrder)
 }
 
 const selectedDirLabel = computed(() => {
   if (!selectedDir.value) return ''
   return shortPath(selectedDir.value) || selectedDir.value
+})
+
+const selectedDirStats = computed(() => {
+  let totalBytes = 0
+  let lrcCount = 0
+  for (const f of audioFiles.value) {
+    totalBytes += toFiniteNumber(f.sizeBytes)
+    if (f.hasLrc) lrcCount++
+  }
+  const count = audioFiles.value.length
+  return {
+    count,
+    totalBytes,
+    lrcCount,
+    sizeLabel: formatFileSize(totalBytes)
+  }
+})
+
+const selectedDirStatsText = computed(() => {
+  const { count, lrcCount, sizeLabel } = selectedDirStats.value
+  if (filesLoading.value) return '统计加载中…'
+  if (count === 0) return '0 个音频'
+  const lrcPart =
+    lrcCount === count
+      ? '均有歌词'
+      : lrcCount === 0
+        ? '无歌词'
+        : `${lrcCount} 有歌词`
+  return `${count} 个 · ${sizeLabel} · ${lrcPart}`
 })
 
 const canManageDir = computed(() => !!selectedDir.value)
@@ -231,6 +265,16 @@ watch(
   },
   { deep: true }
 )
+
+watch(sortKey, async (key) => {
+  if (!audioFiles.value.length) return
+  const columnIds = columnsForKind(props.fileListColumns, 'source')
+  audioFiles.value = await enrichItemsWithAudioMetrics(
+    audioFiles.value,
+    columnIds,
+    key
+  )
+})
 
 watch(sortKeyOptions, (opts) => {
   if (!opts.some((o) => o.value === sortKey.value)) {
@@ -520,7 +564,7 @@ onMounted(() => {
           <NEmpty
             v-if="!searchRoots.length"
             size="small"
-            description="请先在主界面左侧添加音频搜索目标"
+            description="请先在「设置」中添加音频搜索目标"
             class="tree-empty"
           />
           <NTree
@@ -535,6 +579,16 @@ onMounted(() => {
             @update:selected-keys="onSelectKeys"
           />
         </div>
+        <footer v-if="selectedDir" class="tree-foot">
+          <NTooltip trigger="hover" :style="{ maxWidth: '420px' }">
+            <template #trigger>
+              <p class="dir-stats">{{ selectedDirStatsText }}</p>
+            </template>
+            当前目录（不含子文件夹）：{{ selectedDirStats.count }} 个音频，
+            合计 {{ selectedDirStats.sizeLabel }}，
+            {{ selectedDirStats.lrcCount }} 个有同级歌词
+          </NTooltip>
+        </footer>
       </aside>
 
       <section class="files-pane">
@@ -542,39 +596,6 @@ onMounted(() => {
           <span v-if="selectedDir">当前：{{ selectedDirLabel }}</span>
           <span v-else class="pane-head-muted">请选择左侧目录</span>
           <div class="head-actions files-head-actions">
-            <template v-if="selectedDir">
-              <div class="sort-tabs" role="group" aria-label="排序方式">
-                <NButton
-                  v-for="opt in sortKeyOptions"
-                  :key="opt.value"
-                  size="small"
-                  :type="sortKey === opt.value ? 'primary' : 'default'"
-                  :secondary="sortKey !== opt.value"
-                  @click="sortKey = opt.value"
-                >
-                  {{ opt.label }}
-                </NButton>
-              </div>
-              <NTooltip>
-                <template #trigger>
-                  <NButton
-                    quaternary
-                    size="small"
-                    class="sort-order-btn"
-                    @click="toggleSortOrder"
-                  >
-                    <template #icon>
-                      <NIcon :size="16">
-                        <ArrowUp v-if="sortOrder === 'asc'" />
-                        <ArrowDown v-else />
-                      </NIcon>
-                    </template>
-                    {{ sortOrder === 'asc' ? '升序' : '降序' }}
-                  </NButton>
-                </template>
-                切换升序 / 降序
-              </NTooltip>
-            </template>
             <NPopconfirm
               :disabled="!selectedFileKeys.length"
               @positive-click="deleteSelectedFiles"
@@ -608,6 +629,7 @@ onMounted(() => {
             :max-height="maxHeightForTable"
             size="small"
             striped
+            @update:sorter="onDirFileSorterUpdate"
           />
           <div v-else class="files-placeholder">
             <NEmpty size="small" description="点击目录树中的文件夹查看音频" />
@@ -733,6 +755,24 @@ onMounted(() => {
   padding: 24px 8px;
 }
 
+.tree-foot {
+  flex-shrink: 0;
+  padding: 3px 10px 5px;
+  border-top: 1px solid $border-subtle;
+}
+
+.dir-stats {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.25;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
 :deep(.tree-dir-icon) {
   opacity: 0.75;
   margin-right: 2px;
@@ -765,23 +805,5 @@ onMounted(() => {
 .files-head-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.sort-tabs {
-  display: inline-flex;
-  flex-shrink: 0;
-  border: 1px solid $border-subtle;
-  border-radius: $radius-icon;
-  overflow: hidden;
-
-  :deep(.n-button) {
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-
-    &:not(:last-child) {
-      border-right: 1px solid $border-subtle;
-    }
-  }
 }
 </style>

@@ -14,6 +14,11 @@ import { PLATFORM_LABELS, classifyEncryptedExtension } from '@shared/musicFormat
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { formatFileTime } from '@renderer/utils/formatFileTime'
 import {
+  applySortableHeaders,
+  handleTableSorterUpdate,
+  type TableSortOrder
+} from '@renderer/composables/useTableHeaderSort'
+import {
   formatBitrate,
   formatBitsPerSample,
   formatChannels,
@@ -31,7 +36,7 @@ export type DirFileSortKey =
   | 'birthtimeMs'
   | 'mtimeMs'
 
-export type DirFileSortOrder = 'asc' | 'desc'
+export type DirFileSortOrder = TableSortOrder
 
 export function toFiniteNumber(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -55,11 +60,30 @@ export function normalizeDirAudioFileItem(
   }
 }
 
-export function formatSizeMb(bytes: unknown): string {
+/** 按量级选用 B / KB / MB / GB / TB（1024 进制） */
+export function formatFileSize(bytes: unknown): string {
   const n = toFiniteNumber(bytes)
   if (n <= 0) return '—'
-  const mb = n / (1024 * 1024)
-  return `${mb.toFixed(2)} MB`
+  const KB = 1024
+  const MB = KB * 1024
+  const GB = MB * 1024
+  const TB = GB * 1024
+
+  const format = (value: number, unit: string): string => {
+    const digits = value >= 100 ? 1 : value >= 10 ? 2 : 2
+    return `${value.toFixed(digits)} ${unit}`
+  }
+
+  if (n >= TB) return format(n / TB, 'TB')
+  if (n >= GB) return format(n / GB, 'GB')
+  if (n >= MB) return format(n / MB, 'MB')
+  if (n >= KB) return format(n / KB, 'KB')
+  return `${n} B`
+}
+
+/** @deprecated 请用 {@link formatFileSize} */
+export function formatSizeMb(bytes: unknown): string {
+  return formatFileSize(bytes)
 }
 
 function pathCell(full: string, short: string) {
@@ -130,7 +154,7 @@ function inSearchTargetCell(row: DirAudioFileItem) {
       {
         trigger: () =>
           h(NTag, { size: 'small', round: true, type: 'warning' }, () => '未配置'),
-        default: () => '请先在主界面添加「音频搜索目标」'
+        default: () => '请先在「设置」中添加「音频搜索目标」'
       }
     )
   }
@@ -371,6 +395,113 @@ export function buildDirFileTableColumns(
   return cols
 }
 
+const SORTABLE_DIR_FILE_KEYS = new Set<DirFileSortKey>([
+  'fileName',
+  'ext',
+  'sizeBytes',
+  'birthtimeMs',
+  'mtimeMs',
+  'inSearchTarget',
+  'bitrate',
+  'duration',
+  'sampleRate',
+  'channels',
+  'codec',
+  'bitsPerSample',
+  'title',
+  'artist',
+  'album',
+  'genre',
+  'year'
+])
+
+export function compareDirAudioFileField(
+  a: DirAudioFileItem,
+  b: DirAudioFileItem,
+  sortKey: DirFileSortKey
+): number {
+  switch (sortKey) {
+    case 'ext': {
+      let cmp = a.ext.localeCompare(b.ext, undefined, { sensitivity: 'base' })
+      if (cmp === 0) {
+        cmp = a.fileName.localeCompare(b.fileName, undefined, {
+          sensitivity: 'base'
+        })
+      }
+      return cmp
+    }
+    case 'birthtimeMs':
+      return a.birthtimeMs - b.birthtimeMs
+    case 'mtimeMs':
+      return a.mtimeMs - b.mtimeMs
+    case 'sizeBytes':
+      return a.sizeBytes - b.sizeBytes
+    case 'inSearchTarget': {
+      const aHas = (a.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
+      const bHas = (b.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
+      return aHas - bHas
+    }
+    case 'bitrate':
+      return (
+        toFiniteNumber(a.audio?.bitrateKbps) -
+        toFiniteNumber(b.audio?.bitrateKbps)
+      )
+    case 'duration':
+      return (
+        toFiniteNumber(a.audio?.durationSec) -
+        toFiniteNumber(b.audio?.durationSec)
+      )
+    case 'sampleRate':
+      return (
+        toFiniteNumber(a.audio?.sampleRateHz) -
+        toFiniteNumber(b.audio?.sampleRateHz)
+      )
+    case 'channels':
+      return (
+        toFiniteNumber(a.audio?.channels) - toFiniteNumber(b.audio?.channels)
+      )
+    case 'bitsPerSample':
+      return (
+        toFiniteNumber(a.audio?.bitsPerSample) -
+        toFiniteNumber(b.audio?.bitsPerSample)
+      )
+    case 'codec':
+      return formatCodec(a.audio).localeCompare(formatCodec(b.audio), undefined, {
+        sensitivity: 'base'
+      })
+    case 'title':
+      return formatTag(a.audio?.title).localeCompare(
+        formatTag(b.audio?.title),
+        undefined,
+        { sensitivity: 'base' }
+      )
+    case 'artist':
+      return formatTag(a.audio?.artist).localeCompare(
+        formatTag(b.audio?.artist),
+        undefined,
+        { sensitivity: 'base' }
+      )
+    case 'album':
+      return formatTag(a.audio?.album).localeCompare(
+        formatTag(b.audio?.album),
+        undefined,
+        { sensitivity: 'base' }
+      )
+    case 'genre':
+      return formatTag(a.audio?.genre).localeCompare(
+        formatTag(b.audio?.genre),
+        undefined,
+        { sensitivity: 'base' }
+      )
+    case 'year':
+      return toFiniteNumber(a.audio?.year) - toFiniteNumber(b.audio?.year)
+    default:
+      return a.fileName.localeCompare(b.fileName, undefined, {
+        sensitivity: 'base'
+      })
+  }
+}
+
 export function sortDirAudioFiles(
   items: DirAudioFileItem[],
   sortKey: DirFileSortKey,
@@ -378,102 +509,23 @@ export function sortDirAudioFiles(
 ): DirAudioFileItem[] {
   const list = [...items]
   const sign = sortOrder === 'asc' ? 1 : -1
-  list.sort((a, b) => {
-    let cmp = 0
-    switch (sortKey) {
-      case 'ext': {
-        cmp = a.ext.localeCompare(b.ext, undefined, { sensitivity: 'base' })
-        if (cmp === 0) {
-          cmp = a.fileName.localeCompare(b.fileName, undefined, {
-            sensitivity: 'base'
-          })
-        }
-        break
-      }
-      case 'birthtimeMs':
-        cmp = a.birthtimeMs - b.birthtimeMs
-        break
-      case 'mtimeMs':
-        cmp = a.mtimeMs - b.mtimeMs
-        break
-      case 'sizeBytes':
-        cmp = a.sizeBytes - b.sizeBytes
-        break
-      case 'inSearchTarget': {
-        const aHas = (a.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
-        const bHas = (b.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
-        cmp = aHas - bHas
-        break
-      }
-      case 'bitrate':
-        cmp =
-          toFiniteNumber(a.audio?.bitrateKbps) -
-          toFiniteNumber(b.audio?.bitrateKbps)
-        break
-      case 'duration':
-        cmp =
-          toFiniteNumber(a.audio?.durationSec) -
-          toFiniteNumber(b.audio?.durationSec)
-        break
-      case 'sampleRate':
-        cmp =
-          toFiniteNumber(a.audio?.sampleRateHz) -
-          toFiniteNumber(b.audio?.sampleRateHz)
-        break
-      case 'channels':
-        cmp =
-          toFiniteNumber(a.audio?.channels) - toFiniteNumber(b.audio?.channels)
-        break
-      case 'bitsPerSample':
-        cmp =
-          toFiniteNumber(a.audio?.bitsPerSample) -
-          toFiniteNumber(b.audio?.bitsPerSample)
-        break
-      case 'codec':
-        cmp = formatCodec(a.audio).localeCompare(formatCodec(b.audio), undefined, {
-          sensitivity: 'base'
-        })
-        break
-      case 'title':
-        cmp = formatTag(a.audio?.title).localeCompare(
-          formatTag(b.audio?.title),
-          undefined,
-          { sensitivity: 'base' }
-        )
-        break
-      case 'artist':
-        cmp = formatTag(a.audio?.artist).localeCompare(
-          formatTag(b.audio?.artist),
-          undefined,
-          { sensitivity: 'base' }
-        )
-        break
-      case 'album':
-        cmp = formatTag(a.audio?.album).localeCompare(
-          formatTag(b.audio?.album),
-          undefined,
-          { sensitivity: 'base' }
-        )
-        break
-      case 'genre':
-        cmp = formatTag(a.audio?.genre).localeCompare(
-          formatTag(b.audio?.genre),
-          undefined,
-          { sensitivity: 'base' }
-        )
-        break
-      case 'year':
-        cmp =
-          toFiniteNumber(a.audio?.year) - toFiniteNumber(b.audio?.year)
-        break
-      default:
-        cmp = a.fileName.localeCompare(b.fileName, undefined, {
-          sensitivity: 'base'
-        })
-    }
-    return cmp * sign
-  })
+  list.sort(
+    (a, b) => compareDirAudioFileField(a, b, sortKey) * sign
+  )
   return list
+}
+
+export function isSortableDirFileColumn(key: string): boolean {
+  return SORTABLE_DIR_FILE_KEYS.has(key as DirFileSortKey)
+}
+
+export function handleDirFileSorterUpdate(
+  sorter: Parameters<typeof handleTableSorterUpdate>[0],
+  sortKey: Ref<DirFileSortKey>,
+  sortOrder: Ref<DirFileSortOrder>,
+  fallbackKey: DirFileSortKey = 'fileName'
+): void {
+  handleTableSorterUpdate(sorter, sortKey, sortOrder, fallbackKey)
 }
 
 export function buildSortKeyOptions(
@@ -508,11 +560,20 @@ export function buildSortKeyOptions(
 
 export function useDirFileTableColumns(
   listKind: FileListKind,
-  columnSettings: Ref<FileListColumnsSettings>
+  columnSettings: Ref<FileListColumnsSettings>,
+  sortKey: Ref<DirFileSortKey>,
+  sortOrder: Ref<DirFileSortOrder>
 ): ComputedRef<DataTableColumns<DirAudioFileItem>> {
-  return computed(() =>
-    buildDirFileTableColumns(listKind, columnSettings.value)
-  )
+  return computed(() => {
+    const columns = buildDirFileTableColumns(listKind, columnSettings.value)
+    return applySortableHeaders(columns, {
+      sortKey: sortKey.value,
+      sortOrder: sortOrder.value,
+      isSortable: isSortableDirFileColumn,
+      compare: (key) => (a, b) =>
+        compareDirAudioFileField(a, b, key as DirFileSortKey)
+    })
+  })
 }
 
 export async function enrichItemsWithAudioMetrics(

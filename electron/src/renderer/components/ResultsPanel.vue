@@ -29,6 +29,12 @@ import {
 } from '@shared/sourcePick'
 import { dirnameOf } from '@shared/pathLite'
 import { joinPath, relativeToRoots } from '@renderer/utils/displayPath'
+import {
+    applySortableHeaders,
+    handleTableSorterUpdate,
+    sortRows,
+    type TableSortOrder
+} from '@renderer/composables/useTableHeaderSort'
 
 const props = defineProps<{
     result: JobResult
@@ -59,6 +65,80 @@ const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 /** 结果表格最大高度（随窗口高度变化） */
 const maxHeightForTable = computed(() => insets.value.windowHeight - 110)
+
+const audioSortKey = ref('audioPath')
+const audioSortOrder = ref<TableSortOrder>('asc')
+const orphanSortKey = ref('lrcPath')
+const orphanSortOrder = ref<TableSortOrder>('asc')
+
+const AUDIO_STATUS_RANK: Record<AudioItemStatus, number> = {
+    matched: 1,
+    copied: 2,
+    can_copy: 3,
+    source_ambiguous: 4,
+    no_lrc_source: 5,
+    copy_error: 6
+}
+
+function compareAudioRows(
+    a: AudioJobItem,
+    b: AudioJobItem,
+    key: string
+): number {
+    switch (key) {
+        case 'localLrcPath':
+            return (a.localLrcPath ?? '').localeCompare(
+                b.localLrcPath ?? '',
+                undefined,
+                { sensitivity: 'base' }
+            )
+        case 'status':
+            return (
+                AUDIO_STATUS_RANK[displayStatus(a)] -
+                AUDIO_STATUS_RANK[displayStatus(b)]
+            )
+        default:
+            return a.audioName.localeCompare(b.audioName, undefined, {
+                sensitivity: 'base'
+            })
+    }
+}
+
+function sortAudioItems(items: AudioJobItem[]): AudioJobItem[] {
+    return sortRows(
+        items,
+        audioSortKey.value,
+        audioSortOrder.value,
+        compareAudioRows
+    )
+}
+
+function compareOrphanRows(
+    a: OrphanLrcItem,
+    b: OrphanLrcItem,
+    key: string
+): number {
+    if (key === 'message') {
+        return a.message.localeCompare(b.message, undefined, {
+            sensitivity: 'base'
+        })
+    }
+    return a.lrcName.localeCompare(b.lrcName, undefined, {
+        sensitivity: 'base'
+    })
+}
+
+function onAudioSorterUpdate(
+    sorter: Parameters<typeof handleTableSorterUpdate>[0]
+): void {
+    handleTableSorterUpdate(sorter, audioSortKey, audioSortOrder, 'audioPath')
+}
+
+function onOrphanSorterUpdate(
+    sorter: Parameters<typeof handleTableSorterUpdate>[0]
+): void {
+    handleTableSorterUpdate(sorter, orphanSortKey, orphanSortOrder, 'lrcPath')
+}
 
 const audioStatusMeta: Record<
     AudioItemStatus,
@@ -199,7 +279,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
     void pickRevision.value
     void sourceSelection.value
 
-    return [
+    const baseColumns: DataTableColumns<AudioJobItem> = [
         {
             title: '音频',
             key: 'audioPath',
@@ -226,6 +306,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             title: '选择源歌词',
             key: 'sourcePick',
             width: 220,
+            ellipsis: { tooltip: false },
             render(row) {
                 const paths = row.sourceLrcPaths
                 if (!paths?.length) return '—'
@@ -234,12 +315,14 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
                     return pathCell(paths[0], shortLrcSource(paths[0]))
                 }
 
-                return h(SourceLrcSelect, {
-                    row,
-                    lrcDirs: props.lrcDirs,
-                    value: resolveSourcePath(row) ?? null,
-                    onPick: (v: string) => onPickSource(row, v)
-                })
+                return h('div', { class: 'source-pick-cell' }, [
+                    h(SourceLrcSelect, {
+                        row,
+                        lrcDirs: props.lrcDirs,
+                        value: resolveSourcePath(row) ?? null,
+                        onPick: (v: string) => onPickSource(row, v)
+                    })
+                ])
             }
         },
         {
@@ -289,25 +372,42 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             }
         }
     ]
+    return applySortableHeaders(baseColumns, {
+        sortKey: audioSortKey.value,
+        sortOrder: audioSortOrder.value,
+        isSortable: (key) =>
+            key === 'audioPath' || key === 'localLrcPath' || key === 'status',
+        compare: (key) => (a, b) => compareAudioRows(a, b, key)
+    })
 })
 
 // 多余歌词表格列配置
-const orphanColumns: DataTableColumns<OrphanLrcItem> = [
-    { type: 'selection' },
-    {
-        title: '歌词文件',
-        key: 'lrcPath',
-        ellipsis: { tooltip: false },
-        render(row) {
-            return pathCell(row.lrcPath, shortAudio(row.lrcPath))
+const orphanColumns = computed<DataTableColumns<OrphanLrcItem>>(() =>
+    applySortableHeaders(
+        [
+            { type: 'selection' },
+            {
+                title: '歌词文件',
+                key: 'lrcPath',
+                ellipsis: { tooltip: false },
+                render(row) {
+                    return pathCell(row.lrcPath, shortAudio(row.lrcPath))
+                }
+            },
+            {
+                title: '说明',
+                key: 'message',
+                width: 220
+            }
+        ],
+        {
+            sortKey: orphanSortKey.value,
+            sortOrder: orphanSortOrder.value,
+            isSortable: (key) => key === 'lrcPath' || key === 'message',
+            compare: (key) => (a, b) => compareOrphanRows(a, b, key)
         }
-    },
-    {
-        title: '说明',
-        key: 'message',
-        width: 220
-    }
-]
+    )
+)
 
 // 所有音频数据
 const plainAudio = computed(() =>
@@ -343,6 +443,22 @@ const plainOrphan = computed(() =>
     props.result.orphanLrcItems.map((r) => ({ ...r, key: r.lrcPath }))
 )
 
+const sortedPlainAudio = computed(() => sortAudioItems(plainAudio.value))
+const sortedMatchedAudio = computed(() => sortAudioItems(matchedAudio.value))
+const sortedCanCopyAudio = computed(() => sortAudioItems(canCopyAudio.value))
+const sortedPickSourceAudio = computed(() =>
+    sortAudioItems(pickSourceAudio.value)
+)
+const sortedNeedLrcAudio = computed(() => sortAudioItems(needLrcAudio.value))
+const sortedPlainOrphan = computed(() =>
+    sortRows(
+        plainOrphan.value,
+        orphanSortKey.value,
+        orphanSortOrder.value,
+        compareOrphanRows
+    )
+)
+
 /** 多余歌词表格行主键 */
 function orphanRowKey(row: { key: string }): string {
   return row.key
@@ -358,44 +474,50 @@ function orphanRowKey(row: { key: string }): string {
         <NTabs v-model:value="activeTab" type="line" class="result-tabs">
             <NTabPane name="all" :tab="`全部 (${stats.audioTotal})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`all-${pickRevision}`" :columns="audioColumns" :data="plainAudio"
-                        :max-height="maxHeightForTable" size="small" striped />
+                    <NDataTable :key="`all-${pickRevision}`" :columns="audioColumns" :data="sortedPlainAudio"
+                        :max-height="maxHeightForTable" size="small" striped
+                        @update:sorter="onAudioSorterUpdate" />
                 </div>
             </NTabPane>
 
             <NTabPane name="matched" :tab="`已匹配 (${matchedAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`matched-${pickRevision}`" :columns="audioColumns" :data="matchedAudio"
-                        :max-height="maxHeightForTable" size="small" striped />
+                    <NDataTable :key="`matched-${pickRevision}`" :columns="audioColumns" :data="sortedMatchedAudio"
+                        :max-height="maxHeightForTable" size="small" striped
+                        @update:sorter="onAudioSorterUpdate" />
                 </div>
             </NTabPane>
 
             <NTabPane name="copy" :tab="`待复制 (${canCopyAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`copy-${pickRevision}`" :columns="audioColumns" :data="canCopyAudio"
-                        :max-height="maxHeightForTable" size="small" striped />
+                    <NDataTable :key="`copy-${pickRevision}`" :columns="audioColumns" :data="sortedCanCopyAudio"
+                        :max-height="maxHeightForTable" size="small" striped
+                        @update:sorter="onAudioSorterUpdate" />
                 </div>
             </NTabPane>
 
             <NTabPane name="pick" :tab="`待选源 (${pickSourceAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`pick-${pickRevision}`" :columns="audioColumns" :data="pickSourceAudio"
-                        :max-height="maxHeightForTable" size="small" striped />
+                    <NDataTable :key="`pick-${pickRevision}`" :columns="audioColumns" :data="sortedPickSourceAudio"
+                        :max-height="maxHeightForTable" size="small" striped
+                        @update:sorter="onAudioSorterUpdate" />
                 </div>
             </NTabPane>
 
             <NTabPane name="missing" :tab="`缺歌词 (${needLrcAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`missing-${pickRevision}`" :columns="audioColumns" :data="needLrcAudio"
-                        :max-height="maxHeightForTable" size="small" striped />
+                    <NDataTable :key="`missing-${pickRevision}`" :columns="audioColumns" :data="sortedNeedLrcAudio"
+                        :max-height="maxHeightForTable" size="small" striped
+                        @update:sorter="onAudioSorterUpdate" />
                 </div>
             </NTabPane>
 
             <NTabPane name="orphan" :tab="`多余 (${stats.orphanLrc})`">
                 <div class="tab-pane-body">
                     <NDataTable v-model:checked-row-keys="selectedOrphanKeys" :columns="orphanColumns"
-                        :data="plainOrphan" :row-key="orphanRowKey"
-                        :max-height="maxHeightForTable" size="small" striped />
+                        :data="sortedPlainOrphan" :row-key="orphanRowKey"
+                        :max-height="maxHeightForTable" size="small" striped
+                        @update:sorter="onOrphanSorterUpdate" />
                 </div>
             </NTabPane>
         </NTabs>
@@ -486,6 +608,12 @@ function orphanRowKey(row: { key: string }): string {
     white-space: nowrap;
     font-family: $font-mono;
     font-size: 12px;
+}
+
+.source-pick-cell {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .table-status-cell {

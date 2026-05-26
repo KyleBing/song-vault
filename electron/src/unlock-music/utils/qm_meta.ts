@@ -125,23 +125,28 @@ interface NewAudioMeta {
 }
 
 async function writeMetaToAudioFile(info: NewAudioMeta): Promise<Blob> {
+  let imageInfo: Awaited<ReturnType<typeof GetImageFromURL>> | undefined
   try {
-    const imageInfo = await GetImageFromURL(info.imageURL);
+    imageInfo = await GetImageFromURL(info.imageURL)
     if (!imageInfo) {
-      console.warn('获取图像失败');
+      console.warn('获取图像失败')
     }
-    const newMeta = { picture: imageInfo?.buffer, title: info.title, artists: info.artists };
-    const buffer = Buffer.from(await info.blob.arrayBuffer());
-    const mime = AudioMimeType[info.ext] || AudioMimeType.mp3;
+    const newMeta = { picture: imageInfo?.buffer, title: info.title, artists: info.artists }
+    const buffer = Buffer.from(await info.blob.arrayBuffer())
+    const mime = AudioMimeType[info.ext] || AudioMimeType.mp3
     if (info.ext === 'mp3') {
-      return new Blob([WriteMetaToMp3(buffer, newMeta, info.musicMeta)], { type: mime });
+      return new Blob([WriteMetaToMp3(buffer, newMeta, info.musicMeta)], { type: mime })
     } else if (info.ext === 'flac') {
-      return new Blob([WriteMetaToFlac(buffer, newMeta, info.musicMeta)], { type: mime });
+      return new Blob([WriteMetaToFlac(buffer, newMeta, info.musicMeta)], { type: mime })
     } else {
-      console.info('writing metadata for ' + info.ext + ' is not being supported for now');
+      console.info('writing metadata for ' + info.ext + ' is not being supported for now')
     }
   } catch (e) {
-    console.warn('Error while appending cover image to file ' + e);
+    console.warn('Error while appending cover image to file ' + e)
+  } finally {
+    if (imageInfo?.url?.startsWith('blob:')) {
+      URL.revokeObjectURL(imageInfo.url)
+    }
   }
-  return info.blob;
+  return info.blob
 }

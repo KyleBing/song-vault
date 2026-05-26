@@ -23,6 +23,14 @@ const pathFilterRules = defineModel<PathFilterRule[]>('pathFilterRules', {
   required: true
 })
 
+const searchRoots = defineModel<string[]>('searchRoots', {
+  required: true
+})
+
+const lrcDirs = defineModel<string[]>('lrcDirs', {
+  required: true
+})
+
 const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
   required: true
 })
@@ -146,6 +154,22 @@ async function revealConfigFile(): Promise<void> {
         </aside>
 
         <main class="settings-main">
+          <FolderPanel
+            v-model="searchRoots"
+            class="settings-folder-panel"
+            title="音频搜索目标"
+            hint="递归子目录，跳过 LRC 源"
+            empty-text="添加搜索目标"
+          />
+
+          <FolderPanel
+            v-model="lrcDirs"
+            class="settings-folder-panel"
+            title="LRC 源文件夹"
+            hint="递归扫描 .lrc"
+            empty-text="添加 LRC 源"
+          />
+
           <FolderPanel
             v-model="decodeSourceDirs"
             class="settings-folder-panel"
@@ -289,8 +313,7 @@ $settings-aside-width: clamp(300px, 32vw, 420px);
 }
 
 .settings-folder-panel {
-  flex: 1;
-  min-height: 0;
+  flex: none;
 }
 
 .card-header {
