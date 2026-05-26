@@ -4,6 +4,8 @@ import {
   NDataTable,
   NEmpty,
   NIcon,
+  NInput,
+  NModal,
   NPopconfirm,
   NSpin,
   NTag,
@@ -373,18 +375,47 @@ watch(
   }
 )
 
-/** 弹出输入框获取文件夹名称 */
-function promptName(title: string, defaultValue = ''): string | null {
-  const value = window.prompt(title, defaultValue)
-  if (value === null) return null
-  const trimmed = value.trim()
-  return trimmed || null
+const namePromptVisible = ref(false)
+const namePromptTitle = ref('')
+const namePromptValue = ref('')
+let namePromptResolve: ((value: string | null) => void) | null = null
+
+/** 弹出输入框获取文件夹名称（Electron 不支持 window.prompt） */
+function promptName(title: string, defaultValue = ''): Promise<string | null> {
+  return new Promise((resolve) => {
+    namePromptTitle.value = title
+    namePromptValue.value = defaultValue
+    namePromptResolve = resolve
+    namePromptVisible.value = true
+  })
+}
+
+function finishNamePrompt(value: string | null): void {
+  const resolve = namePromptResolve
+  namePromptResolve = null
+  resolve?.(value)
+}
+
+function onNamePromptPositive(): boolean {
+  const trimmed = namePromptValue.value.trim()
+  if (!trimmed) {
+    message.warning('名称不能为空')
+    return false
+  }
+  namePromptVisible.value = false
+  finishNamePrompt(trimmed)
+  return true
+}
+
+function onNamePromptNegative(): void {
+  namePromptVisible.value = false
+  finishNamePrompt(null)
 }
 
 /** 在选中目录下新建子文件夹 */
 async function createSubdir(): Promise<void> {
   if (!selectedDir.value) return
-  const name = promptName('请输入新文件夹名称')
+  const name = await promptName('请输入新文件夹名称')
   if (!name) return
   try {
     const { path: created } = await window.electronAPI.browseCreateDir({
@@ -408,7 +439,7 @@ async function renameDir(): Promise<void> {
   if (!selectedDir.value) return
   const currentName =
     selectedDir.value.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? ''
-  const newName = promptName('请输入新名称', currentName)
+  const newName = await promptName('请输入新名称', currentName)
   if (!newName || newName === currentName) return
   const wasRoot = isBrowseRoot(selectedDir.value, searchRoots.value)
   try {
@@ -496,6 +527,25 @@ onMounted(() => {
 
 <template>
   <div class="source-files-page">
+    <NModal
+      v-model:show="namePromptVisible"
+      preset="dialog"
+      :title="namePromptTitle"
+      positive-text="确定"
+      negative-text="取消"
+      :mask-closable="false"
+      @positive-click="onNamePromptPositive"
+      @negative-click="onNamePromptNegative"
+      @close="onNamePromptNegative"
+    >
+      <NInput
+        v-model:value="namePromptValue"
+        placeholder="请输入名称"
+        autofocus
+        @keyup.enter="onNamePromptPositive"
+      />
+    </NModal>
+
     <header class="page-header">
       <NButton quaternary circle @click="emit('close')">
         <template #icon>

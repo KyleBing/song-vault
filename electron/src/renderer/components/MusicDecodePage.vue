@@ -50,7 +50,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 200)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 105)
 
 const treeData = ref<TreeOption[]>([])
 const selectedKeys = ref<string[]>([])
@@ -338,7 +338,7 @@ onMounted(() => {
             </div>
             <div class="brand-text">
               <h1>音乐解码</h1>
-              <p>选择加密文件并批量解密</p>
+              <p>音乐文件解密</p>
             </div>
             <MusicDecryptHelpModal />
           </div>

@@ -63,6 +63,7 @@ const LOTOO_SYSTEM_FOLDER_NAMES = [
   "MEDIA_SYSTEM",
   "UPGRADE",
   "PLAYLIST",
+  "System Volume Information"
 ]
 
 /** 新规则 ID */
