@@ -8,6 +8,7 @@ import {
   SniffAudioExt,
   WriteMetaToFlac,
   WriteMetaToMp3,
+  buildMusicMetaFromSources,
   shrinkCoverIfNeeded,
 } from '@unlock/decrypt/utils';
 import { parseBlob as metaParseBlob } from 'music-metadata-browser';
@@ -187,19 +188,17 @@ class NcmDecrypt {
 
     if (!this.blob) this.blob = new Blob([this.audio], { type: this.mime });
     const ori = await metaParseBlob(this.blob);
+    const meta = buildMusicMetaFromSources(this.newMeta, ori);
 
-    let shouldWrite = !ori.common.album && !ori.common.artists && !ori.common.title;
-    if (shouldWrite || this.newMeta.picture) {
-      if (this.format === 'mp3') {
-        this.audio = WriteMetaToMp3(Buffer.from(this.audio), this.newMeta, ori);
-      } else if (this.format === 'flac') {
-        this.audio = WriteMetaToFlac(Buffer.from(this.audio), this.newMeta, ori);
-      } else {
-        console.info(`writing meta for ${this.format} is not being supported for now`);
-        return;
-      }
-      this.blob = new Blob([this.audio], { type: this.mime });
+    if (this.format === 'mp3') {
+      this.audio = WriteMetaToMp3(Buffer.from(this.audio), meta, ori);
+    } else if (this.format === 'flac') {
+      this.audio = WriteMetaToFlac(Buffer.from(this.audio), meta, ori);
+    } else {
+      console.info(`writing meta for ${this.format} is not being supported for now`);
+      return;
     }
+    this.blob = new Blob([this.audio], { type: this.mime });
   }
 
   gatherResult(): DecryptResult {

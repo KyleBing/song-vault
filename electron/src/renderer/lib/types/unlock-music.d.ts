@@ -50,6 +50,46 @@ declare module '@unlock/utils/utils' {
   export function RemoveBlobMusic(data: DecryptResult): void
 }
 
+declare module '@unlock/decrypt/utils' {
+  import type { DecryptResult } from '@unlock/decrypt/entity'
+  import type { IAudioMetadata } from 'music-metadata-browser'
+
+  export interface IMusicMeta {
+    title: string
+    artists?: string[]
+    album?: string
+    albumartist?: string
+    genre?: string[]
+    year?: number
+    date?: string
+    trackNo?: number | null
+    trackOf?: number | null
+    diskNo?: number | null
+    diskOf?: number | null
+    comment?: string[]
+    lyrics?: string[]
+    composer?: string[]
+    lyricist?: string[]
+    conductor?: string[]
+    remixer?: string[]
+    producer?: string[]
+    label?: string[]
+    grouping?: string
+    subtitle?: string[]
+    bpm?: number
+    catalognumber?: string[]
+    picture?: ArrayBuffer
+    picture_desc?: string
+  }
+
+  export function buildMusicMetaFromSources(
+    explicit: Partial<IMusicMeta> & { artist?: string },
+    parsed: IAudioMetadata
+  ): IMusicMeta
+
+  export function embedDecryptMetadata(result: DecryptResult): Promise<DecryptResult>
+}
+
 declare module '@unlock/utils/storage' {
   interface StorageApi {
     getAll(): Promise<Record<string, unknown>>

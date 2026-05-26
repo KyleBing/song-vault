@@ -1,5 +1,6 @@
 import { Decrypt } from '@unlock/decrypt'
 import type { DecryptResult, FileInfo } from '@unlock/decrypt/entity'
+import { embedDecryptMetadata } from '@unlock/decrypt/utils'
 import {
   FilenamePolicy,
   GetDownloadFilename,
@@ -44,7 +45,8 @@ export async function decryptMusicFileToDir(
       uid: Date.now(),
       raw: file
     }
-    result = await Decrypt(fileInfo, config)
+    const decrypted = await Decrypt(fileInfo, config)
+    result = await embedDecryptMetadata(decrypted)
     const outName = GetDownloadFilename(result, FilenamePolicy.SameAsOriginal)
     const title = result.title
     const audioBuffer = await result.blob.arrayBuffer()

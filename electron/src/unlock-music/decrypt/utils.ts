@@ -1,6 +1,7 @@
-import { IAudioMetadata } from 'music-metadata-browser';
+import { IAudioMetadata, parseBlob as metaParseBlob } from 'music-metadata-browser';
 import ID3Writer from 'browser-id3-writer';
 import MetaFlac from 'metaflac-js';
+import type { DecryptResult } from '@unlock/decrypt/entity';
 
 export const FLAC_HEADER = [0x66, 0x4c, 0x61, 0x43];
 export const MP3_HEADER = [0x49, 0x44, 0x33];
@@ -149,54 +150,301 @@ export interface IMusicMeta {
   title: string;
   artists?: string[];
   album?: string;
+  albumartist?: string;
+  genre?: string[];
+  year?: number;
+  date?: string;
+  trackNo?: number | null;
+  trackOf?: number | null;
+  diskNo?: number | null;
+  diskOf?: number | null;
+  comment?: string[];
+  lyrics?: string[];
+  composer?: string[];
+  lyricist?: string[];
+  conductor?: string[];
+  remixer?: string[];
+  producer?: string[];
+  label?: string[];
+  grouping?: string;
+  subtitle?: string[];
+  bpm?: number;
+  catalognumber?: string[];
   picture?: ArrayBuffer;
   picture_desc?: string;
 }
 
-export function WriteMetaToMp3(audioData: Buffer, info: IMusicMeta, original: IAudioMetadata) {
+const MP3_META_FRAME_IDS = new Set([
+  'TPE1',
+  'TIT2',
+  'TALB',
+  'TPE2',
+  'TCON',
+  'TYER',
+  'TDRC',
+  'TRCK',
+  'TPOS',
+  'COMM',
+  'USLT',
+  'TCOM',
+  'TBPM',
+  'TPUB',
+  'APIC'
+]);
+
+function nonEmptyString(...values: (string | undefined | null)[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function mergeStringLists(...sources: (string[] | undefined)[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const source of sources) {
+    if (!source?.length) continue;
+    for (const item of source) {
+      const trimmed = item.trim();
+      if (!trimmed || seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  }
+  return out;
+}
+
+export function splitArtistText(text?: string): string[] {
+  if (!text?.trim()) return [];
+  return text
+    .split(/[;,/|、·]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function pictureDataToArrayBuffer(data: Buffer | Uint8Array): ArrayBuffer {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  return Uint8Array.from(buf).buffer;
+}
+
+/** 合并解密结果、显式字段与解析出的内嵌标签 */
+export function buildMusicMetaFromSources(
+  explicit: Partial<IMusicMeta> & { artist?: string },
+  parsed: IAudioMetadata
+): IMusicMeta {
+  const common = parsed.common;
+  const artists = mergeStringLists(
+    explicit.artists,
+    common.artists,
+    splitArtistText(explicit.artist),
+    splitArtistText(common.artist)
+  );
+
+  let picture = explicit.picture;
+  if (!picture && common.picture?.[0]?.data) {
+    picture = pictureDataToArrayBuffer(common.picture[0].data);
+  }
+
+  return {
+    title: nonEmptyString(explicit.title, common.title) ?? '',
+    artists,
+    album: nonEmptyString(explicit.album, common.album),
+    albumartist: nonEmptyString(explicit.albumartist, common.albumartist),
+    genre: mergeStringLists(explicit.genre, common.genre),
+    year: explicit.year ?? common.year ?? common.originalyear,
+    date: nonEmptyString(explicit.date, common.date, common.originaldate),
+    trackNo: explicit.trackNo ?? common.track?.no ?? undefined,
+    trackOf: explicit.trackOf ?? common.track?.of ?? undefined,
+    diskNo: explicit.diskNo ?? common.disk?.no ?? undefined,
+    diskOf: explicit.diskOf ?? common.disk?.of ?? undefined,
+    comment: mergeStringLists(explicit.comment, common.comment, common.description),
+    lyrics: mergeStringLists(explicit.lyrics, common.lyrics),
+    composer: mergeStringLists(explicit.composer, common.composer),
+    lyricist: mergeStringLists(explicit.lyricist, common.lyricist),
+    conductor: mergeStringLists(explicit.conductor, common.conductor),
+    remixer: mergeStringLists(explicit.remixer, common.remixer),
+    producer: mergeStringLists(explicit.producer, common.producer),
+    label: mergeStringLists(explicit.label, common.label),
+    grouping: nonEmptyString(explicit.grouping, common.grouping),
+    subtitle: mergeStringLists(explicit.subtitle, common.subtitle),
+    bpm: explicit.bpm ?? common.bpm,
+    catalognumber: mergeStringLists(explicit.catalognumber, common.catalognumber),
+    picture,
+    picture_desc: explicit.picture_desc
+  };
+}
+
+function formatTrackNumber(no?: number | null, of?: number | null): string | undefined {
+  if (no == null || no <= 0) return undefined;
+  if (of != null && of > 0) return `${no}/${of}`;
+  return String(no);
+}
+
+function setFlacTags(writer: MetaFlac, key: string, values: string[] | undefined): void {
+  if (!values?.length) return;
+  try {
+    writer.removeTag(key);
+  } catch {
+    /* 标签不存在时忽略 */
+  }
+  for (const value of values) {
+    writer.setTag(`${key}=${value}`);
+  }
+}
+
+function setFlacTag(writer: MetaFlac, key: string, value?: string): void {
+  if (!value?.trim()) return;
+  writer.setTag(`${key}=${value.trim()}`);
+}
+
+export function WriteMetaToMp3(
+  audioData: Buffer,
+  info: IMusicMeta,
+  original: IAudioMetadata
+): Buffer {
+  const meta = buildMusicMetaFromSources(info, original);
   const writer = new ID3Writer(audioData);
 
-  // reserve original data
-  const frames = original.native['ID3v2.4'] || original.native['ID3v2.3'] || original.native['ID3v2.2'] || [];
+  const frames =
+    original.native['ID3v2.4'] ||
+    original.native['ID3v2.3'] ||
+    original.native['ID3v2.2'] ||
+    [];
   frames.forEach((frame) => {
-    if (frame.id !== 'TPE1' && frame.id !== 'TIT2' && frame.id !== 'TALB') {
+    if (!MP3_META_FRAME_IDS.has(frame.id)) {
       try {
         writer.setFrame(frame.id, frame.value);
-      } catch (e) {}
+      } catch {
+        /* 保留其它原生帧 */
+      }
     }
   });
 
-  const old = original.common;
-  writer
-    .setFrame('TPE1', old?.artists || info.artists || [])
-    .setFrame('TIT2', old?.title || info.title)
-    .setFrame('TALB', old?.album || info.album || '');
-  if (info.picture) {
+  if (meta.artists?.length) writer.setFrame('TPE1', meta.artists);
+  if (meta.title) writer.setFrame('TIT2', meta.title);
+  if (meta.album) writer.setFrame('TALB', meta.album);
+  if (meta.albumartist) writer.setFrame('TPE2', meta.albumartist);
+  if (meta.genre?.length) writer.setFrame('TCON', meta.genre);
+  const year =
+    meta.year ?? (meta.date && /^\d{4}/.test(meta.date) ? Number(meta.date.slice(0, 4)) : undefined);
+  if (year) writer.setFrame('TYER', String(year));
+  const trck = formatTrackNumber(meta.trackNo, meta.trackOf);
+  if (trck) writer.setFrame('TRCK', trck);
+  const tpos = formatTrackNumber(meta.diskNo, meta.diskOf);
+  if (tpos) writer.setFrame('TPOS', tpos);
+  if (meta.composer?.length) writer.setFrame('TCOM', meta.composer);
+  if (meta.bpm) writer.setFrame('TBPM', String(meta.bpm));
+  if (meta.label?.[0]) writer.setFrame('TPUB', meta.label[0]);
+  if (meta.comment?.length) {
+    writer.setFrame('COMM', {
+      description: '',
+      text: meta.comment.join('\n'),
+      language: 'eng'
+    });
+  }
+  if (meta.lyrics?.length) {
+    writer.setFrame('USLT', {
+      description: '',
+      lyrics: meta.lyrics.join('\n\n'),
+      language: 'eng'
+    });
+  }
+  if (meta.picture) {
     writer.setFrame('APIC', {
       type: 3,
-      data: info.picture,
-      description: info.picture_desc || '',
+      data: meta.picture,
+      description: meta.picture_desc || ''
     });
   }
   return writer.addTag();
 }
 
-export function WriteMetaToFlac(audioData: Buffer, info: IMusicMeta, original: IAudioMetadata) {
+export function WriteMetaToFlac(
+  audioData: Buffer,
+  info: IMusicMeta,
+  original: IAudioMetadata
+): Buffer {
+  const meta = buildMusicMetaFromSources(info, original);
   const writer = new MetaFlac(audioData);
-  const old = original.common;
-  if (!old.title && !old.album && old.artists) {
-    writer.setTag('TITLE=' + info.title);
-    writer.setTag('ALBUM=' + info.album);
-    if (info.artists) {
-      writer.removeTag('ARTIST');
-      info.artists.forEach((artist) => writer.setTag('ARTIST=' + artist));
+
+  setFlacTag(writer, 'TITLE', meta.title);
+  setFlacTags(writer, 'ARTIST', meta.artists);
+  setFlacTag(writer, 'ALBUM', meta.album);
+  setFlacTag(writer, 'ALBUMARTIST', meta.albumartist);
+  setFlacTags(writer, 'GENRE', meta.genre);
+  if (meta.date) setFlacTag(writer, 'DATE', meta.date);
+  else if (meta.year) setFlacTag(writer, 'DATE', String(meta.year));
+  const track = formatTrackNumber(meta.trackNo, meta.trackOf);
+  if (track) {
+    const [no, of] = track.includes('/') ? track.split('/') : [track, ''];
+    setFlacTag(writer, 'TRACKNUMBER', no);
+    if (of) setFlacTag(writer, 'TRACKTOTAL', of);
+  }
+  const disc = formatTrackNumber(meta.diskNo, meta.diskOf);
+  if (disc) {
+    const [no, of] = disc.includes('/') ? disc.split('/') : [disc, ''];
+    setFlacTag(writer, 'DISCNUMBER', no);
+    if (of) setFlacTag(writer, 'DISCTOTAL', of);
+  }
+  setFlacTags(writer, 'COMMENT', meta.comment);
+  if (meta.lyrics?.length) setFlacTag(writer, 'LYRICS', meta.lyrics.join('\n\n'));
+  setFlacTags(writer, 'COMPOSER', meta.composer);
+  setFlacTags(writer, 'LYRICIST', meta.lyricist);
+  setFlacTags(writer, 'CONDUCTOR', meta.conductor);
+  setFlacTags(writer, 'REMIXER', meta.remixer);
+  setFlacTags(writer, 'PRODUCER', meta.producer);
+  setFlacTags(writer, 'LABEL', meta.label);
+  setFlacTag(writer, 'GROUPING', meta.grouping);
+  setFlacTags(writer, 'SUBTITLE', meta.subtitle);
+  setFlacTags(writer, 'CATALOGNUMBER', meta.catalognumber);
+  if (meta.bpm) setFlacTag(writer, 'BPM', String(meta.bpm));
+  if (meta.picture) {
+    writer.importPictureFromBuffer(Buffer.from(meta.picture));
+  }
+  return writer.save();
+}
+
+/** 将解密结果中的元数据写入 mp3/flac 文件体 */
+export async function embedDecryptMetadata(
+  result: DecryptResult
+): Promise<DecryptResult> {
+  const ext = result.ext?.toLowerCase();
+  if (ext !== 'mp3' && ext !== 'flac') return result;
+
+  const parsed = await metaParseBlob(result.blob);
+  let picture: ArrayBuffer | undefined;
+  if (parsed.common.picture?.[0]?.data) {
+    picture = pictureDataToArrayBuffer(parsed.common.picture[0].data);
+  } else if (result.picture?.startsWith('blob:')) {
+    try {
+      const resp = await fetch(result.picture);
+      picture = await resp.arrayBuffer();
+    } catch {
+      /* 封面拉取失败时跳过 */
     }
   }
 
-  if (info.picture) {
-    writer.importPictureFromBuffer(Buffer.from(info.picture));
-  }
-  return writer.save();
+  const explicit: Partial<IMusicMeta> = {
+    title: result.title,
+    album: result.album,
+    artists: splitArtistText(result.artist),
+    picture
+  };
+  const merged = buildMusicMetaFromSources(explicit, parsed);
+  const buffer = Buffer.from(await result.blob.arrayBuffer());
+  const tagged =
+    ext === 'mp3'
+      ? WriteMetaToMp3(buffer, merged, parsed)
+      : WriteMetaToFlac(buffer, merged, parsed);
+  const blob = new Blob([tagged], { type: result.mime });
+  const oldFile = result.file;
+  const next: DecryptResult = {
+    ...result,
+    blob,
+    file: URL.createObjectURL(blob)
+  };
+  if (oldFile?.startsWith('blob:')) URL.revokeObjectURL(oldFile);
+  return next;
 }
 
 export function SplitFilename(n: string): { name: string; ext: string } {
