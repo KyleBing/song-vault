@@ -8,13 +8,9 @@ import {
   NModal,
   NPopconfirm,
   NSpin,
-  NTag,
   NTooltip,
   NTree,
   useMessage,
-  type DataTableColumns,
-  type TagProps,
-  type TreeOption
 } from 'naive-ui'
 import {
   Add,
@@ -29,16 +25,28 @@ import {
 import { storeToRefs } from 'pinia'
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
-import type { PathFilterRule } from '@shared/appConfig'
-import { isBrowseRoot } from '@shared/sourceDirBrowse'
+import type { FileListColumnsSettings, PathFilterRule } from '@shared/appConfig'
+import { columnsForKind } from '@shared/fileListColumns'
+import { isBrowseRoot } from '@shared/pathKeys'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
+import {
+  buildSortKeyOptions,
+  enrichItemsWithAudioMetrics,
+  normalizeDirAudioFileItem,
+  sortDirAudioFiles,
+  useDirFileTableColumns,
+  type DirFileSortKey,
+  type DirFileSortOrder
+} from '@renderer/composables/dirFileTable'
+import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 
 const searchRoots = defineModel<string[]>('searchRoots', { required: true })
 
 const props = defineProps<{
   pathFilterRules: PathFilterRule[]
+  fileListColumns: FileListColumnsSettings
 }>()
 
 const emit = defineEmits<{
@@ -50,51 +58,47 @@ const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 165)
 
-const treeData = ref<TreeOption[]>([])
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
 const audioFiles = ref<DirAudioFileItem[]>([])
 const selectedFileKeys = ref<string[]>([])
 const filesLoading = ref(false)
-const treeRevision = ref(0)
 const deletingFiles = ref(false)
 
-type FileSortKey = 'fileName' | 'ext' | 'mtimeMs' | 'sizeBytes'
-type FileSortOrder = 'asc' | 'desc'
+const sortKey = ref<DirFileSortKey>('fileName')
+const sortOrder = ref<DirFileSortOrder>('asc')
 
-const sortKey = ref<FileSortKey>('fileName')
-const sortOrder = ref<FileSortOrder>('asc')
+const sortKeyOptions = computed(() =>
+  buildSortKeyOptions('source', props.fileListColumns)
+)
 
-const sortKeyOptions: { label: string; value: FileSortKey }[] = [
-  { label: '文件名', value: 'fileName' },
-  { label: '文件格式', value: 'ext' },
-  { label: '修改时间', value: 'mtimeMs' },
-  { label: '文件大小', value: 'sizeBytes' }
-]
+const tableColumns = useDirFileTableColumns(
+  'source',
+  computed(() => props.fileListColumns)
+)
 
 const browseRoots = computed(() => [...searchRoots.value])
 const filtersForApi = computed(() =>
   pathFilterRulesForSave(props.pathFilterRules)
 )
 
-/** 目录树节点的文件夹图标渲染 */
-function dirIcon() {
-  return h(NIcon, { size: 16, class: 'tree-dir-icon' }, () => h(FolderOpen))
-}
-
-/** 根据 searchRoots 重建目录树顶层节点 */
-function rebuildTree(): void {
-  treeData.value = searchRoots.value.map((root) => {
-    const name = root.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? root
-    return {
-      key: root,
-      label: name,
-      isLeaf: false,
-      prefix: dirIcon
-    }
-  })
-  treeRevision.value++
-}
+const {
+  treeData,
+  expandedKeys,
+  rebuildTreeRoots,
+  onLoadTreeNode,
+  onUpdateExpandedKeys,
+  refreshNode,
+  removeNodeFromTree,
+  renameNodeInTree,
+  mergeExpanded,
+  ensurePathLoaded,
+  parentDirPath
+} = useLazyDirTree({
+  roots: searchRoots,
+  browseRoots,
+  filtersForApi
+})
 
 /** 重命名搜索目标根目录后同步配置中的路径 */
 function syncSearchRootPath(oldPath: string, newPath: string): void {
@@ -118,13 +122,14 @@ function pathResolveLower(p: string): string {
   return p.replace(/\\/g, '/').toLowerCase()
 }
 
-/** 重建树并尽量保留当前选中目录 */
-function rebuildTreeKeepSelection(): void {
+/** 重建树并尽量保留展开状态与当前选中目录 */
+async function rebuildTreeKeepSelection(): Promise<void> {
   const keep = selectedDir.value
-  rebuildTree()
+  rebuildTreeRoots()
   if (keep && isUnderAnyRoot(keep)) {
     selectedKeys.value = [keep]
     selectedDir.value = keep
+    await ensurePathLoaded(keep)
   } else {
     selectedKeys.value = []
     selectedDir.value = null
@@ -142,41 +147,6 @@ function isUnderAnyRoot(target: string): boolean {
   })
 }
 
-/** 懒加载目录树子节点（经 IPC 读取子文件夹） */
-async function onLoadTreeNode(node: TreeOption): Promise<void> {
-  const dirPath = String(node.key)
-  const children = await window.electronAPI.listSourceDirChildren({
-    dirPath,
-    browseRoots: browseRoots.value,
-    pathFilterRules: filtersForApi.value
-  })
-  node.children = children.map((c) => ({
-    key: c.path,
-    label: c.name,
-    isLeaf: !c.hasSubdirs,
-    prefix: dirIcon
-  }))
-}
-
-/** 将 IPC 返回值规范为有限数字（避免 undefined / BigInt 导致 NaN） */
-function toFiniteNumber(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'bigint') return Number(value)
-  if (typeof value === 'string' && value.trim() !== '') {
-    const n = Number(value)
-    if (Number.isFinite(n)) return n
-  }
-  return 0
-}
-
-function normalizeAudioFileItem(item: DirAudioFileItem): DirAudioFileItem {
-  return {
-    ...item,
-    sizeBytes: toFiniteNumber(item.sizeBytes),
-    mtimeMs: toFiniteNumber(item.mtimeMs)
-  }
-}
-
 /** 加载选中目录下的音频文件列表 */
 async function loadAudioFiles(dirPath: string): Promise<void> {
   filesLoading.value = true
@@ -187,7 +157,14 @@ async function loadAudioFiles(dirPath: string): Promise<void> {
       browseRoots: browseRoots.value,
       pathFilterRules: filtersForApi.value
     })
-    audioFiles.value = items.map(normalizeAudioFileItem)
+    let normalized = items.map(normalizeDirAudioFileItem)
+    const columnIds = columnsForKind(props.fileListColumns, 'source')
+    normalized = await enrichItemsWithAudioMetrics(
+      normalized,
+      columnIds,
+      sortKey.value
+    )
+    audioFiles.value = normalized
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     message.error(`加载文件列表失败: ${msg}`)
@@ -227,126 +204,18 @@ function pathCell(full: string, short: string) {
   )
 }
 
-/** 同级 LRC 列渲染 */
-function lrcCell(row: DirAudioFileItem) {
-  if (!row.hasLrc) {
-    return h(NTag, { size: 'small', round: true }, () => '无')
-  }
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () =>
-        h(NTag, { type: 'success', size: 'small', round: true }, () => '有'),
-      default: () => row.lrcPath ?? row.fileName
-    }
-  )
-}
-
 /** 文件列表表格行主键 */
 function fileRowKey(row: DirAudioFileItem): string {
   return row.filePath
 }
 
-const EXT_TAG_TYPE: Record<string, TagProps['type']> = {
-  mp3: 'info',
-  flac: 'success',
-  m4a: 'warning',
-  aac: 'error',
-  ogg: 'default',
-  opus: 'default'
-}
-
-/** 音频扩展名标签（mp3 / flac 等区分颜色） */
-function extCell(row: DirAudioFileItem) {
-  const tagType = EXT_TAG_TYPE[row.ext] ?? 'default'
-  return h(
-    NTag,
-    { type: tagType, size: 'small', round: true, bordered: false },
-    () => row.ext.toUpperCase()
-  )
-}
-
-/** 以 MB 显示文件大小 */
-function formatSizeMb(bytes: unknown): string {
-  const n = toFiniteNumber(bytes)
-  if (n <= 0) return '—'
-  const mb = n / (1024 * 1024)
-  return `${mb.toFixed(2)} MB`
-}
-
-const sortedAudioFiles = computed(() => {
-  const list = [...audioFiles.value]
-  const sign = sortOrder.value === 'asc' ? 1 : -1
-  list.sort((a, b) => {
-    let cmp = 0
-    switch (sortKey.value) {
-      case 'ext': {
-        cmp = a.ext.localeCompare(b.ext, undefined, { sensitivity: 'base' })
-        if (cmp === 0) {
-          cmp = a.fileName.localeCompare(b.fileName, undefined, {
-            sensitivity: 'base'
-          })
-        }
-        break
-      }
-      case 'mtimeMs':
-        cmp = a.mtimeMs - b.mtimeMs
-        break
-      case 'sizeBytes':
-        cmp = a.sizeBytes - b.sizeBytes
-        break
-      default:
-        cmp = a.fileName.localeCompare(b.fileName, undefined, {
-          sensitivity: 'base'
-        })
-    }
-    return cmp * sign
-  })
-  return list
-})
+const sortedAudioFiles = computed(() =>
+  sortDirAudioFiles(audioFiles.value, sortKey.value, sortOrder.value)
+)
 
 function toggleSortOrder(): void {
   sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
 }
-
-const columns = computed<DataTableColumns<DirAudioFileItem>>(() => [
-  { type: 'selection' },
-  {
-    title: '文件名',
-    key: 'fileName',
-    minWidth: 200,
-    ellipsis: { tooltip: false },
-    render(row) {
-      return pathCell(row.filePath, row.fileName)
-    }
-  },
-  {
-    title: '格式',
-    key: 'ext',
-    width: 80,
-    render(row) {
-      return extCell(row)
-    }
-  },
-  {
-    title: '大小',
-    key: 'fileSize',
-    width: 96,
-    align: 'right',
-    render(row) {
-      return h('span', { class: 'size-cell' }, formatSizeMb(row.sizeBytes))
-    }
-  },
-  {
-    title: '同级 LRC',
-    key: 'hasLrc',
-    width: 88,
-    render(row) {
-      return lrcCell(row)
-    }
-  }
-])
 
 const selectedDirLabel = computed(() => {
   if (!selectedDir.value) return ''
@@ -356,9 +225,23 @@ const selectedDirLabel = computed(() => {
 const canManageDir = computed(() => !!selectedDir.value)
 
 watch(
+  () => props.fileListColumns,
+  () => {
+    if (selectedDir.value) void loadAudioFiles(selectedDir.value)
+  },
+  { deep: true }
+)
+
+watch(sortKeyOptions, (opts) => {
+  if (!opts.some((o) => o.value === sortKey.value)) {
+    sortKey.value = opts[0]?.value ?? 'fileName'
+  }
+})
+
+watch(
   searchRoots,
   () => {
-    rebuildTreeKeepSelection()
+    void rebuildTreeKeepSelection()
   },
   { deep: true }
 )
@@ -424,7 +307,8 @@ async function createSubdir(): Promise<void> {
       browseRoots: browseRoots.value
     })
     message.success('文件夹已创建')
-    rebuildTreeKeepSelection()
+    await refreshNode(selectedDir.value)
+    mergeExpanded(selectedDir.value)
     selectedKeys.value = [created]
     selectedDir.value = created
     void loadAudioFiles(created)
@@ -448,13 +332,17 @@ async function renameDir(): Promise<void> {
       newName,
       browseRoots: browseRoots.value
     })
+    const oldPath = selectedDir.value
     if (wasRoot) {
-      syncSearchRootPath(selectedDir.value, newPath)
+      syncSearchRootPath(oldPath, newPath)
+      rebuildTreeRoots()
+    } else {
+      renameNodeInTree(oldPath, newPath, newName)
     }
     message.success('已重命名')
     selectedKeys.value = [newPath]
     selectedDir.value = newPath
-    rebuildTreeKeepSelection()
+    await ensurePathLoaded(newPath)
     void loadAudioFiles(newPath)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -474,13 +362,28 @@ async function deleteDir(): Promise<void> {
     })
     if (wasRoot) {
       removeSearchRoot(target)
+      rebuildTreeRoots()
+      selectedKeys.value = []
+      selectedDir.value = null
+      audioFiles.value = []
+      selectedFileKeys.value = []
+    } else {
+      const parent = parentDirPath(target)
+      removeNodeFromTree(target)
+      if (parent) {
+        await refreshNode(parent)
+        mergeExpanded(parent)
+        selectedKeys.value = [parent]
+        selectedDir.value = parent
+        void loadAudioFiles(parent)
+      } else {
+        selectedKeys.value = []
+        selectedDir.value = null
+        audioFiles.value = []
+        selectedFileKeys.value = []
+      }
     }
     message.success('文件夹已删除')
-    selectedKeys.value = []
-    selectedDir.value = null
-    audioFiles.value = []
-    selectedFileKeys.value = []
-    rebuildTree()
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     message.error(msg)
@@ -516,12 +419,12 @@ async function deleteSelectedFiles(): Promise<void> {
 
 /** 刷新目录树与当前目录文件列表 */
 function refreshAll(): void {
-  rebuildTreeKeepSelection()
+  void rebuildTreeKeepSelection()
   if (selectedDir.value) void loadAudioFiles(selectedDir.value)
 }
 
 onMounted(() => {
-  rebuildTree()
+  void rebuildTreeKeepSelection()
 })
 </script>
 
@@ -553,7 +456,7 @@ onMounted(() => {
         </template>
       </NButton>
       <div class="header-text">
-        <h1>搜索目标管理</h1>
+        <h1>文件管理</h1>
       </div>
       <NButton quaternary size="small" @click="refreshAll">
         <template #icon>
@@ -622,12 +525,13 @@ onMounted(() => {
           />
           <NTree
             v-else
-            :key="treeRevision"
             block-line
             selectable
             :data="treeData"
+            :expanded-keys="expandedKeys"
             :selected-keys="selectedKeys"
             :on-load="onLoadTreeNode"
+            @update:expanded-keys="onUpdateExpandedKeys"
             @update:selected-keys="onSelectKeys"
           />
         </div>
@@ -698,7 +602,7 @@ onMounted(() => {
           <NDataTable
             v-if="selectedDir"
             v-model:checked-row-keys="selectedFileKeys"
-            :columns="columns"
+            :columns="tableColumns"
             :data="sortedAudioFiles"
             :row-key="fileRowKey"
             :max-height="maxHeightForTable"
@@ -850,7 +754,9 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.size-cell {
+.size-cell,
+.metric-cell,
+.time-cell {
   font-family: $font-mono;
   font-size: 12px;
   font-variant-numeric: tabular-nums;

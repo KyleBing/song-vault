@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { NButton, NCard, NIcon, NRadio, NRadioGroup, NText, useMessage } from 'naive-ui'
-import { ArrowBack, ColorPaletteOutline, FilterOutline } from '@vicons/ionicons5'
+import {
+  ArrowBack,
+  ColorPaletteOutline,
+  FilterOutline,
+  ListOutline
+} from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { onMounted, ref } from 'vue'
 import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
 import { APP_CONFIG_FILE_NAME } from '@shared/appConfig'
 import { useThemeStore } from '@renderer/stores/theme'
 import FolderPanel from './FolderPanel.vue'
+import type { FileListColumnsSettings } from '@shared/appConfig'
 import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
+import FileListColumnsEditor from './FileListColumnsEditor.vue'
 
 const message = useMessage()
 const configFilePath = ref('')
@@ -17,6 +24,10 @@ const pathFilterRules = defineModel<PathFilterRule[]>('pathFilterRules', {
 })
 
 const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
+  required: true
+})
+
+const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', {
   required: true
 })
 
@@ -113,6 +124,29 @@ async function revealConfigFile(): Promise<void> {
         hint="添加 QQ 音乐、网易云下载目录；详细说明见音乐解码页「下载与解密说明」"
         empty-text="添加用于浏览加密音乐的文件夹"
       />
+
+      <NCard class="settings-card" :bordered="false" size="small">
+        <template #header>
+          <div class="card-header">
+            <NIcon :size="18" class="card-header-icon">
+              <ListOutline />
+            </NIcon>
+            <span>文件列表列</span>
+          </div>
+        </template>
+
+        <FileListColumnsEditor
+          v-model="fileListColumns"
+          kind="source"
+          title="音频搜索目标 · 文件列表"
+        />
+        <FileListColumnsEditor
+          v-model="fileListColumns"
+          kind="decode"
+          title="音乐解码 · 文件列表"
+          class="columns-editor-second"
+        />
+      </NCard>
 
       <NCard class="settings-card" :bordered="false" size="small">
         <template #header>
@@ -268,6 +302,12 @@ async function revealConfigFile(): Promise<void> {
   &--light {
     background: linear-gradient(135deg, #ffffff 50%, #e8eaed 50%);
   }
+}
+
+.columns-editor-second {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid $border-subtle;
 }
 
 .settings-footer {

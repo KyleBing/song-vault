@@ -29,7 +29,9 @@ import MusicDecodePage from './components/MusicDecodePage.vue'
 import SourceFilesPage from './components/SourceFilesPage.vue'
 import {
   APP_CONFIG_VERSION,
+  createDefaultAppConfig,
   type AppConfig,
+  type FileListColumnsSettings,
   type PathFilterRule
 } from '@shared/appConfig'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
@@ -78,6 +80,9 @@ const lrcDirs = ref<string[]>([])
 const searchRoots = ref<string[]>([])
 const decodeSourceDirs = ref<string[]>([])
 const pathFilterRules = ref<PathFilterRule[]>([])
+const fileListColumns = ref<FileListColumnsSettings>(
+  createDefaultAppConfig().fileListColumns
+)
 /** 已完成启动配置加载，避免恢复时触发多余写入 */
 const configHydrated = ref(false)
 const loading = ref(false)
@@ -146,7 +151,11 @@ function buildAppConfig(): AppConfig {
     lrcDirs: [...lrcDirs.value],
     decodeSourceDirs: [...decodeSourceDirs.value],
     appearance: appearance.value,
-    pathFilterRules: pathFilterRulesForSave(pathFilterRules.value)
+    pathFilterRules: pathFilterRulesForSave(pathFilterRules.value),
+    fileListColumns: {
+      source: [...fileListColumns.value.source],
+      decode: [...fileListColumns.value.decode]
+    }
   }
 }
 
@@ -170,6 +179,10 @@ onMounted(async () => {
     lrcDirs.value = [...config.lrcDirs]
     decodeSourceDirs.value = [...config.decodeSourceDirs]
     pathFilterRules.value = [...config.pathFilterRules]
+    fileListColumns.value = {
+      source: [...config.fileListColumns.source],
+      decode: [...config.fileListColumns.decode]
+    }
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -182,7 +195,7 @@ onUnmounted(() => {
 })
 
 watch(
-  [searchRoots, lrcDirs, decodeSourceDirs, pathFilterRules, appearance],
+  [searchRoots, lrcDirs, decodeSourceDirs, pathFilterRules, fileListColumns, appearance],
   () => void persistFolderConfig(),
   { deep: true }
 )
@@ -199,6 +212,7 @@ watch(
           v-if="showSettings"
           v-model:path-filter-rules="pathFilterRules"
           v-model:decode-source-dirs="decodeSourceDirs"
+          v-model:file-list-columns="fileListColumns"
           class="settings-layer"
           @close="showSettings = false"
         />
@@ -206,6 +220,7 @@ watch(
           v-else-if="showSourceFiles"
           v-model:search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
+          :file-list-columns="fileListColumns"
           class="settings-layer"
           @close="showSourceFiles = false"
         />
@@ -213,6 +228,7 @@ watch(
           v-else-if="showMusicDecode"
           v-model:decode-source-dirs="decodeSourceDirs"
           :path-filter-rules="pathFilterRules"
+          :file-list-columns="fileListColumns"
           class="settings-layer"
           @close="showMusicDecode = false"
         />
@@ -287,7 +303,7 @@ watch(
                 <template #icon>
                   <NIcon><FolderOpen /></NIcon>
                 </template>
-                搜索目标管理
+                文件管理
               </NButton>
               <NButton
                 quaternary
@@ -503,8 +519,6 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px dashed var(--app-placeholder-border);
-  border-radius: $radius-panel;
   background: var(--app-placeholder-bg);
 }
 

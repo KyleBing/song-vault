@@ -90,12 +90,15 @@ const encryptedColumns = computed<DataTableColumns<EncryptedMusicItem>>(() => [
     title: '平台',
     key: 'platform',
     width: 96,
+    align: 'center',
     render(row) {
-      return h(
-        NTag,
-        { type: platformTagType[row.platform], size: 'small', round: true },
-        () => PLATFORM_LABELS[row.platform]
-      )
+      return h('div', { class: 'table-status-cell' }, [
+        h(
+          NTag,
+          { type: platformTagType[row.platform], size: 'small', round: true },
+          () => PLATFORM_LABELS[row.platform]
+        )
+      ])
     }
   },
   {
@@ -110,8 +113,9 @@ const encryptedColumns = computed<DataTableColumns<EncryptedMusicItem>>(() => [
     title: '同级 LRC',
     key: 'hasLrc',
     width: 88,
+    align: 'center',
     render(row) {
-      return lrcCell(row)
+      return h('div', { class: 'table-status-cell' }, [lrcCell(row)])
     }
   }
 ])
@@ -130,8 +134,9 @@ const plainMp3Columns = computed<DataTableColumns<PlainMp3Item>>(() => [
     title: '同级 LRC',
     key: 'hasLrc',
     width: 88,
+    align: 'center',
     render(row) {
-      return lrcCell(row)
+      return h('div', { class: 'table-status-cell' }, [lrcCell(row)])
     }
   }
 ])

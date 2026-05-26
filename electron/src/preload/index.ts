@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { AudioFileMetrics } from '../shared/audioFileMetrics'
 import type { AppConfig } from '../shared/appConfig'
 import type {
   CopyLrcParams,
@@ -144,7 +145,17 @@ const api = {
   },
 
   revealAppConfigInFolder: (): Promise<{ filePath: string }> =>
-    ipcRenderer.invoke('reveal-app-config-in-folder').then((result) => toIpcPlain(result))
+    ipcRenderer.invoke('reveal-app-config-in-folder').then((result) => toIpcPlain(result)),
+
+  readAudioMetricsBatch: async (
+    filePaths: string[]
+  ): Promise<Record<string, AudioFileMetrics>> => {
+    const result = await ipcRenderer.invoke(
+      'read-audio-metrics-batch',
+      toIpcPlain(filePaths)
+    )
+    return toIpcPlain(result)
+  }
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

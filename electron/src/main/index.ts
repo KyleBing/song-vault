@@ -29,6 +29,7 @@ import {
   type ListDirAudioFilesParams,
   type ListSourceDirChildrenParams
 } from '../shared/sourceDirBrowse'
+import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
 import { toIpcPlain } from '../shared/serialize'
 import {
   getAppConfigPath,
@@ -58,7 +59,8 @@ const IPC_CHANNELS = [
   'copy-lrc-to-audio',
   'load-app-config',
   'save-app-config',
-  'reveal-app-config-in-folder'
+  'reveal-app-config-in-folder',
+  'read-audio-metrics-batch'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -178,6 +180,16 @@ function registerIpcHandlers(): void {
     return toIpcPlain(copyLrcToAudio(toIpcPlain(params)))
   })
 
+  ipcMain.handle(
+    'read-audio-metrics-batch',
+    async (_, filePaths: unknown) => {
+      const paths = Array.isArray(filePaths)
+        ? filePaths.filter((p): p is string => typeof p === 'string')
+        : []
+      return toIpcPlain(await readAudioFileMetricsBatch(paths))
+    }
+  )
+
   ipcMain.handle('load-app-config', () => {
     return toIpcPlain({
       config: loadAppConfig(),
@@ -216,13 +228,19 @@ function registerDevToolsShortcut(): void {
   }
 }
 
+/** 默认窗口高度；宽高比 2:1（宽 = 2 × 高） */
+const DEFAULT_WINDOW_HEIGHT = 760
+const DEFAULT_WINDOW_WIDTH = DEFAULT_WINDOW_HEIGHT * 2
+const MIN_WINDOW_HEIGHT = 600
+const MIN_WINDOW_WIDTH = MIN_WINDOW_HEIGHT * 2
+
 /** 创建并加载主窗口 */
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 760,
-    minWidth: 900,
-    minHeight: 600,
+    width: DEFAULT_WINDOW_WIDTH,
+    height: DEFAULT_WINDOW_HEIGHT,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
     title: 'LRC 歌词归位',

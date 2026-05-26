@@ -1,8 +1,15 @@
 import {
+  createDefaultFileListColumns,
+  normalizeFileListColumns,
+  type FileListColumnsSettings
+} from './fileListColumns'
+import {
   createDefaultPathFilterRules,
   normalizePathFilterRules,
   type PathFilterRule
 } from './pathFilters'
+
+export type { FileListColumnsSettings, FileListColumnId, FileListKind } from './fileListColumns'
 
 export type { PathFilterRule }
 
@@ -34,6 +41,8 @@ export interface AppConfig {
   appearance: AppAppearance
   /** 扫描与浏览时跳过的文件/文件夹名称规则 */
   pathFilterRules: PathFilterRule[]
+  /** 各文件列表页表格可见列（顺序即展示顺序） */
+  fileListColumns: FileListColumnsSettings
 }
 
 export function createDefaultAppConfig(): AppConfig {
@@ -43,7 +52,8 @@ export function createDefaultAppConfig(): AppConfig {
     lrcDirs: [],
     decodeSourceDirs: [],
     appearance: 'light',
-    pathFilterRules: createDefaultPathFilterRules()
+    pathFilterRules: createDefaultPathFilterRules(),
+    fileListColumns: createDefaultFileListColumns()
   }
 }
 
@@ -75,6 +85,7 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
     appearance: isAppAppearance(obj.appearance)
       ? obj.appearance
       : createDefaultAppConfig().appearance,
-    pathFilterRules: normalizePathFilterRules(obj.pathFilterRules)
+    pathFilterRules: normalizePathFilterRules(obj.pathFilterRules),
+    fileListColumns: normalizeFileListColumns(obj.fileListColumns)
   }
 }

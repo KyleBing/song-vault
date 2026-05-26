@@ -4,8 +4,10 @@
 
 import fs from 'fs'
 import path from 'path'
+import { emptyAudioFileMetrics, type AudioFileMetrics } from './audioFileMetrics'
 import { AUDIO_EXTENSIONS } from './lrcJob'
 import { isDecryptableExtension } from './musicFormats'
+export { isBrowseRoot } from './pathKeys'
 import type { PathFilterRule } from './pathFilters'
 import { shouldFilterEntry } from './pathFilters'
 
@@ -21,10 +23,44 @@ export interface DirAudioFileItem {
   ext: string
   /** 文件大小（字节） */
   sizeBytes: number
+  /** 创建时间（毫秒时间戳） */
+  birthtimeMs: number
   /** 最后修改时间（毫秒时间戳） */
   mtimeMs: number
   hasLrc: boolean
   lrcPath?: string
+  /** 音频指标（列表加载后按需填充） */
+  audio: AudioFileMetrics
+}
+
+export interface FileStatFields {
+  sizeBytes: number
+  birthtimeMs: number
+  mtimeMs: number
+}
+
+/** 从 fs.statSync 读取文件大小、创建时间、修改时间 */
+export function readFileStatFields(filePath: string): FileStatFields {
+  let sizeBytes = 0
+  let birthtimeMs = 0
+  let mtimeMs = 0
+  try {
+    const stat = fs.statSync(filePath)
+    sizeBytes = Number(stat.size)
+    const birthRaw = Number(stat.birthtimeMs ?? stat.birthtime.getTime())
+    if (Number.isFinite(birthRaw) && birthRaw > 0) {
+      birthtimeMs = birthRaw
+    } else {
+      birthtimeMs = Number(stat.ctimeMs ?? stat.ctime.getTime())
+    }
+    mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
+    if (!Number.isFinite(sizeBytes)) sizeBytes = 0
+    if (!Number.isFinite(birthtimeMs)) birthtimeMs = 0
+    if (!Number.isFinite(mtimeMs)) mtimeMs = 0
+  } catch {
+    /* 无法 stat 时保留 0 */
+  }
+  return { sizeBytes, birthtimeMs, mtimeMs }
 }
 
 export interface BrowseRootsParams {
@@ -203,26 +239,18 @@ export function listDirAudioFiles(
     const key = normName(baseName)
     const lrcPath = lrcByBase.get(key)
     const full = path.join(dirPath, ent.name)
-    let sizeBytes = 0
-    let mtimeMs = 0
-    try {
-      const stat = fs.statSync(full)
-      sizeBytes = Number(stat.size)
-      mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
-      if (!Number.isFinite(sizeBytes)) sizeBytes = 0
-      if (!Number.isFinite(mtimeMs)) mtimeMs = 0
-    } catch {
-      /* 无法 stat 时保留 0 */
-    }
+    const { sizeBytes, birthtimeMs, mtimeMs } = readFileStatFields(full)
 
     items.push({
       filePath: full,
       fileName: ent.name,
       ext,
       sizeBytes,
+      birthtimeMs,
       mtimeMs,
       hasLrc: lrcByBase.has(key),
-      lrcPath
+      lrcPath,
+      audio: emptyAudioFileMetrics()
     })
   }
 
@@ -254,25 +282,17 @@ export function listDirEncryptedMusicFiles(
     if (!isEncryptedMusicFileExt(ext)) continue
 
     const full = path.join(dirPath, ent.name)
-    let sizeBytes = 0
-    let mtimeMs = 0
-    try {
-      const stat = fs.statSync(full)
-      sizeBytes = Number(stat.size)
-      mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
-      if (!Number.isFinite(sizeBytes)) sizeBytes = 0
-      if (!Number.isFinite(mtimeMs)) mtimeMs = 0
-    } catch {
-      /* 无法 stat 时保留 0 */
-    }
+    const { sizeBytes, birthtimeMs, mtimeMs } = readFileStatFields(full)
 
     items.push({
       filePath: full,
       fileName: ent.name,
       ext,
       sizeBytes,
+      birthtimeMs,
       mtimeMs,
-      hasLrc: false
+      hasLrc: false,
+      audio: emptyAudioFileMetrics()
     })
   }
 
@@ -363,10 +383,4 @@ export function browseDeleteFiles(
   }
 
   return { deleted, errors }
-}
-
-/** 是否为搜索目标根目录（配置项顶层路径） */
-export function isBrowseRoot(targetPath: string, roots: string[]): boolean {
-  const resolved = path.resolve(targetPath)
-  return normalizeRoots(roots).some((r) => r === resolved)
 }

@@ -246,9 +246,16 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             title: '状态',
             key: 'status',
             width: 88,
+            align: 'center',
             render(row) {
                 const meta = audioStatusMeta[displayStatus(row)]
-                return h(NTag, { type: meta.type, size: 'small', round: true }, () => meta.label)
+                return h('div', { class: 'table-status-cell' }, [
+                    h(
+                        NTag,
+                        { type: meta.type, size: 'small', round: true },
+                        { default: () => meta.label }
+                    )
+                ])
             }
         },
         {
@@ -479,5 +486,12 @@ function orphanRowKey(row: { key: string }): string {
     white-space: nowrap;
     font-family: $font-mono;
     font-size: 12px;
+}
+
+.table-status-cell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
 }
 </style>

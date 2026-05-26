@@ -68,6 +68,23 @@ body,
   }
 }
 
+/** 表格中状态 / 标签类列的内容居中 */
+.table-status-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.n-data-table-th[data-col-key='status'],
+.n-data-table-td[data-col-key='status'],
+.n-data-table-th[data-col-key='hasLrc'],
+.n-data-table-td[data-col-key='hasLrc'],
+.n-data-table-th[data-col-key='platform'],
+.n-data-table-td[data-col-key='platform'] {
+  text-align: center;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

@@ -7,15 +7,15 @@ import {
   NInput,
   NProgress,
   NSpin,
-  NTag,
   NTooltip,
   NTree,
   useMessage,
-  type DataTableColumns,
-  type TreeOption
+  type DataTableColumns
 } from 'naive-ui'
 import {
   ArrowBack,
+  ArrowDown,
+  ArrowUp,
   FolderOpen,
   Key,
   Play,
@@ -26,11 +26,21 @@ import { storeToRefs } from 'pinia'
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import { decryptMusicBatch } from '@renderer/lib/musicDecryptClient'
-import type { PathFilterRule } from '@shared/appConfig'
-import { PLATFORM_LABELS, classifyEncryptedExtension } from '@shared/musicFormats'
+import type { FileListColumnsSettings, PathFilterRule } from '@shared/appConfig'
+import { columnsForKind } from '@shared/fileListColumns'
 import type { MusicDecryptBatchResult } from '@shared/musicDecryptJob'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
+import {
+  buildSortKeyOptions,
+  enrichItemsWithAudioMetrics,
+  normalizeDirAudioFileItem,
+  sortDirAudioFiles,
+  useDirFileTableColumns,
+  type DirFileSortKey,
+  type DirFileSortOrder
+} from '@renderer/composables/dirFileTable'
+import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import MusicDecryptHelpModal from '@renderer/components/MusicDecryptHelpModal.vue'
 import { storage } from '@unlock/utils/storage'
@@ -41,6 +51,7 @@ const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
 
 const props = defineProps<{
   pathFilterRules: PathFilterRule[]
+  fileListColumns: FileListColumnsSettings
 }>()
 
 const emit = defineEmits<{
@@ -52,13 +63,23 @@ const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 105)
 
-const treeData = ref<TreeOption[]>([])
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
 const dirFiles = ref<DirAudioFileItem[]>([])
 const selectedFileKeys = ref<string[]>([])
 const filesLoading = ref(false)
-const treeRevision = ref(0)
+
+const sortKey = ref<DirFileSortKey>('fileName')
+const sortOrder = ref<DirFileSortOrder>('asc')
+
+const sortKeyOptions = computed(() =>
+  buildSortKeyOptions('decode', props.fileListColumns)
+)
+
+const tableColumns = useDirFileTableColumns(
+  'decode',
+  computed(() => props.fileListColumns)
+)
 
 /** 待解密队列（可跨目录累积） */
 const decryptQueue = ref<string[]>([])
@@ -76,47 +97,51 @@ const canDecrypt = computed(
   () => decryptQueue.value.length > 0 && !!outputDir.value.trim() && !decrypting.value
 )
 
-function dirIcon() {
-  return h(NIcon, { size: 16, class: 'tree-dir-icon' }, () => h(FolderOpen))
-}
+const {
+  treeData,
+  expandedKeys,
+  rebuildTreeRoots,
+  onLoadTreeNode,
+  onUpdateExpandedKeys,
+  ensurePathLoaded
+} = useLazyDirTree({
+  roots: decodeSourceDirs,
+  browseRoots,
+  filtersForApi
+})
 
-function rebuildTree(): void {
-  treeData.value = decodeSourceDirs.value.map((root) => {
-    const name = root.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? root
-    return {
-      key: root,
-      label: name,
-      isLeaf: false,
-      prefix: dirIcon
-    }
-  })
-  treeRevision.value++
-}
-
-async function onLoadTreeNode(node: TreeOption): Promise<void> {
-  const dirPath = String(node.key)
-  const children = await window.electronAPI.listSourceDirChildren({
-    dirPath,
-    browseRoots: browseRoots.value,
-    pathFilterRules: filtersForApi.value
-  })
-  node.children = children.map((c) => ({
-    key: c.path,
-    label: c.name,
-    isLeaf: !c.hasSubdirs,
-    prefix: dirIcon
-  }))
+async function rebuildTreeKeepSelection(): Promise<void> {
+  const keep = selectedDir.value
+  rebuildTreeRoots()
+  if (
+    keep &&
+    decodeSourceDirs.value.some((r) =>
+      keep.toLowerCase().startsWith(r.toLowerCase())
+    )
+  ) {
+    selectedKeys.value = [keep]
+    selectedDir.value = keep
+    await ensurePathLoaded(keep)
+  }
 }
 
 async function loadDirFiles(dirPath: string): Promise<void> {
   filesLoading.value = true
   selectedFileKeys.value = []
   try {
-    dirFiles.value = await window.electronAPI.listDirEncryptedMusicFiles({
+    const items = await window.electronAPI.listDirEncryptedMusicFiles({
       dirPath,
       browseRoots: browseRoots.value,
       pathFilterRules: filtersForApi.value
     })
+    let normalized = items.map(normalizeDirAudioFileItem)
+    const columnIds = columnsForKind(props.fileListColumns, 'decode')
+    normalized = await enrichItemsWithAudioMetrics(
+      normalized,
+      columnIds,
+      sortKey.value
+    )
+    dirFiles.value = normalized
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     message.error(`加载文件失败: ${msg}`)
@@ -152,49 +177,17 @@ function pathCell(full: string, short: string) {
   )
 }
 
-function platformCell(row: DirAudioFileItem) {
-  const platform = classifyEncryptedExtension(row.ext)
-  if (!platform) {
-    return h(NTag, { size: 'small', round: true }, () => row.ext.toUpperCase())
-  }
-  return h(
-    NTag,
-    {
-      type: platform === 'netease' ? 'warning' : 'info',
-      size: 'small',
-      round: true
-    },
-    () => PLATFORM_LABELS[platform]
-  )
+function fileRowKey(row: DirAudioFileItem): string {
+  return row.filePath
 }
 
-const fileColumns = computed<DataTableColumns<DirAudioFileItem>>(() => [
-  { type: 'selection' },
-  {
-    title: '文件名',
-    key: 'fileName',
-    minWidth: 180,
-    render(row) {
-      return pathCell(row.filePath, row.fileName)
-    }
-  },
-  {
-    title: '平台',
-    key: 'ext',
-    width: 88,
-    render(row) {
-      return platformCell(row)
-    }
-  },
-  {
-    title: '格式',
-    key: 'ext2',
-    width: 72,
-    render(row) {
-      return `.${row.ext}`
-    }
-  }
-])
+const sortedDirFiles = computed(() =>
+  sortDirAudioFiles(dirFiles.value, sortKey.value, sortOrder.value)
+)
+
+function toggleSortOrder(): void {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+}
 
 const queueColumns = computed<
   DataTableColumns<{ filePath: string; status?: string }>
@@ -212,9 +205,13 @@ const queueColumns = computed<
     title: '状态',
     key: 'status',
     width: 100,
+    align: 'center',
     render(row) {
-      if (!row.status) return '—'
-      return row.status
+      return h(
+        'div',
+        { class: 'table-status-cell' },
+        row.status ?? '—'
+      )
     }
   }
 ])
@@ -300,9 +297,22 @@ const progressPercent = computed(() => {
 })
 
 watch(
+  () => props.fileListColumns,
+  () => {
+    if (selectedDir.value) void loadDirFiles(selectedDir.value)
+  },
+  { deep: true }
+)
+
+watch(sortKeyOptions, (opts) => {
+  if (!opts.some((o) => o.value === sortKey.value)) {
+    sortKey.value = opts[0]?.value ?? 'fileName'
+  }
+})
+
+watch(
   decodeSourceDirs,
   () => {
-    rebuildTree()
     if (
       selectedDir.value &&
       !decodeSourceDirs.value.some((r) =>
@@ -312,13 +322,16 @@ watch(
       selectedDir.value = null
       selectedKeys.value = []
       dirFiles.value = []
+      rebuildTreeRoots()
+    } else {
+      void rebuildTreeKeepSelection()
     }
   },
   { deep: true }
 )
 
 onMounted(() => {
-  rebuildTree()
+  void rebuildTreeKeepSelection()
 })
 </script>
 
@@ -438,12 +451,13 @@ onMounted(() => {
             </div>
             <NTree
               v-if="treeData.length"
-              :key="treeRevision"
               block-line
               selectable
               :data="treeData"
+              :expanded-keys="expandedKeys"
               :selected-keys="selectedKeys"
               :on-load="onLoadTreeNode"
+              @update:expanded-keys="onUpdateExpandedKeys"
               @update:selected-keys="onSelectKeys"
             />
             <NEmpty
@@ -459,7 +473,40 @@ onMounted(() => {
               <span class="pane-title">
                 {{ selectedDir ? shortPath(selectedDir) : '加密文件' }}
               </span>
-              <div class="pane-actions">
+              <div class="pane-actions files-head-actions">
+                <template v-if="selectedDir">
+                  <div class="sort-tabs" role="group" aria-label="排序方式">
+                    <NButton
+                      v-for="opt in sortKeyOptions"
+                      :key="opt.value"
+                      size="small"
+                      :type="sortKey === opt.value ? 'primary' : 'default'"
+                      :secondary="sortKey !== opt.value"
+                      @click="sortKey = opt.value"
+                    >
+                      {{ opt.label }}
+                    </NButton>
+                  </div>
+                  <NTooltip>
+                    <template #trigger>
+                      <NButton
+                        quaternary
+                        size="small"
+                        class="sort-order-btn"
+                        @click="toggleSortOrder"
+                      >
+                        <template #icon>
+                          <NIcon :size="16">
+                            <ArrowUp v-if="sortOrder === 'asc'" />
+                            <ArrowDown v-else />
+                          </NIcon>
+                        </template>
+                        {{ sortOrder === 'asc' ? '升序' : '降序' }}
+                      </NButton>
+                    </template>
+                    切换升序 / 降序
+                  </NTooltip>
+                </template>
                 <NButton
                   size="small"
                   :disabled="!selectedFileKeys.length"
@@ -474,18 +521,18 @@ onMounted(() => {
             </div>
             <NSpin :show="filesLoading" class="files-spin">
               <NDataTable
-                v-if="dirFiles.length"
-                :columns="fileColumns"
-                :data="dirFiles"
-                :row-key="(row: DirAudioFileItem) => row.filePath"
+                v-if="selectedDir && dirFiles.length"
+                :columns="tableColumns"
+                :data="sortedDirFiles"
+                :row-key="fileRowKey"
                 v-model:checked-row-keys="selectedFileKeys"
                 :max-height="maxHeightForTable"
                 size="small"
                 striped
               />
               <div v-else class="files-empty">
-                <p v-if="selectedDir">当前目录没有可解密的文件</p>
-                <p v-else>选择左侧目录查看加密音乐</p>
+                <p v-if="selectedDir && !filesLoading">当前目录没有可解密的文件</p>
+                <p v-else-if="!selectedDir">选择左侧目录查看加密音乐</p>
               </div>
             </NSpin>
           </div>
@@ -732,5 +779,48 @@ onMounted(() => {
 .path-cell {
   font-family: $font-mono;
   font-size: 12px;
+}
+
+.size-cell,
+.metric-cell,
+.time-cell {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+:deep(.n-data-table-th[data-col-key='status']),
+:deep(.n-data-table-td[data-col-key='status']) {
+  text-align: center;
+}
+
+.time-cell,
+.size-cell {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.files-head-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sort-tabs {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid $border-subtle;
+  border-radius: $radius-icon;
+  overflow: hidden;
+
+  :deep(.n-button) {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+
+    &:not(:last-child) {
+      border-right: 1px solid $border-subtle;
+    }
+  }
 }
 </style>
