@@ -34,6 +34,7 @@ import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
   buildSortKeyOptions,
   enrichItemsWithAudioMetrics,
+  enrichItemsWithSearchTargetMatches,
   normalizeDirAudioFileItem,
   sortDirAudioFiles,
   useDirFileTableColumns,
@@ -50,6 +51,7 @@ const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
 })
 
 const props = defineProps<{
+  searchRoots: string[]
   pathFilterRules: PathFilterRule[]
   fileListColumns: FileListColumnsSettings
 }>()
@@ -140,6 +142,11 @@ async function loadDirFiles(dirPath: string): Promise<void> {
       normalized,
       columnIds,
       sortKey.value
+    )
+    normalized = await enrichItemsWithSearchTargetMatches(
+      normalized,
+      props.searchRoots,
+      filtersForApi.value
     )
     dirFiles.value = normalized
   } catch (err) {
@@ -297,7 +304,8 @@ const progressPercent = computed(() => {
 })
 
 watch(
-  () => props.fileListColumns,
+  () =>
+    [props.fileListColumns, props.searchRoots, props.pathFilterRules] as const,
   () => {
     if (selectedDir.value) void loadDirFiles(selectedDir.value)
   },

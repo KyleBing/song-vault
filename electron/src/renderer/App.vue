@@ -34,6 +34,7 @@ import {
   type FileListColumnsSettings,
   type PathFilterRule
 } from '@shared/appConfig'
+import { normalizeFileListColumns } from '@shared/fileListColumns'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import type { JobResult } from '@shared/lrcJob'
 import {
@@ -145,16 +146,17 @@ function executeCopy(): void {
 
 /** 组装当前界面状态对应的持久化配置对象 */
 function buildAppConfig(): AppConfig {
+  const columns = toRaw(fileListColumns.value)
   return {
     version: APP_CONFIG_VERSION,
-    searchRoots: [...searchRoots.value],
-    lrcDirs: [...lrcDirs.value],
-    decodeSourceDirs: [...decodeSourceDirs.value],
+    searchRoots: [...toRaw(searchRoots.value)],
+    lrcDirs: [...toRaw(lrcDirs.value)],
+    decodeSourceDirs: [...toRaw(decodeSourceDirs.value)],
     appearance: appearance.value,
-    pathFilterRules: pathFilterRulesForSave(pathFilterRules.value),
+    pathFilterRules: pathFilterRulesForSave(toRaw(pathFilterRules.value)),
     fileListColumns: {
-      source: [...fileListColumns.value.source],
-      decode: [...fileListColumns.value.decode]
+      source: [...columns.source],
+      decode: [...columns.decode]
     }
   }
 }
@@ -179,10 +181,7 @@ onMounted(async () => {
     lrcDirs.value = [...config.lrcDirs]
     decodeSourceDirs.value = [...config.decodeSourceDirs]
     pathFilterRules.value = [...config.pathFilterRules]
-    fileListColumns.value = {
-      source: [...config.fileListColumns.source],
-      decode: [...config.fileListColumns.decode]
-    }
+    fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -227,6 +226,7 @@ watch(
         <MusicDecodePage
           v-else-if="showMusicDecode"
           v-model:decode-source-dirs="decodeSourceDirs"
+          :search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
           class="settings-layer"

@@ -22,6 +22,7 @@ import type {
   BrowseRenamePathParams,
   BrowseRenameResult,
   DirAudioFileItem,
+  FindAudioInSearchRootsParams,
   ListDirAudioFilesParams,
   ListSourceDirChildrenParams,
   SourceDirChild
@@ -74,6 +75,16 @@ const api = {
   ): Promise<DirAudioFileItem[]> => {
     const result = await ipcRenderer.invoke(
       'list-dir-encrypted-music-files',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  findAudioInSearchRootsByNames: async (
+    params: FindAudioInSearchRootsParams
+  ): Promise<Record<string, string[]>> => {
+    const result = await ipcRenderer.invoke(
+      'find-audio-in-search-roots',
       toIpcPlain(params)
     )
     return toIpcPlain(result)

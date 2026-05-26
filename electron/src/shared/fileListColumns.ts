@@ -10,6 +10,7 @@ export type FileListColumnId =
   | 'birthtimeMs'
   | 'mtimeMs'
   | 'hasLrc'
+  | 'inSearchTarget'
   | 'bitrate'
   | 'duration'
   | 'sampleRate'
@@ -37,6 +38,12 @@ export const FILE_LIST_COLUMN_DEFS: FileListColumnDef[] = [
   { id: 'platform', label: '平台', category: 'basic', kinds: ['decode'] },
   { id: 'sizeBytes', label: '大小', category: 'basic', kinds: ['source', 'decode'] },
   { id: 'hasLrc', label: '同级 LRC', category: 'basic', kinds: ['source'] },
+  {
+    id: 'inSearchTarget',
+    label: '目标已有',
+    category: 'basic',
+    kinds: ['decode']
+  },
   { id: 'birthtimeMs', label: '创建时间', category: 'time', kinds: ['source', 'decode'] },
   { id: 'mtimeMs', label: '修改时间', category: 'time', kinds: ['source', 'decode'] },
   { id: 'bitrate', label: '比特率', category: 'audio', kinds: ['source'] },
@@ -64,7 +71,14 @@ export interface FileListColumnsSettings {
 export function createDefaultFileListColumns(): FileListColumnsSettings {
   return {
     source: ['fileName', 'ext', 'sizeBytes', 'hasLrc'],
-    decode: ['fileName', 'platform', 'ext', 'birthtimeMs', 'sizeBytes']
+    decode: [
+      'fileName',
+      'inSearchTarget',
+      'platform',
+      'ext',
+      'birthtimeMs',
+      'sizeBytes'
+    ]
   }
 }
 
@@ -90,6 +104,32 @@ function filterValidColumns(
   return out
 }
 
+/**
+ * 将默认列合并进已保存配置：保留用户顺序，按默认顺序插入缺失的新列。
+ */
+function mergeMissingColumns(
+  saved: FileListColumnId[],
+  defaults: FileListColumnId[]
+): FileListColumnId[] {
+  const out = [...saved]
+  const seen = new Set(saved)
+  for (const id of defaults) {
+    if (seen.has(id)) continue
+    const defaultIdx = defaults.indexOf(id)
+    let insertAt = out.length
+    for (let i = defaultIdx - 1; i >= 0; i--) {
+      const prevIdx = out.indexOf(defaults[i]!)
+      if (prevIdx >= 0) {
+        insertAt = prevIdx + 1
+        break
+      }
+    }
+    out.splice(insertAt, 0, id)
+    seen.add(id)
+  }
+  return out
+}
+
 export function normalizeFileListColumns(raw: unknown): FileListColumnsSettings {
   const defaults = createDefaultFileListColumns()
   if (!raw || typeof raw !== 'object') return defaults
@@ -97,8 +137,14 @@ export function normalizeFileListColumns(raw: unknown): FileListColumnsSettings 
   const source = filterValidColumns(obj.source, 'source')
   const decode = filterValidColumns(obj.decode, 'decode')
   return {
-    source: source.length > 0 ? source : defaults.source,
-    decode: decode.length > 0 ? decode : defaults.decode
+    source:
+      source.length > 0
+        ? mergeMissingColumns(source, defaults.source)
+        : defaults.source,
+    decode:
+      decode.length > 0
+        ? mergeMissingColumns(decode, defaults.decode)
+        : defaults.decode
   }
 }
 

@@ -8,6 +8,8 @@ import {
   type FileListKind
 } from '@shared/fileListColumns'
 import type { FileListColumnsSettings } from '@shared/appConfig'
+import type { PathFilterRule } from '@shared/pathFilters'
+import { plainFindAudioInSearchRootsParams } from '@renderer/utils/ipcPayload'
 import { PLATFORM_LABELS, classifyEncryptedExtension } from '@shared/musicFormats'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { formatFileTime } from '@renderer/utils/formatFileTime'
@@ -120,6 +122,34 @@ function lrcCell(row: DirAudioFileItem) {
   )
 }
 
+function inSearchTargetCell(row: DirAudioFileItem) {
+  if (row.sourceAudioChecked === false) {
+    return h(
+      NTooltip,
+      { placement: 'top' },
+      {
+        trigger: () =>
+          h(NTag, { size: 'small', round: true, type: 'warning' }, () => '未配置'),
+        default: () => '请先在主界面添加「音频搜索目标」'
+      }
+    )
+  }
+  const paths = row.sourceAudioPaths ?? []
+  if (paths.length === 0) {
+    return h(NTag, { size: 'small', round: true }, () => '无')
+  }
+  const label = paths.length === 1 ? '有' : `有 (${paths.length})`
+  return h(
+    NTooltip,
+    { placement: 'top-start', style: { maxWidth: '560px' } },
+    {
+      trigger: () =>
+        h(NTag, { type: 'success', size: 'small', round: true }, () => label),
+      default: () => paths.join('\n')
+    }
+  )
+}
+
 function metricCell(text: string) {
   return h('span', { class: 'metric-cell' }, text)
 }
@@ -185,6 +215,16 @@ function columnDef(
         align: 'center',
         render(row) {
           return h('div', { class: 'table-status-cell' }, [lrcCell(row)])
+        }
+      }
+    case 'inSearchTarget':
+      return {
+        title: '目标已有',
+        key: 'inSearchTarget',
+        width: 96,
+        align: 'center',
+        render(row) {
+          return h('div', { class: 'table-status-cell' }, [inSearchTargetCell(row)])
         }
       }
     case 'birthtimeMs':
@@ -359,6 +399,12 @@ export function sortDirAudioFiles(
       case 'sizeBytes':
         cmp = a.sizeBytes - b.sizeBytes
         break
+      case 'inSearchTarget': {
+        const aHas = (a.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
+        const bHas = (b.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
+        cmp = aHas - bHas
+        break
+      }
       case 'bitrate':
         cmp =
           toFiniteNumber(a.audio?.bitrateKbps) -
@@ -440,6 +486,7 @@ export function buildSortKeyOptions(
     options.push({ value, label })
   }
   if (visible.has('fileName')) add('fileName', '文件名')
+  if (visible.has('inSearchTarget')) add('inSearchTarget', '目标已有')
   if (visible.has('ext')) add('ext', '文件格式')
   if (visible.has('birthtimeMs')) add('birthtimeMs', '创建时间')
   if (visible.has('mtimeMs')) add('mtimeMs', '修改时间')
@@ -479,6 +526,34 @@ export async function enrichItemsWithAudioMetrics(
   return items.map((item) => ({
     ...item,
     audio: byPath[item.filePath] ?? item.audio ?? {}
+  }))
+}
+
+/** 标记各文件在音频搜索目标中是否已有同名歌名的音频 */
+export async function enrichItemsWithSearchTargetMatches(
+  items: DirAudioFileItem[],
+  searchRoots: string[],
+  pathFilterRules: PathFilterRule[]
+): Promise<DirAudioFileItem[]> {
+  if (items.length === 0) return items
+  if (searchRoots.length === 0) {
+    return items.map((item) => ({
+      ...item,
+      sourceAudioPaths: [],
+      sourceAudioChecked: false
+    }))
+  }
+  const matches = await window.electronAPI.findAudioInSearchRootsByNames(
+    plainFindAudioInSearchRootsParams({
+      searchRoots,
+      queryNames: items.map((i) => i.fileName),
+      pathFilterRules
+    })
+  )
+  return items.map((item) => ({
+    ...item,
+    sourceAudioPaths: matches[item.fileName] ?? [],
+    sourceAudioChecked: true
   }))
 }
 

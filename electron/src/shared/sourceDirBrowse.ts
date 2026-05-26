@@ -29,6 +29,10 @@ export interface DirAudioFileItem {
   mtimeMs: number
   hasLrc: boolean
   lrcPath?: string
+  /** 音频搜索目标中同名歌名的已有音频路径（解码页按需填充） */
+  sourceAudioPaths?: string[]
+  /** 是否已执行搜索目标匹配（false 表示未配置搜索目标） */
+  sourceAudioChecked?: boolean
   /** 音频指标（列表加载后按需填充） */
   audio: AudioFileMetrics
 }
@@ -95,6 +99,13 @@ export interface BrowseDeletePathParams extends BrowseRootsParams {
 
 export interface BrowseDeleteFilesParams extends BrowseRootsParams {
   filePaths: string[]
+}
+
+export interface FindAudioInSearchRootsParams {
+  searchRoots: string[]
+  /** 文件名（含扩展名），按不含扩展名的歌名匹配 */
+  queryNames: string[]
+  pathFilterRules: PathFilterRule[]
 }
 
 export interface BrowseRenameResult {
@@ -299,6 +310,82 @@ export function listDirEncryptedMusicFiles(
   return items.sort((a, b) =>
     a.fileName.localeCompare(b.fileName, undefined, { sensitivity: 'base' })
   )
+}
+
+/** 在音频搜索目标内递归建立「歌名 → 音频路径」索引（歌名不区分大小写） */
+function buildAudioBaseNameIndexInSearchRoots(
+  searchRoots: string[],
+  pathFilterRules: PathFilterRule[]
+): Map<string, string[]> {
+  const index = new Map<string, string[]>()
+  const roots = normalizeRoots(searchRoots)
+
+  function addPath(filePath: string, baseKey: string): void {
+    const list = index.get(baseKey) ?? []
+    list.push(filePath)
+    index.set(baseKey, list)
+  }
+
+  function walk(dir: string): void {
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const ent of entries) {
+      if (shouldFilterEntry(ent.name, ent.isDirectory(), pathFilterRules)) {
+        continue
+      }
+      const full = path.join(dir, ent.name)
+      if (ent.isDirectory()) {
+        walk(full)
+      } else if (ent.isFile()) {
+        const ext = path.extname(ent.name).slice(1).toLowerCase()
+        if (!isSearchTargetAudioExt(ext)) continue
+        const baseKey = normName(path.parse(ent.name).name)
+        addPath(full, baseKey)
+      }
+    }
+  }
+
+  for (const root of roots) {
+    try {
+      if (!fs.existsSync(root)) continue
+      const stat = fs.statSync(root)
+      if (!stat.isDirectory()) continue
+      walk(root)
+    } catch {
+      /* 跳过不可读的根目录 */
+    }
+  }
+
+  for (const [key, paths] of index) {
+    paths.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    index.set(key, paths)
+  }
+
+  return index
+}
+
+/**
+ * 在音频搜索目标中查找与 queryNames 歌名（不含扩展名）相同的已有音频。
+ * 返回对象的键为传入的 queryNames 原值。
+ */
+export function findAudioInSearchRootsByNames(
+  params: FindAudioInSearchRootsParams
+): Record<string, string[]> {
+  const index = buildAudioBaseNameIndexInSearchRoots(
+    params.searchRoots,
+    params.pathFilterRules
+  )
+  const out: Record<string, string[]> = {}
+  for (const name of params.queryNames) {
+    const key = normName(path.parse(name).name)
+    out[name] = index.get(key) ? [...index.get(key)!] : []
+  }
+  return out
 }
 
 export function browseCreateDir(params: BrowseCreateDirParams): { path: string } {

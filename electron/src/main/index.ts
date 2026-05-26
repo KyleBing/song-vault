@@ -19,6 +19,7 @@ import {
   browseDeleteFiles,
   browseDeletePath,
   browseRenamePath,
+  findAudioInSearchRootsByNames,
   listDirAudioFiles,
   listDirEncryptedMusicFiles,
   listSourceDirChildren,
@@ -26,6 +27,7 @@ import {
   type BrowseDeleteFilesParams,
   type BrowseDeletePathParams,
   type BrowseRenamePathParams,
+  type FindAudioInSearchRootsParams,
   type ListDirAudioFilesParams,
   type ListSourceDirChildrenParams
 } from '../shared/sourceDirBrowse'
@@ -149,6 +151,13 @@ function registerIpcHandlers(): void {
     'list-dir-encrypted-music-files',
     async (_, params: ListDirAudioFilesParams) => {
       return toIpcPlain(listDirEncryptedMusicFiles(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle(
+    'find-audio-in-search-roots',
+    async (_, params: FindAudioInSearchRootsParams) => {
+      return toIpcPlain(findAudioInSearchRootsByNames(toIpcPlain(params)))
     }
   )
 

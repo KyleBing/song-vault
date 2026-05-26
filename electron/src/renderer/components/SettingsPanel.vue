@@ -72,94 +72,102 @@ async function revealConfigFile(): Promise<void> {
 
 <template>
   <div class="settings-page">
-    <header class="settings-header">
+    <header class="page-header">
       <NButton quaternary circle @click="emit('close')">
         <template #icon>
           <NIcon :size="20"><ArrowBack /></NIcon>
         </template>
       </NButton>
-      <h2 class="settings-title">设置</h2>
+      <div class="header-text">
+        <h1>设置</h1>
+      </div>
     </header>
 
     <div class="settings-body">
-      <NCard class="settings-card" :bordered="false" size="small">
-        <template #header>
-          <div class="card-header">
-            <NIcon :size="18" class="card-header-icon">
-              <ColorPaletteOutline />
-            </NIcon>
-            <span>界面主题</span>
-          </div>
-        </template>
+      <div class="settings-layout">
+        <aside class="settings-aside">
+          <NCard class="settings-card" :bordered="false" size="small">
+            <template #header>
+              <div class="card-header">
+                <NIcon :size="18" class="card-header-icon">
+                  <ColorPaletteOutline />
+                </NIcon>
+                <span>界面主题</span>
+              </div>
+            </template>
 
-        <NRadioGroup
-          :value="appearance"
-          class="appearance-group"
-          @update:value="onAppearanceChange"
-        >
-          <label
-            v-for="opt in appearanceOptions"
-            :key="opt.value"
-            class="appearance-option"
-            :class="{ 'appearance-option--active': appearance === opt.value }"
-          >
-            <NRadio :value="opt.value" />
-            <div class="appearance-option-text">
-              <span class="appearance-option-label">{{ opt.label }}</span>
-              <NText depth="3" class="appearance-option-desc">{{ opt.desc }}</NText>
-            </div>
-            <span
-              class="appearance-swatch"
-              :class="`appearance-swatch--${opt.value}`"
-              aria-hidden="true"
+            <NRadioGroup
+              :value="appearance"
+              class="appearance-group"
+              @update:value="onAppearanceChange"
+            >
+              <label
+                v-for="opt in appearanceOptions"
+                :key="opt.value"
+                class="appearance-option"
+                :class="{ 'appearance-option--active': appearance === opt.value }"
+              >
+                <NRadio :value="opt.value" />
+                <div class="appearance-option-text">
+                  <span class="appearance-option-label">{{ opt.label }}</span>
+                  <NText depth="3" class="appearance-option-desc">{{ opt.desc }}</NText>
+                </div>
+                <span
+                  class="appearance-swatch"
+                  :class="`appearance-swatch--${opt.value}`"
+                  aria-hidden="true"
+                />
+              </label>
+            </NRadioGroup>
+          </NCard>
+
+          <NCard class="settings-card" :bordered="false" size="small">
+            <template #header>
+              <div class="card-header">
+                <NIcon :size="18" class="card-header-icon">
+                  <ListOutline />
+                </NIcon>
+                <span>文件列表列</span>
+              </div>
+            </template>
+
+            <FileListColumnsEditor
+              v-model="fileListColumns"
+              kind="source"
+              title="音频搜索目标 · 文件列表"
             />
-          </label>
-        </NRadioGroup>
-      </NCard>
+            <FileListColumnsEditor
+              v-model="fileListColumns"
+              kind="decode"
+              title="音乐解码 · 文件列表"
+              class="columns-editor-second"
+            />
+          </NCard>
+        </aside>
 
-      <FolderPanel
-        v-model="decodeSourceDirs"
-        class="settings-folder-panel"
-        title="音乐解码浏览目录"
-        hint="添加 QQ 音乐、网易云下载目录；详细说明见音乐解码页「下载与解密说明」"
-        empty-text="添加用于浏览加密音乐的文件夹"
-      />
+        <main class="settings-main">
+          <FolderPanel
+            v-model="decodeSourceDirs"
+            class="settings-folder-panel"
+            title="音乐解码浏览目录"
+            hint="添加 QQ 音乐、网易云下载目录；详细说明见音乐解码页「下载与解密说明」"
+            empty-text="添加用于浏览加密音乐的文件夹"
+          />
 
-      <NCard class="settings-card" :bordered="false" size="small">
-        <template #header>
-          <div class="card-header">
-            <NIcon :size="18" class="card-header-icon">
-              <ListOutline />
-            </NIcon>
-            <span>文件列表列</span>
-          </div>
-        </template>
+          <NCard class="settings-card" :bordered="false" size="small">
+            <template #header>
+              <div class="card-header">
+                <NIcon :size="18" class="card-header-icon">
+                  <FilterOutline />
+                </NIcon>
+                <span>名称过滤</span>
+              </div>
+            </template>
 
-        <FileListColumnsEditor
-          v-model="fileListColumns"
-          kind="source"
-          title="音频搜索目标 · 文件列表"
-        />
-        <FileListColumnsEditor
-          v-model="fileListColumns"
-          kind="decode"
-          title="音乐解码 · 文件列表"
-          class="columns-editor-second"
-        />
-      </NCard>
-
-      <NCard class="settings-card" :bordered="false" size="small">
-        <template #header>
-          <div class="card-header">
-            <NIcon :size="18" class="card-header-icon">
-              <FilterOutline />
-            </NIcon>
-            <span>名称过滤</span>
-          </div>
-        </template>
-
-        <PathFilterRulesEditor v-model:rules="pathFilterRules" />
-      </NCard>
+            <PathFilterRulesEditor v-model:rules="pathFilterRules" />
+          </NCard>
+        </main>
+      </div>
 
       <footer class="settings-footer">
         <NText depth="3" class="config-file-line">
@@ -183,36 +191,84 @@ async function revealConfigFile(): Promise<void> {
 <style lang="scss" scoped>
 @use '../styles/variables' as *;
 
+$settings-inline-pad: 16px;
+$settings-aside-width: clamp(300px, 32vw, 420px);
+
 .settings-page {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: $color-bg;
+  background:
+    radial-gradient(ellipse 70% 45% at 12% -8%, $glow-primary, transparent),
+    radial-gradient(ellipse 50% 40% at 95% 100%, $glow-accent, transparent),
+    $color-bg;
 }
 
-.settings-header {
+.page-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 20px 12px;
+  gap: 12px;
+  padding: 12px $settings-inline-pad;
   flex-shrink: 0;
-  border-bottom: 1px solid $border-sidebar;
+  border-bottom: 1px solid $border-subtle;
 }
 
-.settings-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+.header-text {
+  flex: 1;
+  min-width: 0;
+
+  h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+  }
 }
 
 .settings-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px;
-  max-width: 640px;
+  width: 100%;
+  padding: 20px $settings-inline-pad 28px;
+  box-sizing: border-box;
+}
+
+.settings-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  min-height: min(100%, 480px);
+}
+
+.settings-aside,
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (min-width: 880px) {
+  .settings-layout {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .settings-aside {
+    flex: 0 0 $settings-aside-width;
+    width: $settings-aside-width;
+  }
+
+  .settings-main {
+    flex: 1;
+    min-width: 0;
+    padding-left: 20px;
+    border-left: 1px solid $border-subtle;
+  }
 }
 
 .settings-card,
@@ -222,11 +278,19 @@ async function revealConfigFile(): Promise<void> {
   border-radius: $radius-panel;
 }
 
-.settings-card + .settings-card,
-.settings-card + .settings-folder-panel,
-.settings-folder-panel + .settings-card,
-.settings-folder-panel + .settings-folder-panel {
-  margin-top: 16px;
+.settings-card {
+  :deep(.n-card-header) {
+    padding-bottom: 4px;
+  }
+
+  :deep(.n-card__content) {
+    padding-top: 4px;
+  }
+}
+
+.settings-folder-panel {
+  flex: 1;
+  min-height: 0;
 }
 
 .card-header {
