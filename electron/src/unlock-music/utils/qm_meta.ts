@@ -5,10 +5,6 @@ import {
   GetCoverFromFile,
   GetImageFromURL,
   GetMetaFromFile,
-  WriteMetaToFlac,
-  WriteMetaToMp3,
-  buildMusicMetaFromSources,
-  AudioMimeType,
 } from '@unlock/decrypt/utils';
 import { getQMImageURLFromPMID, queryAlbumCover, querySongInfoById } from '@unlock/utils/api';
 
@@ -66,15 +62,7 @@ export async function extractQQMusicMeta(
     artist: info.artist || '',
     album: musicMeta.common.album || '',
     imgUrl: imageURL,
-    blob: await writeMetaToAudioFile({
-      title: info.title,
-      artists: info.artist.split(' _ '),
-      album: musicMeta.common.album || '',
-      ext,
-      imageURL,
-      musicMeta,
-      blob: musicBlob,
-    }),
+    blob: musicBlob,
   };
 }
 
@@ -94,15 +82,7 @@ async function fetchMetadataFromSongId(
     album: info.track_info.album.name,
     imgUrl: imageURL,
 
-    blob: await writeMetaToAudioFile({
-      title: info.track_info.title,
-      artists,
-      album: info.track_info.album.name,
-      ext,
-      imageURL,
-      musicMeta,
-      blob,
-    }),
+    blob,
   };
 }
 
@@ -116,49 +96,3 @@ async function getCoverImage(title: string, artist?: string, album?: string): Pr
   return '';
 }
 
-interface NewAudioMeta {
-  title: string;
-  artists: string[];
-  album?: string;
-  ext: string;
-
-  musicMeta: IAudioMetadata;
-
-  blob: Blob;
-  imageURL: string;
-}
-
-async function writeMetaToAudioFile(info: NewAudioMeta): Promise<Blob> {
-  let imageInfo: Awaited<ReturnType<typeof GetImageFromURL>> | undefined
-  try {
-    imageInfo = await GetImageFromURL(info.imageURL)
-    if (!imageInfo) {
-      console.warn('获取图像失败')
-    }
-    const merged = buildMusicMetaFromSources(
-      {
-        picture: imageInfo?.buffer,
-        title: info.title,
-        artists: info.artists,
-        album: info.album
-      },
-      info.musicMeta
-    )
-    const buffer = Buffer.from(await info.blob.arrayBuffer())
-    const mime = AudioMimeType[info.ext] || AudioMimeType.mp3
-    if (info.ext === 'mp3') {
-      return new Blob([WriteMetaToMp3(buffer, merged, info.musicMeta)], { type: mime })
-    } else if (info.ext === 'flac') {
-      return new Blob([WriteMetaToFlac(buffer, merged, info.musicMeta)], { type: mime })
-    } else {
-      console.info('writing metadata for ' + info.ext + ' is not being supported for now')
-    }
-  } catch (e) {
-    console.warn('Error while appending cover image to file ' + e)
-  } finally {
-    if (imageInfo?.url?.startsWith('blob:')) {
-      URL.revokeObjectURL(imageInfo.url)
-    }
-  }
-  return info.blob
-}

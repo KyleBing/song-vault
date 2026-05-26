@@ -227,7 +227,7 @@ function pictureDataToArrayBuffer(data: Buffer | Uint8Array): ArrayBuffer {
   return Uint8Array.from(buf).buffer;
 }
 
-/** 合并解密结果、显式字段与解析出的内嵌标签 */
+/** 合并解密结果、显式字段与解析出的内嵌标签（显式字段优先，避免重复） */
 export function buildMusicMetaFromSources(
   explicit: Partial<IMusicMeta> & { artist?: string },
   parsed: IAudioMetadata
@@ -235,8 +235,8 @@ export function buildMusicMetaFromSources(
   const common = parsed.common;
   const artists = mergeStringLists(
     explicit.artists,
-    common.artists,
     splitArtistText(explicit.artist),
+    common.artists,
     splitArtistText(common.artist)
   );
 
@@ -292,8 +292,48 @@ function setFlacTags(writer: MetaFlac, key: string, values: string[] | undefined
   }
 }
 
+const MANAGED_FLAC_TAG_KEYS = [
+  'TITLE',
+  'ARTIST',
+  'ALBUM',
+  'ALBUMARTIST',
+  'GENRE',
+  'DATE',
+  'TRACKNUMBER',
+  'TRACKTOTAL',
+  'DISCNUMBER',
+  'DISCTOTAL',
+  'COMMENT',
+  'LYRICS',
+  'COMPOSER',
+  'LYRICIST',
+  'CONDUCTOR',
+  'REMIXER',
+  'PRODUCER',
+  'LABEL',
+  'GROUPING',
+  'SUBTITLE',
+  'CATALOGNUMBER',
+  'BPM'
+] as const;
+
+function clearManagedFlacTags(writer: MetaFlac): void {
+  for (const key of MANAGED_FLAC_TAG_KEYS) {
+    try {
+      writer.removeTag(key);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function setFlacTag(writer: MetaFlac, key: string, value?: string): void {
   if (!value?.trim()) return;
+  try {
+    writer.removeTag(key);
+  } catch {
+    /* ignore */
+  }
   writer.setTag(`${key}=${value.trim()}`);
 }
 
@@ -366,6 +406,7 @@ export function WriteMetaToFlac(
 ): Buffer {
   const meta = buildMusicMetaFromSources(info, original);
   const writer = new MetaFlac(audioData);
+  clearManagedFlacTags(writer);
 
   setFlacTag(writer, 'TITLE', meta.title);
   setFlacTags(writer, 'ARTIST', meta.artists);
@@ -413,9 +454,7 @@ export async function embedDecryptMetadata(
 
   const parsed = await metaParseBlob(result.blob);
   let picture: ArrayBuffer | undefined;
-  if (parsed.common.picture?.[0]?.data) {
-    picture = pictureDataToArrayBuffer(parsed.common.picture[0].data);
-  } else if (result.picture?.startsWith('blob:')) {
+  if (result.picture?.startsWith('blob:')) {
     try {
       const resp = await fetch(result.picture);
       picture = await resp.arrayBuffer();
