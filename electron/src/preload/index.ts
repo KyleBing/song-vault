@@ -9,9 +9,10 @@ import type {
   RunJobParams
 } from '../shared/lrcJob'
 import type {
-  MusicScanResult,
-  ScanMusicDecodeParams
-} from '../shared/musicScanJob'
+  ReadMusicFileResult,
+  WriteDecryptedMusicParams,
+  WriteDecryptedMusicResult
+} from '../shared/musicDecryptJob'
 import type {
   BrowseCreateDirParams,
   BrowseDeleteFilesParams,
@@ -36,15 +37,16 @@ const api = {
     return toIpcPlain(result)
   },
 
-  scanMusicDecode: async (
-    params: ScanMusicDecodeParams
-  ): Promise<MusicScanResult> => {
-    const result = await ipcRenderer.invoke(
-      'scan-music-decode',
-      toIpcPlain(params)
-    )
-    return toIpcPlain(result)
-  },
+  readMusicFile: (filePath: string): Promise<ReadMusicFileResult> =>
+    ipcRenderer.invoke('read-music-file', filePath),
+
+  writeDecryptedMusic: (
+    params: WriteDecryptedMusicParams
+  ): Promise<WriteDecryptedMusicResult> =>
+    ipcRenderer.invoke('write-decrypted-music', params),
+
+  pickMusicFiles: (): Promise<string[]> =>
+    ipcRenderer.invoke('pick-music-files'),
 
   listSourceDirChildren: async (
     params: ListSourceDirChildrenParams
@@ -61,6 +63,16 @@ const api = {
   ): Promise<DirAudioFileItem[]> => {
     const result = await ipcRenderer.invoke(
       'list-dir-audio-files',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  listDirEncryptedMusicFiles: async (
+    params: ListDirAudioFilesParams
+  ): Promise<DirAudioFileItem[]> => {
+    const result = await ipcRenderer.invoke(
+      'list-dir-encrypted-music-files',
       toIpcPlain(params)
     )
     return toIpcPlain(result)

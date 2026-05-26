@@ -54,6 +54,22 @@ export function isEncryptedMusicExtension(ext: string): boolean {
   return classifyEncryptedExtension(ext) !== null
 }
 
+/** 酷狗 / 酷我 / JOOX 等（unlock-music 路由中的其它加密格式） */
+export const OTHER_ENCRYPTED_EXTENSIONS = new Set([
+  'kgm',
+  'kgma',
+  'vpr',
+  'kwm',
+  'ofl_en',
+  'xm'
+])
+
+/** 是否可由 unlock-music 解密（用于文件管理列表过滤） */
+export function isDecryptableExtension(ext: string): boolean {
+  const e = ext.toLowerCase()
+  return isEncryptedMusicExtension(e) || OTHER_ENCRYPTED_EXTENSIONS.has(e)
+}
+
 export const PLATFORM_LABELS: Record<MusicPlatform, string> = {
   netease: '网易云',
   qq: 'QQ音乐'

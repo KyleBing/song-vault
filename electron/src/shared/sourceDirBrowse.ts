@@ -5,6 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 import { AUDIO_EXTENSIONS } from './lrcJob'
+import { isDecryptableExtension } from './musicFormats'
 import type { PathFilterRule } from './pathFilters'
 import { shouldFilterEntry } from './pathFilters'
 
@@ -125,6 +126,10 @@ export function isSearchTargetAudioExt(ext: string): boolean {
   return AUDIO_EXTENSIONS.has(ext.toLowerCase())
 }
 
+export function isEncryptedMusicFileExt(ext: string): boolean {
+  return isDecryptableExtension(ext)
+}
+
 export function listSourceDirChildren(
   params: ListSourceDirChildrenParams
 ): SourceDirChild[] {
@@ -222,6 +227,58 @@ export function listDirAudioFiles(
   }
 
   return items
+}
+
+/** 列出目录内可解密的加密音乐文件 */
+export function listDirEncryptedMusicFiles(
+  params: ListDirAudioFilesParams
+): DirAudioFileItem[] {
+  const roots = normalizeRoots(params.browseRoots)
+  const dirPath = path.resolve(params.dirPath)
+  assertUnderBrowseRoots(dirPath, roots)
+
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`无法读取目录: ${msg}`)
+  }
+
+  const items: DirAudioFileItem[] = []
+
+  for (const ent of entries) {
+    if (!ent.isFile()) continue
+    if (shouldFilterEntry(ent.name, false, params.pathFilterRules)) continue
+    const ext = path.extname(ent.name).slice(1).toLowerCase()
+    if (!isEncryptedMusicFileExt(ext)) continue
+
+    const full = path.join(dirPath, ent.name)
+    let sizeBytes = 0
+    let mtimeMs = 0
+    try {
+      const stat = fs.statSync(full)
+      sizeBytes = Number(stat.size)
+      mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
+      if (!Number.isFinite(sizeBytes)) sizeBytes = 0
+      if (!Number.isFinite(mtimeMs)) mtimeMs = 0
+    } catch {
+      /* 无法 stat 时保留 0 */
+    }
+
+    items.push({
+      filePath: full,
+      fileName: ent.name,
+      ext,
+      sizeBytes,
+      mtimeMs,
+      hasLrc: false
+    })
+  }
+
+  return items.sort((a, b) =>
+    a.fileName.localeCompare(b.fileName, undefined, { sensitivity: 'base' })
+  )
 }
 
 export function browseCreateDir(params: BrowseCreateDirParams): { path: string } {

@@ -8,16 +8,19 @@ import {
   type DeleteOrphanParams,
   type RunJobParams
 } from '../shared/lrcJob'
+import { isDecryptableExtension } from '../shared/musicFormats'
 import {
-  scanMusicDecode,
-  type ScanMusicDecodeParams
-} from '../shared/musicScanJob'
+  readMusicFile,
+  writeDecryptedMusic,
+  type WriteDecryptedMusicParams
+} from '../shared/musicDecryptJob'
 import {
   browseCreateDir,
   browseDeleteFiles,
   browseDeletePath,
   browseRenamePath,
   listDirAudioFiles,
+  listDirEncryptedMusicFiles,
   listSourceDirChildren,
   type BrowseCreateDirParams,
   type BrowseDeleteFilesParams,
@@ -41,9 +44,12 @@ const isDev = !app.isPackaged
 const IPC_CHANNELS = [
   'pick-directory',
   'run-job',
-  'scan-music-decode',
+  'read-music-file',
+  'write-decrypted-music',
+  'pick-music-files',
   'list-source-dir-children',
   'list-dir-audio-files',
+  'list-dir-encrypted-music-files',
   'browse-create-dir',
   'browse-rename-path',
   'browse-delete-path',
@@ -73,8 +79,54 @@ function registerIpcHandlers(): void {
     return toIpcPlain(runJob(toIpcPlain(params)))
   })
 
-  ipcMain.handle('scan-music-decode', async (_, params: ScanMusicDecodeParams) => {
-    return toIpcPlain(scanMusicDecode(toIpcPlain(params)))
+  ipcMain.handle('read-music-file', async (_, filePath: string) => {
+    return readMusicFile(String(filePath))
+  })
+
+  ipcMain.handle(
+    'write-decrypted-music',
+    async (_, params: WriteDecryptedMusicParams) => {
+      return writeDecryptedMusic({
+        outputDir: params.outputDir,
+        fileName: params.fileName,
+        data: params.data instanceof Uint8Array ? params.data : new Uint8Array(params.data)
+      })
+    }
+  )
+
+  ipcMain.handle('pick-music-files', async () => {
+    const exts = [
+      'ncm',
+      'uc',
+      'qmc0',
+      'qmc2',
+      'qmc3',
+      'qmcflac',
+      'qmcogg',
+      'mflac',
+      'mflac0',
+      'mgg',
+      'mgg0',
+      'mgg1',
+      'mggl',
+      'kgm',
+      'kgma',
+      'kwm',
+      'xm',
+      'tkm',
+      'cache',
+      'ofl_en'
+    ]
+    const patterns = exts.map((e) => ({ name: e.toUpperCase(), extensions: [e] }))
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '加密音乐', extensions: exts }, ...patterns]
+    })
+    if (result.canceled || result.filePaths.length === 0) return []
+    return result.filePaths.filter((p) => {
+      const ext = p.split('.').pop()?.toLowerCase() ?? ''
+      return isDecryptableExtension(ext)
+    })
   })
 
   ipcMain.handle(
@@ -88,6 +140,13 @@ function registerIpcHandlers(): void {
     'list-dir-audio-files',
     async (_, params: ListDirAudioFilesParams) => {
       return toIpcPlain(listDirAudioFiles(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle(
+    'list-dir-encrypted-music-files',
+    async (_, params: ListDirAudioFilesParams) => {
+      return toIpcPlain(listDirEncryptedMusicFiles(toIpcPlain(params)))
     }
   )
 

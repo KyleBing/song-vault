@@ -109,9 +109,9 @@ async function revealConfigFile(): Promise<void> {
       <FolderPanel
         v-model="decodeSourceDirs"
         class="settings-folder-panel"
-        title="加密音乐源目录"
-        hint="存放 .ncm、.qmc*、.mflac 等待解码文件，供音乐解码使用"
-        empty-text="添加加密音乐所在文件夹"
+        title="音乐解码浏览目录"
+        hint="在音乐解码页左侧目录树中浏览并选择 .ncm、.qmc*、.mflac 等加密文件"
+        empty-text="添加用于浏览加密音乐的文件夹"
       />
 
       <NCard class="settings-card" :bordered="false" size="small">

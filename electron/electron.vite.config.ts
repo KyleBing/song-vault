@@ -2,6 +2,8 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
+const unlockMusicRoot = resolve(__dirname, 'src/unlock-music')
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()]
@@ -13,10 +15,22 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer'),
-        '@shared': resolve('src/shared')
+        '@shared': resolve('src/shared'),
+        '@unlock': unlockMusicRoot
       }
     },
     plugins: [vue()],
+    optimizeDeps: {
+      include: [
+        'buffer',
+        'crypto-js',
+        'music-metadata-browser',
+        'browser-id3-writer',
+        'metaflac-js',
+        'iconv-lite'
+      ]
+    },
+    assetsInclude: ['**/*.wasm'],
     css: {
       preprocessorOptions: {
         scss: {
