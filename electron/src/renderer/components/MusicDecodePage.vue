@@ -32,6 +32,7 @@ import type { MusicDecryptBatchResult } from '@shared/musicDecryptJob'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import { relativeToRoots } from '@renderer/utils/displayPath'
+import MusicDecryptHelpModal from '@renderer/components/MusicDecryptHelpModal.vue'
 import { storage } from '@unlock/utils/storage'
 
 const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
@@ -339,6 +340,7 @@ onMounted(() => {
               <h1>音乐解码</h1>
               <p>选择加密文件并批量解密</p>
             </div>
+            <MusicDecryptHelpModal />
           </div>
         </header>
 
@@ -538,6 +540,11 @@ onMounted(() => {
   gap: 12px;
   flex: 1;
   min-width: 0;
+
+  :deep(.help-trigger) {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
 }
 
 .brand-icon {

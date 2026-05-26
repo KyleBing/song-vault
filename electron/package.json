@@ -13,6 +13,7 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
+    "@jixun/qmc2-crypto": "file:./vendor/qmc2-crypto",
     "@vicons/ionicons5": "^0.12.0",
     "browser-id3-writer": "^4.4.0",
     "buffer": "^6.0.3",

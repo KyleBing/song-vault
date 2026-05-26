@@ -110,7 +110,7 @@ async function revealConfigFile(): Promise<void> {
         v-model="decodeSourceDirs"
         class="settings-folder-panel"
         title="音乐解码浏览目录"
-        hint="在音乐解码页左侧目录树中浏览并选择 .ncm、.qmc*、.mflac 等加密文件"
+        hint="添加 QQ 音乐、网易云下载目录；详细说明见音乐解码页「下载与解密说明」"
         empty-text="添加用于浏览加密音乐的文件夹"
       />
 

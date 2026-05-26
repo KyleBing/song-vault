@@ -1,0 +1,27 @@
+{
+  "name": "@jixun/qmc2-crypto",
+  "version": "0.0.6-R1",
+  "description": "QMC2 Crypto (transpiled)",
+  "main": "QMC2-legacy.js",
+  "types": "./QMC2-legacy.d.ts",
+  "files": [
+    "*.d.ts",
+    "QMC2-legacy.js",
+    "QMC2-wasm.js",
+    "QMC2-wasm.wasm",
+    "QMC2-wasm-bundle.js"
+  ],
+  "scripts": {
+    "build:doc": "typedoc --out docs QMCCrypto.d.ts"
+  },
+  "keywords": [
+    "QMC"
+  ],
+  "repository": "github:jixunmoe/qmc2",
+  "author": "Jixun Wu",
+  "license": "MIT",
+  "devDependencies": {
+    "typedoc": "^0.22.10",
+    "typescript": "^4.5.4"
+  }
+}

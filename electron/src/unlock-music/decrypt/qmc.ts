@@ -1,8 +1,21 @@
 import { QmcMapCipher, QmcRC4Cipher, QmcStaticCipher, QmcStreamCipher } from './qmc_cipher';
-import { AudioMimeType, GetArrayBuffer, SniffAudioExt } from '@unlock/decrypt/utils';
+import {
+  AudioMimeType,
+  BytesHasPrefix,
+  FLAC_HEADER,
+  GetArrayBuffer,
+  MP3_HEADER,
+  OGG_HEADER,
+  SniffAudioExt,
+} from '@unlock/decrypt/utils';
 
 import { DecryptResult } from '@unlock/decrypt/entity';
 import { QmcDeriveKey } from '@unlock/decrypt/qmc_key';
+import {
+  formatUnsupportedQmcMessage,
+  inspectQmcFooter,
+  logQmcFooterDebug,
+} from '@unlock/decrypt/qmc_footer';
 import { DecryptQMCWasm } from '@unlock/decrypt/qmc_wasm';
 import { extractQQMusicMeta } from '@unlock/utils/qm_meta';
 
@@ -43,28 +56,57 @@ export async function Decrypt(file: Blob, raw_filename: string, raw_ext: string)
   let { version } = handler;
 
   const fileBuffer = await GetArrayBuffer(file);
+  const fileBytes = new Uint8Array(fileBuffer);
   let musicDecoded: Uint8Array | undefined;
   let musicID: number | string | undefined;
 
-  if (version === 2 && globalThis.WebAssembly) {
+  // 已是明文音频（误标扩展名或重复解密）
+  const sniffed = SniffAudioExt(fileBytes, '');
+  if (
+    sniffed &&
+    (BytesHasPrefix(fileBytes, FLAC_HEADER) ||
+      BytesHasPrefix(fileBytes, MP3_HEADER) ||
+      BytesHasPrefix(fileBytes, OGG_HEADER))
+  ) {
+    console.log('qmc: input already plain %s, skip decrypt', sniffed);
+    musicDecoded = fileBytes;
+  }
+
+  let wasmError: string | undefined;
+  const footer = inspectQmcFooter(fileBytes);
+
+  if (!musicDecoded && version === 2 && globalThis.WebAssembly) {
     console.log('qmc: using wasm decoder');
 
     const v2Decrypted = await DecryptQMCWasm(fileBuffer);
-    // 若 v2 检测失败，降级到 v1 再尝试一次
     if (v2Decrypted.success) {
       musicDecoded = v2Decrypted.data;
       musicID = v2Decrypted.songId;
     } else {
-      console.warn('qmc2-wasm failed with error %s', v2Decrypted.error || '(no error)');
+      wasmError = v2Decrypted.error || '(no error)';
+      console.warn('qmc2-wasm failed with error %s', wasmError);
+      logQmcFooterDebug(fileBytes, raw_filename);
     }
   }
 
   if (!musicDecoded) {
-    // may throw error
+    // 新客户端加密：尾标非 QTag/v1，JS 静态解密只会产生杂音
+    if (footer.kind === 'unknown' && version === 2) {
+      throw formatUnsupportedQmcMessage(footer, raw_ext, wasmError);
+    }
+
     console.log('qmc: using js decoder');
-    const d = new QmcDecoder(new Uint8Array(fileBuffer));
-    musicDecoded = d.decrypt();
-    musicID = d.songID;
+    try {
+      const d = new QmcDecoder(fileBytes);
+      musicDecoded = d.decrypt();
+      musicID = d.songID;
+    } catch (jsErr) {
+      const jsMsg = jsErr instanceof Error ? jsErr.message : String(jsErr);
+      if (footer.kind === 'STag') {
+        throw formatUnsupportedQmcMessage(footer, raw_ext, jsMsg);
+      }
+      throw jsMsg;
+    }
   }
 
   const ext = SniffAudioExt(musicDecoded, handler.ext);
@@ -129,7 +171,8 @@ export class QmcDecoder {
   private searchKey() {
     const last4Byte = this.file.slice(-4);
     const textEnc = new TextDecoder();
-    if (textEnc.decode(last4Byte) === 'QTag') {
+    const tailTag = textEnc.decode(last4Byte);
+    if (tailTag === 'QTag' || tailTag === 'STag') {
       const sizeBuf = this.file.slice(-8, -4);
       const sizeView = new DataView(sizeBuf.buffer, sizeBuf.byteOffset);
       const keySize = sizeView.getUint32(0, false);
