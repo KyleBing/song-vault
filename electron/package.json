@@ -10,7 +10,12 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json",
+    "pack": "yarn build && electron-builder",
+    "pack:mac": "yarn build && electron-builder --mac",
+    "pack:win": "yarn build && electron-builder --win",
+    "pack:mac:mirror": "yarn build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --mac",
+    "pack:win:mirror": "yarn build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win"
   },
   "dependencies": {
     "@jixun/qmc2-crypto": "file:./vendor/qmc2-crypto",
@@ -30,10 +35,48 @@
     "@types/crypto-js": "^4.0.2",
     "@vitejs/plugin-vue": "^5.2.1",
     "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "sass": "^1.100.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vue-tsc": "^2.1.10"
+  },
+  "build": {
+    "appId": "com.lrc-copy-tool.desktop",
+    "productName": "LRC 歌词归位",
+    "copyright": "Copyright © LRC 歌词归位",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "**/*.wasm"
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "${productName}-${version}-macOS.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-Windows.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-${version}-Windows-Setup.${ext}"
+    }
   }
 }

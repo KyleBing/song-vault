@@ -21,6 +21,27 @@ yarn build
 yarn preview
 ```
 
+## 打包客户端
+
+先 `yarn install`，再在本机平台打包（产物在 `release/`）：
+
+```powershell
+# macOS → .dmg
+yarn pack:mac
+
+# Windows → 安装包（在 Windows 上执行最省事）
+yarn pack:win
+```
+
+`pack:mac` / `pack:win` 会使用 `node_modules/electron` 里已安装的 Electron，**不必再从 GitHub 下载约 100MB**。若仍卡在 `downloading ... electron-...zip`，可改用镜像脚本：
+
+```powershell
+yarn pack:mac:mirror
+yarn pack:win:mirror
+```
+
+首次打包若需下载依赖，请保持网络畅通；国内可依赖 `.npmrc` 中的 `electron_mirror`。
+
 ## 使用流程
 
 1. 添加一个或多个 **LRC 源文件夹**（递归扫描子文件夹中的 `.lrc`）
