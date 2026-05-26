@@ -8,6 +8,22 @@ import type {
   JobResult,
   RunJobParams
 } from '../shared/lrcJob'
+import type {
+  MusicScanResult,
+  ScanMusicDecodeParams
+} from '../shared/musicScanJob'
+import type {
+  BrowseCreateDirParams,
+  BrowseDeleteFilesParams,
+  BrowseDeleteFilesResult,
+  BrowseDeletePathParams,
+  BrowseRenamePathParams,
+  BrowseRenameResult,
+  DirAudioFileItem,
+  ListDirAudioFilesParams,
+  ListSourceDirChildrenParams,
+  SourceDirChild
+} from '../shared/sourceDirBrowse'
 import { toIpcPlain } from '../shared/serialize'
 
 /** 暴露给渲染进程的安全 API（通过 contextBridge） */
@@ -17,6 +33,68 @@ const api = {
 
   runJob: async (params: RunJobParams): Promise<JobResult> => {
     const result = await ipcRenderer.invoke('run-job', toIpcPlain(params))
+    return toIpcPlain(result)
+  },
+
+  scanMusicDecode: async (
+    params: ScanMusicDecodeParams
+  ): Promise<MusicScanResult> => {
+    const result = await ipcRenderer.invoke(
+      'scan-music-decode',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  listSourceDirChildren: async (
+    params: ListSourceDirChildrenParams
+  ): Promise<SourceDirChild[]> => {
+    const result = await ipcRenderer.invoke(
+      'list-source-dir-children',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  listDirAudioFiles: async (
+    params: ListDirAudioFilesParams
+  ): Promise<DirAudioFileItem[]> => {
+    const result = await ipcRenderer.invoke(
+      'list-dir-audio-files',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  browseCreateDir: async (params: BrowseCreateDirParams) => {
+    const result = await ipcRenderer.invoke(
+      'browse-create-dir',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result) as { path: string }
+  },
+
+  browseRenamePath: async (
+    params: BrowseRenamePathParams
+  ): Promise<BrowseRenameResult> => {
+    const result = await ipcRenderer.invoke(
+      'browse-rename-path',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  browseDeletePath: async (params: BrowseDeletePathParams): Promise<void> => {
+    await ipcRenderer.invoke('browse-delete-path', toIpcPlain(params))
+  },
+
+  browseDeleteFiles: async (
+    params: BrowseDeleteFilesParams
+  ): Promise<BrowseDeleteFilesResult> => {
+    const result = await ipcRenderer.invoke(
+      'browse-delete-files',
+      toIpcPlain(params)
+    )
     return toIpcPlain(result)
   },
 

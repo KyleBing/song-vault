@@ -1,4 +1,4 @@
-/** 规范化路径分隔符，便于比较 */
+/** 统一为正斜杠并去掉末尾分隔符，便于根目录前缀比较 */
 function normPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '')
 }

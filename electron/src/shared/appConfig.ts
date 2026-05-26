@@ -1,3 +1,11 @@
+import {
+  createDefaultPathFilterRules,
+  normalizePathFilterRules,
+  type PathFilterRule
+} from './pathFilters'
+
+export type { PathFilterRule }
+
 /** 持久化配置文件名（保存在用户主目录） */
 export const APP_CONFIG_FILE_NAME = 'config_search_match_replace.json'
 
@@ -20,8 +28,12 @@ export interface AppConfig {
   searchRoots: string[]
   /** LRC 源目录 */
   lrcDirs: string[]
+  /** 待解码加密音乐源目录 */
+  decodeSourceDirs: string[]
   /** 界面外观：深色 / 浅色 */
   appearance: AppAppearance
+  /** 扫描与浏览时跳过的文件/文件夹名称规则 */
+  pathFilterRules: PathFilterRule[]
 }
 
 export function createDefaultAppConfig(): AppConfig {
@@ -29,7 +41,9 @@ export function createDefaultAppConfig(): AppConfig {
     version: APP_CONFIG_VERSION,
     searchRoots: [],
     lrcDirs: [],
-    appearance: 'light'
+    decodeSourceDirs: [],
+    appearance: 'light',
+    pathFilterRules: createDefaultPathFilterRules()
   }
 }
 
@@ -57,8 +71,10 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
     version: APP_CONFIG_VERSION,
     searchRoots: uniqueStrings(obj.searchRoots),
     lrcDirs: uniqueStrings(obj.lrcDirs),
+    decodeSourceDirs: uniqueStrings(obj.decodeSourceDirs),
     appearance: isAppAppearance(obj.appearance)
       ? obj.appearance
-      : createDefaultAppConfig().appearance
+      : createDefaultAppConfig().appearance,
+    pathFilterRules: normalizePathFilterRules(obj.pathFilterRules)
   }
 }

@@ -4,6 +4,7 @@ import {
   type AppAppearance,
   type AppConfig
 } from '@shared/appConfig'
+import { toIpcPlain } from '@shared/serialize'
 
 const THEME_CACHE_KEY = 'smr-appearance'
 
@@ -21,6 +22,7 @@ export function readThemeCache(): AppAppearance {
   return 'light'
 }
 
+/** 将当前主题写入 localStorage，供下次启动首屏同步使用 */
 export function writeThemeCache(appearance: AppAppearance): void {
   try {
     localStorage.setItem(THEME_CACHE_KEY, appearance)
@@ -51,10 +53,12 @@ export function loadAppConfigOnce(): Promise<AppConfig> {
   return configPromise
 }
 
+/** 将完整配置写入磁盘（经 toIpcPlain 剥离 Vue Proxy 后 IPC 传输） */
 export async function saveAppConfig(config: AppConfig): Promise<void> {
-  await window.electronAPI.saveAppConfig(config)
-  loadedConfig = config
-  writeThemeCache(config.appearance)
+  const plain = toIpcPlain(config)
+  await window.electronAPI.saveAppConfig(plain)
+  loadedConfig = plain
+  writeThemeCache(plain.appearance)
 }
 
 /** 仅更新外观并写盘，不依赖目录配置是否已 hydrate */

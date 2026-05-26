@@ -8,6 +8,24 @@ import {
   type DeleteOrphanParams,
   type RunJobParams
 } from '../shared/lrcJob'
+import {
+  scanMusicDecode,
+  type ScanMusicDecodeParams
+} from '../shared/musicScanJob'
+import {
+  browseCreateDir,
+  browseDeleteFiles,
+  browseDeletePath,
+  browseRenamePath,
+  listDirAudioFiles,
+  listSourceDirChildren,
+  type BrowseCreateDirParams,
+  type BrowseDeleteFilesParams,
+  type BrowseDeletePathParams,
+  type BrowseRenamePathParams,
+  type ListDirAudioFilesParams,
+  type ListSourceDirChildrenParams
+} from '../shared/sourceDirBrowse'
 import { toIpcPlain } from '../shared/serialize'
 import { getAppConfigPath, loadAppConfig, saveAppConfig } from './appConfigStore'
 import type { AppConfig } from '../shared/appConfig'
@@ -18,6 +36,13 @@ const isDev = !app.isPackaged
 const IPC_CHANNELS = [
   'pick-directory',
   'run-job',
+  'scan-music-decode',
+  'list-source-dir-children',
+  'list-dir-audio-files',
+  'browse-create-dir',
+  'browse-rename-path',
+  'browse-delete-path',
+  'browse-delete-files',
   'delete-orphan-lrc',
   'copy-lrc-to-audio',
   'load-app-config',
@@ -41,6 +66,44 @@ function registerIpcHandlers(): void {
   ipcMain.handle('run-job', async (_, params: RunJobParams) => {
     return toIpcPlain(runJob(toIpcPlain(params)))
   })
+
+  ipcMain.handle('scan-music-decode', async (_, params: ScanMusicDecodeParams) => {
+    return toIpcPlain(scanMusicDecode(toIpcPlain(params)))
+  })
+
+  ipcMain.handle(
+    'list-source-dir-children',
+    async (_, params: ListSourceDirChildrenParams) => {
+      return toIpcPlain(listSourceDirChildren(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle(
+    'list-dir-audio-files',
+    async (_, params: ListDirAudioFilesParams) => {
+      return toIpcPlain(listDirAudioFiles(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle('browse-create-dir', async (_, params: BrowseCreateDirParams) => {
+    return toIpcPlain(browseCreateDir(toIpcPlain(params)))
+  })
+
+  ipcMain.handle('browse-rename-path', async (_, params: BrowseRenamePathParams) => {
+    return toIpcPlain(browseRenamePath(toIpcPlain(params)))
+  })
+
+  ipcMain.handle('browse-delete-path', async (_, params: BrowseDeletePathParams) => {
+    browseDeletePath(toIpcPlain(params))
+    return toIpcPlain({ ok: true })
+  })
+
+  ipcMain.handle(
+    'browse-delete-files',
+    async (_, params: BrowseDeleteFilesParams) => {
+      return toIpcPlain(browseDeleteFiles(toIpcPlain(params)))
+    }
+  )
 
   ipcMain.handle('delete-orphan-lrc', async (_, params: DeleteOrphanParams) => {
     return toIpcPlain(deleteOrphanLrc(toIpcPlain(params)))

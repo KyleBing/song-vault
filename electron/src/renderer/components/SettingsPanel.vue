@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { NButton, NCard, NIcon, NRadio, NRadioGroup, NText } from 'naive-ui'
-import { ArrowBack, ColorPaletteOutline } from '@vicons/ionicons5'
+import { ArrowBack, ColorPaletteOutline, FilterOutline } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
-import type { AppAppearance } from '@shared/appConfig'
+import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
 import { useThemeStore } from '@renderer/stores/theme'
+import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
+
+const pathFilterRules = defineModel<PathFilterRule[]>('pathFilterRules', {
+  required: true
+})
 
 const emit = defineEmits<{
   close: []
@@ -18,6 +23,7 @@ const appearanceOptions: { value: AppAppearance; label: string; desc: string }[]
     { value: 'dark', label: '深色', desc: '深色背景，适合弱光环境' }
   ]
 
+/** 设置页切换主题时委托给 theme store */
 function onAppearanceChange(value: AppAppearance): void {
   themeStore.setAppearance(value)
 }
@@ -69,6 +75,19 @@ function onAppearanceChange(value: AppAppearance): void {
           </label>
         </NRadioGroup>
       </NCard>
+
+      <NCard class="settings-card" :bordered="false" size="small">
+        <template #header>
+          <div class="card-header">
+            <NIcon :size="18" class="card-header-icon">
+              <FilterOutline />
+            </NIcon>
+            <span>名称过滤</span>
+          </div>
+        </template>
+
+        <PathFilterRulesEditor v-model:rules="pathFilterRules" />
+      </NCard>
     </div>
   </div>
 </template>
@@ -105,13 +124,17 @@ function onAppearanceChange(value: AppAppearance): void {
   min-height: 0;
   overflow-y: auto;
   padding: 20px;
-  max-width: 520px;
+  max-width: 640px;
 }
 
 .settings-card {
   background: $surface-panel;
   border: 1px solid $border-subtle;
   border-radius: $radius-panel;
+
+  & + & {
+    margin-top: 16px;
+  }
 }
 
 .card-header {

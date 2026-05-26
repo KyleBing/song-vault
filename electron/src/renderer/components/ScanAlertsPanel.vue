@@ -20,6 +20,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const deleting = ref(false)
 
+/** 删除右侧「多余」页中已勾选的无对应音频歌词文件 */
 async function deleteOrphans(): Promise<void> {
   const lrcPaths = plainStringList(unref(props.selectedOrphanKeys))
   if (lrcPaths.length === 0) {

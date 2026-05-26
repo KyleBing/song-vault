@@ -55,10 +55,10 @@ const copyingAudioPath = ref<string | null>(null)
 /** 源歌词选择变更后递增，强制表格重绘 */
 const pickRevision = ref(0)
 
-// 布局信息
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 110) // 表格最大高度
+/** 结果表格最大高度（随窗口高度变化） */
+const maxHeightForTable = computed(() => insets.value.windowHeight - 110)
 
 const audioStatusMeta: Record<
     AudioItemStatus,
@@ -79,6 +79,7 @@ const pendingPickCount = computed(() =>
     countPendingSourcePick(props.result.audioItems, sourceSelection.value)
 )
 
+/** 解析该行应使用的 LRC 源路径（含用户覆盖与优先目录） */
 function resolveSourcePath(row: AudioJobItem): string | undefined {
     return (
         row.selectedSourceLrcPath ??
@@ -89,6 +90,7 @@ function resolveSourcePath(row: AudioJobItem): string | undefined {
     )
 }
 
+/** 展示用状态：已选定源时「待选源」显示为「可复制」 */
 function displayStatus(row: AudioJobItem): AudioItemStatus {
     if (row.status === 'source_ambiguous' && resolveSourcePath(row)) {
         return 'can_copy'
@@ -96,6 +98,7 @@ function displayStatus(row: AudioJobItem): AudioItemStatus {
     return row.status
 }
 
+/** 用户从下拉框选定源歌词，写入 sourceSelection 并提示是否记住源目录 */
 function onPickSource(row: AudioJobItem, lrcPath: string): void {
     const prev = sourceSelection.value ?? {}
     sourceSelection.value = {
@@ -121,14 +124,17 @@ watch(
     }
 )
 
+/** 相对音频搜索目标的显示路径 */
 function shortAudio(p: string): string {
-    return relativeToRoots(p, props.searchRoots)
+  return relativeToRoots(p, props.searchRoots)
 }
 
+/** 相对 LRC 源目录的显示路径 */
 function shortLrcSource(p: string): string {
-    return relativeToRoots(p, props.lrcDirs)
+  return relativeToRoots(p, props.lrcDirs)
 }
 
+/** 表格单元格：短路径 + 悬停完整路径 */
 function pathCell(full: string, short: string) {
     return h(
         NTooltip,
@@ -141,6 +147,7 @@ function pathCell(full: string, short: string) {
     )
 }
 
+/** 计划复制到目标目录的歌词完整路径 */
 function plannedDestFor(row: AudioJobItem): string | undefined {
     if (row.plannedDestLrcPath) return row.plannedDestLrcPath
     const src = resolveSourcePath(row)
@@ -149,6 +156,7 @@ function plannedDestFor(row: AudioJobItem): string | undefined {
     return joinPath(row.destDir, base)
 }
 
+/** 当前行是否允许执行单首复制 */
 function canCopyRow(row: AudioJobItem): boolean {
     const src = resolveSourcePath(row)
     const dest = plannedDestFor(row)
@@ -159,6 +167,7 @@ function canCopyRow(row: AudioJobItem): boolean {
     )
 }
 
+/** 将选定源歌词复制到该音频所在目录 */
 async function copyOne(row: AudioJobItem): Promise<void> {
     const source = resolveSourcePath(row)
     const dest = plannedDestFor(row)
@@ -326,6 +335,11 @@ const pickSourceAudio = computed(() =>
 const plainOrphan = computed(() =>
     props.result.orphanLrcItems.map((r) => ({ ...r, key: r.lrcPath }))
 )
+
+/** 多余歌词表格行主键 */
+function orphanRowKey(row: { key: string }): string {
+  return row.key
+}
 </script>
 
 
@@ -373,7 +387,7 @@ const plainOrphan = computed(() =>
             <NTabPane name="orphan" :tab="`多余 (${stats.orphanLrc})`">
                 <div class="tab-pane-body">
                     <NDataTable v-model:checked-row-keys="selectedOrphanKeys" :columns="orphanColumns"
-                        :data="plainOrphan" :row-key="(row: { key: string }) => row.key"
+                        :data="plainOrphan" :row-key="orphanRowKey"
                         :max-height="maxHeightForTable" size="small" striped />
                 </div>
             </NTabPane>

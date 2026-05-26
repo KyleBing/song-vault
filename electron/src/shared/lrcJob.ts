@@ -5,6 +5,8 @@
 
 import fs from 'fs'
 import path from 'path'
+import type { PathFilterRule } from './pathFilters'
+import { shouldFilterEntry } from './pathFilters'
 import { pickSourceLrc, type SourceSelection } from './sourcePick'
 
 /** 参与匹配的音频文件扩展名（小写，不含点） */
@@ -77,6 +79,7 @@ export interface RunJobParams extends SourceSelection {
   lrcDirs: string[]
   searchRoots: string[]
   execute: boolean
+  pathFilterRules: PathFilterRule[]
 }
 
 /** 单首音频：将匹配的 LRC 复制到音频所在目录 */
@@ -161,7 +164,11 @@ function findSiblingLrcAudioPair(
   return { lrcPath, audioPath, destDir: dir }
 }
 
-function walkLrcDir(dir: string, files: string[]): void {
+function walkLrcDir(
+  dir: string,
+  files: string[],
+  pathFilterRules: PathFilterRule[]
+): void {
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -172,9 +179,12 @@ function walkLrcDir(dir: string, files: string[]): void {
   }
 
   for (const ent of entries) {
+    if (shouldFilterEntry(ent.name, ent.isDirectory(), pathFilterRules)) {
+      continue
+    }
     const full = path.join(dir, ent.name)
     if (ent.isDirectory()) {
-      walkLrcDir(full, files)
+      walkLrcDir(full, files, pathFilterRules)
     } else if (ent.isFile() && /\.lrc$/i.test(ent.name)) {
       files.push(full)
     }
@@ -182,7 +192,10 @@ function walkLrcDir(dir: string, files: string[]): void {
 }
 
 /** 从 LRC 源目录递归收集 .lrc，建立歌名 -> 路径列表索引 */
-function buildLrcSourceIndex(lrcDirs: string[]): Map<string, string[]> {
+function buildLrcSourceIndex(
+  lrcDirs: string[],
+  pathFilterRules: PathFilterRule[]
+): Map<string, string[]> {
   const index = new Map<string, string[]>()
 
   for (const lrcDir of lrcDirs) {
@@ -190,7 +203,7 @@ function buildLrcSourceIndex(lrcDirs: string[]): Map<string, string[]> {
       throw new Error(`LRC 目录不存在: ${lrcDir}`)
     }
     const files: string[] = []
-    walkLrcDir(path.resolve(lrcDir), files)
+    walkLrcDir(path.resolve(lrcDir), files, pathFilterRules)
     for (const lrcPath of files) {
       const key = normName(path.parse(path.basename(lrcPath)).name)
       const list = index.get(key) ?? []
@@ -206,7 +219,8 @@ function buildLrcSourceIndex(lrcDirs: string[]): Map<string, string[]> {
 function collectAllAudioPaths(
   searchRoots: string[],
   lrcDirs: string[],
-  extensions: Set<string>
+  extensions: Set<string>,
+  pathFilterRules: PathFilterRule[]
 ): string[] {
   const paths: string[] = []
   const lrcResolved = lrcDirs.map((d) => path.resolve(d))
@@ -225,6 +239,9 @@ function collectAllAudioPaths(
     }
 
     for (const ent of entries) {
+      if (shouldFilterEntry(ent.name, ent.isDirectory(), pathFilterRules)) {
+        continue
+      }
       const full = path.join(current, ent.name)
       const fullResolved = path.resolve(full)
       if (ent.isDirectory()) {
@@ -258,7 +275,8 @@ function collectAllAudioPaths(
 function collectOrphanLrcInTargets(
   searchRoots: string[],
   lrcDirs: string[],
-  extensions: Set<string>
+  extensions: Set<string>,
+  pathFilterRules: PathFilterRule[]
 ): OrphanLrcItem[] {
   const lrcResolved = lrcDirs.map((d) => path.resolve(d))
   const orphans: OrphanLrcItem[] = []
@@ -279,6 +297,7 @@ function collectOrphanLrcInTargets(
 
     for (const ent of entries) {
       if (!ent.isFile()) continue
+      if (shouldFilterEntry(ent.name, false, pathFilterRules)) continue
       const full = path.join(dir, ent.name)
       const key = normName(path.parse(ent.name).name)
       const ext = path.extname(ent.name).slice(1).toLowerCase()
@@ -319,6 +338,7 @@ function collectOrphanLrcInTargets(
 
     for (const ent of entries) {
       if (!ent.isDirectory()) continue
+      if (shouldFilterEntry(ent.name, true, pathFilterRules)) continue
       const full = path.join(current, ent.name)
       const fullResolved = path.resolve(full)
       if (
@@ -380,19 +400,27 @@ function bumpStat(stats: JobStats, status: AudioItemStatus): void {
  * 以目标文件夹内全部音频为主构建匹配结果；可选执行复制。
  */
 export function runJob(params: RunJobParams): JobResult {
-  const { lrcDirs, searchRoots, execute, sourceOverrides, preferredSourceDir } =
-    params
+  const {
+    lrcDirs,
+    searchRoots,
+    execute,
+    sourceOverrides,
+    preferredSourceDir,
+    pathFilterRules
+  } = params
   const selection: SourceSelection = { sourceOverrides, preferredSourceDir }
-  const lrcSourceIndex = buildLrcSourceIndex(lrcDirs)
+  const lrcSourceIndex = buildLrcSourceIndex(lrcDirs, pathFilterRules)
   const audioPaths = collectAllAudioPaths(
     searchRoots,
     lrcDirs,
-    AUDIO_EXTENSIONS
+    AUDIO_EXTENSIONS,
+    pathFilterRules
   )
   const orphanLrcItems = collectOrphanLrcInTargets(
     searchRoots,
     lrcDirs,
-    AUDIO_EXTENSIONS
+    AUDIO_EXTENSIONS,
+    pathFilterRules
   )
 
   const stats = emptyStats()

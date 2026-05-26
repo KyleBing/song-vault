@@ -6,6 +6,11 @@ import {
   type SourceSelection
 } from '@shared/sourcePick'
 
+/**
+ * 根据预览/执行结果推导侧边栏扫描提示的展示状态。
+ * @param result 当前任务结果（可为 null）
+ * @param sourceSelection 用户对多源歌词的选择状态
+ */
 export function useScanAlerts(
   result: Ref<JobResult | null>,
   sourceSelection: Ref<SourceSelection>

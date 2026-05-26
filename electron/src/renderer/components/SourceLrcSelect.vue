@@ -21,6 +21,7 @@ const options = computed(() =>
   }))
 )
 
+/** 下拉选定后向父组件上报源歌词路径 */
 function onChange(v: string | null): void {
   if (v) emit('pick', v)
 }

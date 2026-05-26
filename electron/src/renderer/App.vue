@@ -8,7 +8,14 @@ import {
   darkTheme,
   type GlobalThemeOverrides
 } from 'naive-ui'
-import { MusicalNotes, Play, Search, SettingsOutline } from '@vicons/ionicons5'
+import {
+  FolderOpen,
+  Key,
+  MusicalNotes,
+  Play,
+  Search,
+  SettingsOutline
+} from '@vicons/ionicons5'
 import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLayoutStore } from '@renderer/stores/layout'
@@ -18,7 +25,14 @@ import {
 } from '@renderer/lib/appConfigClient'
 import { useThemeStore } from '@renderer/stores/theme'
 import SettingsPanel from './components/SettingsPanel.vue'
-import { APP_CONFIG_VERSION, type AppConfig } from '@shared/appConfig'
+import MusicDecodePage from './components/MusicDecodePage.vue'
+import SourceFilesPage from './components/SourceFilesPage.vue'
+import {
+  APP_CONFIG_VERSION,
+  type AppConfig,
+  type PathFilterRule
+} from '@shared/appConfig'
+import { pathFilterRulesForSave } from '@shared/pathFilters'
 import type { JobResult } from '@shared/lrcJob'
 import {
   countReadyToCopy,
@@ -38,7 +52,10 @@ const naiveTheme = computed(() =>
 )
 
 const showSettings = ref(false)
+const showMusicDecode = ref(false)
+const showSourceFiles = ref(false)
 
+/** 窗口尺寸变化时更新布局 store */
 function onWindowResize(): void {
   layoutStore.updateInsets()
 }
@@ -59,6 +76,8 @@ const themeOverrides: GlobalThemeOverrides = {
 
 const lrcDirs = ref<string[]>([])
 const searchRoots = ref<string[]>([])
+const decodeSourceDirs = ref<string[]>([])
+const pathFilterRules = ref<PathFilterRule[]>([])
 /** 已完成启动配置加载，避免恢复时触发多余写入 */
 const configHydrated = ref(false)
 const loading = ref(false)
@@ -82,6 +101,7 @@ const showResults = computed(
   () => result.value !== null && !result.value.empty
 )
 
+/** 调用主进程 runJob：execute 为 false 时仅预览，为 true 时执行复制 */
 async function run(execute: boolean): Promise<void> {
   if (!canPreview.value) return
   loading.value = true
@@ -91,7 +111,8 @@ async function run(execute: boolean): Promise<void> {
       searchRoots: [...toRaw(searchRoots.value)],
       execute,
       sourceOverrides: { ...sourceSelection.value.sourceOverrides },
-      preferredSourceDir: sourceSelection.value.preferredSourceDir
+      preferredSourceDir: sourceSelection.value.preferredSourceDir,
+      pathFilterRules: pathFilterRulesForSave(pathFilterRules.value)
     })
     result.value = jobResult
     if (!execute) {
@@ -105,25 +126,31 @@ async function run(execute: boolean): Promise<void> {
   }
 }
 
+/** 重置源歌词选择并运行预览扫描 */
 function preview(): void {
   sourceSelection.value = { sourceOverrides: {} }
   selectedOrphanKeys.value = []
   void run(false)
 }
 
+/** 执行批量歌词复制 */
 function executeCopy(): void {
   void run(true)
 }
 
+/** 组装当前界面状态对应的持久化配置对象 */
 function buildAppConfig(): AppConfig {
   return {
     version: APP_CONFIG_VERSION,
     searchRoots: [...searchRoots.value],
     lrcDirs: [...lrcDirs.value],
-    appearance: appearance.value
+    decodeSourceDirs: [...decodeSourceDirs.value],
+    appearance: appearance.value,
+    pathFilterRules: pathFilterRulesForSave(pathFilterRules.value)
   }
 }
 
+/** 将目录与过滤规则等写入磁盘（hydrate 完成前跳过） */
 async function persistFolderConfig(): Promise<void> {
   if (!configHydrated.value) return
   try {
@@ -141,6 +168,8 @@ onMounted(async () => {
     const config = await loadAppConfigOnce()
     searchRoots.value = [...config.searchRoots]
     lrcDirs.value = [...config.lrcDirs]
+    decodeSourceDirs.value = [...config.decodeSourceDirs]
+    pathFilterRules.value = [...config.pathFilterRules]
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -152,9 +181,11 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)
 })
 
-watch([searchRoots, lrcDirs, appearance], () => void persistFolderConfig(), {
-  deep: true
-})
+watch(
+  [searchRoots, lrcDirs, decodeSourceDirs, pathFilterRules, appearance],
+  () => void persistFolderConfig(),
+  { deep: true }
+)
 </script>
 
 <template>
@@ -166,8 +197,23 @@ watch([searchRoots, lrcDirs, appearance], () => void persistFolderConfig(), {
       <div class="app-shell">
         <SettingsPanel
           v-if="showSettings"
+          v-model:path-filter-rules="pathFilterRules"
           class="settings-layer"
           @close="showSettings = false"
+        />
+        <SourceFilesPage
+          v-else-if="showSourceFiles"
+          v-model:search-roots="searchRoots"
+          :path-filter-rules="pathFilterRules"
+          class="settings-layer"
+          @close="showSourceFiles = false"
+        />
+        <MusicDecodePage
+          v-else-if="showMusicDecode"
+          v-model:decode-source-dirs="decodeSourceDirs"
+          :path-filter-rules="pathFilterRules"
+          class="settings-layer"
+          @close="showMusicDecode = false"
         />
         <div v-else class="workspace">
           <aside class="sidebar">
@@ -230,6 +276,30 @@ watch([searchRoots, lrcDirs, appearance], () => void persistFolderConfig(), {
             </div>
 
             <div class="sidebar-foot">
+              <NButton
+                quaternary
+                block
+                size="small"
+                class="settings-btn"
+                @click="showSourceFiles = true"
+              >
+                <template #icon>
+                  <NIcon><FolderOpen /></NIcon>
+                </template>
+                搜索目标管理
+              </NButton>
+              <NButton
+                quaternary
+                block
+                size="small"
+                class="settings-btn"
+                @click="showMusicDecode = true"
+              >
+                <template #icon>
+                  <NIcon><Key /></NIcon>
+                </template>
+                音乐解码
+              </NButton>
               <NButton
                 quaternary
                 block

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 
+/** 窗口可视区域尺寸，供表格 maxHeight 等布局计算 */
 export interface WindowInsets {
   windowHeight: number
   windowWidth: number
@@ -14,6 +15,7 @@ export const useLayoutStore = defineStore('layout', {
     } satisfies WindowInsets
   }),
   actions: {
+    /** 读取 window.innerHeight/innerWidth 更新布局尺寸 */
     updateInsets(): void {
       this.insets.windowHeight = window.innerHeight
       this.insets.windowWidth = window.innerWidth
