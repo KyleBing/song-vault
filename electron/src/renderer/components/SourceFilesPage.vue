@@ -11,11 +11,14 @@ import {
   NTree,
   useMessage,
   type DataTableColumns,
+  type TagProps,
   type TreeOption
 } from 'naive-ui'
 import {
   Add,
   ArrowBack,
+  ArrowDown,
+  ArrowUp,
   CreateOutline,
   FolderOpen,
   Refresh,
@@ -43,7 +46,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 100)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 165)
 
 const treeData = ref<TreeOption[]>([])
 const selectedKeys = ref<string[]>([])
@@ -53,6 +56,19 @@ const selectedFileKeys = ref<string[]>([])
 const filesLoading = ref(false)
 const treeRevision = ref(0)
 const deletingFiles = ref(false)
+
+type FileSortKey = 'fileName' | 'ext' | 'mtimeMs' | 'sizeBytes'
+type FileSortOrder = 'asc' | 'desc'
+
+const sortKey = ref<FileSortKey>('fileName')
+const sortOrder = ref<FileSortOrder>('asc')
+
+const sortKeyOptions: { label: string; value: FileSortKey }[] = [
+  { label: '文件名', value: 'fileName' },
+  { label: '文件格式', value: 'ext' },
+  { label: '修改时间', value: 'mtimeMs' },
+  { label: '文件大小', value: 'sizeBytes' }
+]
 
 const browseRoots = computed(() => [...searchRoots.value])
 const filtersForApi = computed(() =>
@@ -140,16 +156,36 @@ async function onLoadTreeNode(node: TreeOption): Promise<void> {
   }))
 }
 
+/** 将 IPC 返回值规范为有限数字（避免 undefined / BigInt 导致 NaN） */
+function toFiniteNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'bigint') return Number(value)
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value)
+    if (Number.isFinite(n)) return n
+  }
+  return 0
+}
+
+function normalizeAudioFileItem(item: DirAudioFileItem): DirAudioFileItem {
+  return {
+    ...item,
+    sizeBytes: toFiniteNumber(item.sizeBytes),
+    mtimeMs: toFiniteNumber(item.mtimeMs)
+  }
+}
+
 /** 加载选中目录下的音频文件列表 */
 async function loadAudioFiles(dirPath: string): Promise<void> {
   filesLoading.value = true
   selectedFileKeys.value = []
   try {
-    audioFiles.value = await window.electronAPI.listDirAudioFiles({
+    const items = await window.electronAPI.listDirAudioFiles({
       dirPath,
       browseRoots: browseRoots.value,
       pathFilterRules: filtersForApi.value
     })
+    audioFiles.value = items.map(normalizeAudioFileItem)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     message.error(`加载文件列表失败: ${msg}`)
@@ -210,6 +246,68 @@ function fileRowKey(row: DirAudioFileItem): string {
   return row.filePath
 }
 
+const EXT_TAG_TYPE: Record<string, TagProps['type']> = {
+  mp3: 'info',
+  flac: 'success',
+  m4a: 'warning',
+  aac: 'error',
+  ogg: 'default',
+  opus: 'default'
+}
+
+/** 音频扩展名标签（mp3 / flac 等区分颜色） */
+function extCell(row: DirAudioFileItem) {
+  const tagType = EXT_TAG_TYPE[row.ext] ?? 'default'
+  return h(
+    NTag,
+    { type: tagType, size: 'small', round: true, bordered: false },
+    () => row.ext.toUpperCase()
+  )
+}
+
+/** 以 MB 显示文件大小 */
+function formatSizeMb(bytes: unknown): string {
+  const n = toFiniteNumber(bytes)
+  if (n <= 0) return '—'
+  const mb = n / (1024 * 1024)
+  return `${mb.toFixed(2)} MB`
+}
+
+const sortedAudioFiles = computed(() => {
+  const list = [...audioFiles.value]
+  const sign = sortOrder.value === 'asc' ? 1 : -1
+  list.sort((a, b) => {
+    let cmp = 0
+    switch (sortKey.value) {
+      case 'ext': {
+        cmp = a.ext.localeCompare(b.ext, undefined, { sensitivity: 'base' })
+        if (cmp === 0) {
+          cmp = a.fileName.localeCompare(b.fileName, undefined, {
+            sensitivity: 'base'
+          })
+        }
+        break
+      }
+      case 'mtimeMs':
+        cmp = a.mtimeMs - b.mtimeMs
+        break
+      case 'sizeBytes':
+        cmp = a.sizeBytes - b.sizeBytes
+        break
+      default:
+        cmp = a.fileName.localeCompare(b.fileName, undefined, {
+          sensitivity: 'base'
+        })
+    }
+    return cmp * sign
+  })
+  return list
+})
+
+function toggleSortOrder(): void {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+}
+
 const columns = computed<DataTableColumns<DirAudioFileItem>>(() => [
   { type: 'selection' },
   {
@@ -224,9 +322,18 @@ const columns = computed<DataTableColumns<DirAudioFileItem>>(() => [
   {
     title: '格式',
     key: 'ext',
-    width: 72,
+    width: 80,
     render(row) {
-      return `.${row.ext}`
+      return extCell(row)
+    }
+  },
+  {
+    title: '大小',
+    key: 'fileSize',
+    width: 96,
+    align: 'right',
+    render(row) {
+      return h('span', { class: 'size-cell' }, formatSizeMb(row.sizeBytes))
     }
   },
   {
@@ -265,21 +372,6 @@ watch(
     }
   }
 )
-
-/** 通过系统对话框添加新的搜索目标根目录 */
-async function addRoot(): Promise<void> {
-  const picked = await window.electronAPI.pickDirectory()
-  if (!picked) return
-  if (searchRoots.value.includes(picked)) {
-    message.warning('该目录已在搜索目标中')
-    return
-  }
-  searchRoots.value = [...searchRoots.value, picked]
-  rebuildTree()
-  selectedKeys.value = [picked]
-  selectedDir.value = picked
-  void loadAudioFiles(picked)
-}
 
 /** 弹出输入框获取文件夹名称 */
 function promptName(title: string, defaultValue = ''): string | null {
@@ -412,7 +504,6 @@ onMounted(() => {
       </NButton>
       <div class="header-text">
         <h1>搜索目标管理</h1>
-        <p>管理音频搜索目标内的文件夹与音频文件</p>
       </div>
       <NButton quaternary size="small" @click="refreshAll">
         <template #icon>
@@ -427,16 +518,6 @@ onMounted(() => {
         <div class="pane-head">
           <span>目录</span>
           <div class="head-actions">
-            <NTooltip>
-              <template #trigger>
-                <NButton quaternary size="tiny" @click="addRoot">
-                  <template #icon>
-                    <NIcon :size="16"><Add /></NIcon>
-                  </template>
-                </NButton>
-              </template>
-              添加搜索目标根目录
-            </NTooltip>
             <NTooltip>
               <template #trigger>
                 <NButton
@@ -486,7 +567,7 @@ onMounted(() => {
           <NEmpty
             v-if="!searchRoots.length"
             size="small"
-            description="点击 + 添加搜索目标根目录"
+            description="请先在主界面左侧添加音频搜索目标"
             class="tree-empty"
           />
           <NTree
@@ -506,7 +587,40 @@ onMounted(() => {
         <div class="pane-head">
           <span v-if="selectedDir">当前：{{ selectedDirLabel }}</span>
           <span v-else class="pane-head-muted">请选择左侧目录</span>
-          <div class="head-actions">
+          <div class="head-actions files-head-actions">
+            <template v-if="selectedDir">
+              <div class="sort-tabs" role="group" aria-label="排序方式">
+                <NButton
+                  v-for="opt in sortKeyOptions"
+                  :key="opt.value"
+                  size="small"
+                  :type="sortKey === opt.value ? 'primary' : 'default'"
+                  :secondary="sortKey !== opt.value"
+                  @click="sortKey = opt.value"
+                >
+                  {{ opt.label }}
+                </NButton>
+              </div>
+              <NTooltip>
+                <template #trigger>
+                  <NButton
+                    quaternary
+                    size="small"
+                    class="sort-order-btn"
+                    @click="toggleSortOrder"
+                  >
+                    <template #icon>
+                      <NIcon :size="16">
+                        <ArrowUp v-if="sortOrder === 'asc'" />
+                        <ArrowDown v-else />
+                      </NIcon>
+                    </template>
+                    {{ sortOrder === 'asc' ? '升序' : '降序' }}
+                  </NButton>
+                </template>
+                切换升序 / 降序
+              </NTooltip>
+            </template>
             <NPopconfirm
               :disabled="!selectedFileKeys.length"
               @positive-click="deleteSelectedFiles"
@@ -535,7 +649,7 @@ onMounted(() => {
             v-if="selectedDir"
             v-model:checked-row-keys="selectedFileKeys"
             :columns="columns"
-            :data="audioFiles"
+            :data="sortedAudioFiles"
             :row-key="fileRowKey"
             :max-height="maxHeightForTable"
             size="small"
@@ -684,5 +798,34 @@ onMounted(() => {
 .path-cell {
   font-family: $font-mono;
   font-size: 12px;
+}
+
+.size-cell {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.files-head-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sort-tabs {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid $border-subtle;
+  border-radius: $radius-icon;
+  overflow: hidden;
+
+  :deep(.n-button) {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+
+    &:not(:last-child) {
+      border-right: 1px solid $border-subtle;
+    }
+  }
 }
 </style>

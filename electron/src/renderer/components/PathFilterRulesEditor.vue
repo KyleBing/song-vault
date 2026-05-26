@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   NButton,
+  NCheckbox,
   NIcon,
   NInput,
   NSelect,
@@ -58,7 +59,7 @@ function onPatternInput(index: number, value: string): void {
 <template>
   <div class="filter-rules">
     <NText depth="3" class="filter-hint">
-      纯文本匹配，不区分大小写。扫描、浏览时跳过命中的文件或文件夹（不进入被过滤的文件夹）。
+      纯文本匹配。扫描、浏览时跳过命中的文件或文件夹（不进入被过滤的文件夹）。每条规则可单独设置是否区分大小写，默认区分。
     </NText>
 
     <ul v-if="rules.length" class="rule-list">
@@ -84,6 +85,14 @@ function onPatternInput(index: number, value: string): void {
           class="rule-pattern"
           @update:value="(v) => onPatternInput(index, v)"
         />
+        <NCheckbox
+          :checked="rule.caseSensitive"
+          size="small"
+          class="rule-case"
+          @update:checked="(v) => updateRule(index, 'caseSensitive', v)"
+        >
+          区分大小写
+        </NCheckbox>
         <NButton
           quaternary
           circle
@@ -154,6 +163,11 @@ function onPatternInput(index: number, value: string): void {
 .rule-pattern {
   flex: 1;
   min-width: 120px;
+}
+
+.rule-case {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .rule-remove {

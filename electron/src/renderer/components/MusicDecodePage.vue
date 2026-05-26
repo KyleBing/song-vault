@@ -6,7 +6,6 @@ import {
 } from 'naive-ui'
 import { ArrowBack, Key, Search } from '@vicons/ionicons5'
 import { computed, ref, toRaw } from 'vue'
-import FolderPanel from './FolderPanel.vue'
 import MusicDecodeResultsPanel from './MusicDecodeResultsPanel.vue'
 import type { PathFilterRule } from '@shared/appConfig'
 import type { MusicScanResult } from '@shared/musicScanJob'
@@ -73,12 +72,9 @@ async function scan(): Promise<void> {
         </header>
 
         <div class="sidebar-scroll">
-          <FolderPanel
-            v-model="decodeSourceDirs"
-            title="待解码源目录"
-            hint="递归扫描 .ncm、.qmc*、.mflac 等"
-            empty-text="添加源文件夹"
-          />
+          <p v-if="!decodeSourceDirs.length" class="decode-hint">
+            请先在「设置」中添加加密音乐源目录
+          </p>
 
           <section class="toolbar">
             <NButton
@@ -117,7 +113,7 @@ async function scan(): Promise<void> {
           <div v-else class="pane-placeholder">
             <p class="placeholder-title">扫描结果</p>
             <p class="placeholder-desc">
-              添加待解码源目录后，点击「扫描文件」查看列表
+              在设置中配置加密音乐源目录后，点击「扫描文件」查看列表
             </p>
           </div>
         </NSpin>
@@ -207,6 +203,17 @@ async function scan(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.decode-hint {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-radius: $radius-icon;
+  border: 1px dashed $border-subtle;
+  background: var(--app-surface-raised);
+  opacity: 0.75;
 }
 
 .toolbar {

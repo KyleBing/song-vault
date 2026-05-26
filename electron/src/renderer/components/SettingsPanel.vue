@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import { NButton, NCard, NIcon, NRadio, NRadioGroup, NText } from 'naive-ui'
+import { NButton, NCard, NIcon, NRadio, NRadioGroup, NText, useMessage } from 'naive-ui'
 import { ArrowBack, ColorPaletteOutline, FilterOutline } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
+import { onMounted, ref } from 'vue'
 import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
+import { APP_CONFIG_FILE_NAME } from '@shared/appConfig'
 import { useThemeStore } from '@renderer/stores/theme'
+import FolderPanel from './FolderPanel.vue'
 import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
 
+const message = useMessage()
+const configFilePath = ref('')
+
 const pathFilterRules = defineModel<PathFilterRule[]>('pathFilterRules', {
+  required: true
+})
+
+const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
   required: true
 })
 
@@ -26,6 +36,26 @@ const appearanceOptions: { value: AppAppearance; label: string; desc: string }[]
 /** 设置页切换主题时委托给 theme store */
 function onAppearanceChange(value: AppAppearance): void {
   themeStore.setAppearance(value)
+}
+
+onMounted(async () => {
+  try {
+    const { filePath } = await window.electronAPI.loadAppConfig()
+    configFilePath.value = filePath
+  } catch {
+    /* 仅影响页脚展示 */
+  }
+})
+
+/** 在资源管理器中打开配置文件所在目录并选中该文件 */
+async function revealConfigFile(): Promise<void> {
+  try {
+    const { filePath } = await window.electronAPI.revealAppConfigInFolder()
+    configFilePath.value = filePath
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    message.error(msg)
+  }
 }
 </script>
 
@@ -76,6 +106,14 @@ function onAppearanceChange(value: AppAppearance): void {
         </NRadioGroup>
       </NCard>
 
+      <FolderPanel
+        v-model="decodeSourceDirs"
+        class="settings-folder-panel"
+        title="加密音乐源目录"
+        hint="存放 .ncm、.qmc*、.mflac 等待解码文件，供音乐解码使用"
+        empty-text="添加加密音乐所在文件夹"
+      />
+
       <NCard class="settings-card" :bordered="false" size="small">
         <template #header>
           <div class="card-header">
@@ -88,6 +126,22 @@ function onAppearanceChange(value: AppAppearance): void {
 
         <PathFilterRulesEditor v-model:rules="pathFilterRules" />
       </NCard>
+
+      <footer class="settings-footer">
+        <NText depth="3" class="config-file-line">
+          配置文件
+          <button
+            type="button"
+            class="config-file-link"
+            :title="configFilePath || undefined"
+            @click="revealConfigFile"
+          >
+            {{ APP_CONFIG_FILE_NAME }}
+          </button>
+          <span class="config-file-sep">·</span>
+          点击在资源管理器中打开并选中；修改后请重启应用以加载
+        </NText>
+      </footer>
     </div>
   </div>
 </template>
@@ -127,14 +181,18 @@ function onAppearanceChange(value: AppAppearance): void {
   max-width: 640px;
 }
 
-.settings-card {
+.settings-card,
+.settings-folder-panel {
   background: $surface-panel;
   border: 1px solid $border-subtle;
   border-radius: $radius-panel;
+}
 
-  & + & {
-    margin-top: 16px;
-  }
+.settings-card + .settings-card,
+.settings-card + .settings-folder-panel,
+.settings-folder-panel + .settings-card,
+.settings-folder-panel + .settings-folder-panel {
+  margin-top: 16px;
 }
 
 .card-header {
@@ -210,5 +268,39 @@ function onAppearanceChange(value: AppAppearance): void {
   &--light {
     background: linear-gradient(135deg, #ffffff 50%, #e8eaed 50%);
   }
+}
+
+.settings-footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid $border-subtle;
+}
+
+.config-file-line {
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.config-file-link {
+  margin: 0 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  color: $color-primary;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.85;
+  }
+}
+
+.config-file-sep {
+  margin: 0 4px;
+  opacity: 0.5;
 }
 </style>

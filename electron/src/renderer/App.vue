@@ -198,6 +198,7 @@ watch(
         <SettingsPanel
           v-if="showSettings"
           v-model:path-filter-rules="pathFilterRules"
+          v-model:decode-source-dirs="decodeSourceDirs"
           class="settings-layer"
           @close="showSettings = false"
         />

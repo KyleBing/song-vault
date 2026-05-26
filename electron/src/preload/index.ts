@@ -129,7 +129,10 @@ const api = {
       toIpcPlain(config)
     )
     return toIpcPlain(result)
-  }
+  },
+
+  revealAppConfigInFolder: (): Promise<{ filePath: string }> =>
+    ipcRenderer.invoke('reveal-app-config-in-folder').then((result) => toIpcPlain(result))
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

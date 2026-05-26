@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import {
@@ -29,4 +29,14 @@ export function saveAppConfig(config: AppConfig): void {
   const filePath = getAppConfigPath()
   const normalized = normalizeAppConfig(config)
   fs.writeFileSync(filePath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
+}
+
+/** 确保配置文件存在，并在资源管理器中打开所在目录并选中该文件 */
+export function revealAppConfigInFolder(): { filePath: string } {
+  const filePath = getAppConfigPath()
+  if (!fs.existsSync(filePath)) {
+    saveAppConfig(createDefaultAppConfig())
+  }
+  shell.showItemInFolder(filePath)
+  return { filePath }
 }

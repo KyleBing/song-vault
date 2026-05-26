@@ -10,8 +10,10 @@ export interface PathFilterRule {
   id: string
   target: PathFilterTarget
   match: PathFilterMatch
-  /** 纯文本，大小写不敏感（前缀/后缀/包含/相等） */
+  /** 纯文本匹配内容 */
   pattern: string
+  /** 是否区分大小写，默认 true */
+  caseSensitive: boolean
 }
 
 export const PATH_FILTER_TARGET_LABELS: Record<PathFilterTarget, string> = {
@@ -38,30 +40,44 @@ const MATCHES: readonly PathFilterMatch[] = [
 export function createDefaultPathFilterRules(): PathFilterRule[] {
   return [
     {
-      id: 'default-prefix-dot-underscore',
+      id: 'default-prefix-dot-file',
       target: 'both',
       match: 'prefix',
-      pattern: '._'
+      pattern: '.',
+      caseSensitive: true
     },
-    {
-      id: 'default-prefix-dot-file',
-      target: 'file',
-      match: 'prefix',
-      pattern: '.'
-    }
+    // 乐图系统文件夹名称
+    ...(LOTOO_SYSTEM_FOLDER_NAMES.map((name) => ({
+      id: `default-equals-${name}`,
+      target: 'folder' as const,
+      match: 'equals' as const,
+      pattern: name,
+      caseSensitive: true
+    })) satisfies PathFilterRule[]),
   ]
 }
 
+/** 乐图系统文件夹名称 */
+const LOTOO_SYSTEM_FOLDER_NAMES = [
+  "SYSTEM",
+  "MEDIA_SYSTEM",
+  "UPGRADE",
+  "PLAYLIST",
+]
+
+/** 新规则 ID */
 function newRuleId(): string {
   return `rule_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
 
+/** 创建空规则 */
 export function createEmptyPathFilterRule(): PathFilterRule {
   return {
     id: newRuleId(),
     target: 'both',
     match: 'prefix',
-    pattern: ''
+    pattern: '',
+    caseSensitive: true
   }
 }
 
@@ -93,12 +109,14 @@ export function normalizePathFilterRules(raw: unknown): PathFilterRule[] {
 
     const target = isPathFilterTarget(obj.target) ? obj.target : 'both'
     const match = isPathFilterMatch(obj.match) ? obj.match : 'prefix'
+    const caseSensitive =
+      typeof obj.caseSensitive === 'boolean' ? obj.caseSensitive : true
 
     let id = typeof obj.id === 'string' ? obj.id.trim() : ''
     if (!id || seenIds.has(id)) id = newRuleId()
     seenIds.add(id)
 
-    out.push({ id, target, match, pattern })
+    out.push({ id, target, match, pattern, caseSensitive })
   }
 
   return out
@@ -115,20 +133,17 @@ function matchesRule(
   if (rule.target === 'file' && isDirectory) return false
   if (rule.target === 'folder' && !isDirectory) return false
 
-  const n = name
-  const p = pattern
-  const nl = n.toLowerCase()
-  const pl = p.toLowerCase()
-
+  const n = rule.caseSensitive ? name : name.toLowerCase()
+  const p = rule.caseSensitive ? pattern : pattern.toLowerCase()
   switch (rule.match) {
     case 'prefix':
-      return nl.startsWith(pl)
+      return n.startsWith(p)
     case 'suffix':
-      return nl.endsWith(pl)
+      return n.endsWith(p)
     case 'equals':
-      return nl === pl
+      return n === p
     case 'contains':
-      return nl.includes(pl)
+      return n.includes(p)
     default:
       return false
   }
@@ -152,6 +167,7 @@ export function pathFilterRulesForSave(rules: PathFilterRule[]): PathFilterRule[
       id: String(r.id),
       target: r.target,
       match: r.match,
-      pattern: r.pattern.trim()
+      pattern: r.pattern.trim(),
+      caseSensitive: r.caseSensitive !== false
     }))
 }

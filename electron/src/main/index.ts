@@ -27,7 +27,12 @@ import {
   type ListSourceDirChildrenParams
 } from '../shared/sourceDirBrowse'
 import { toIpcPlain } from '../shared/serialize'
-import { getAppConfigPath, loadAppConfig, saveAppConfig } from './appConfigStore'
+import {
+  getAppConfigPath,
+  loadAppConfig,
+  revealAppConfigInFolder,
+  saveAppConfig
+} from './appConfigStore'
 import type { AppConfig } from '../shared/appConfig'
 
 /** 是否为开发模式（未打包） */
@@ -46,7 +51,8 @@ const IPC_CHANNELS = [
   'delete-orphan-lrc',
   'copy-lrc-to-audio',
   'load-app-config',
-  'save-app-config'
+  'save-app-config',
+  'reveal-app-config-in-folder'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -123,6 +129,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('save-app-config', (_, config: AppConfig) => {
     saveAppConfig(toIpcPlain(config))
     return toIpcPlain({ filePath: getAppConfigPath() })
+  })
+
+  ipcMain.handle('reveal-app-config-in-folder', () => {
+    return toIpcPlain(revealAppConfigInFolder())
   })
 }
 

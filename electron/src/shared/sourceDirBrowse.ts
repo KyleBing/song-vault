@@ -18,6 +18,10 @@ export interface DirAudioFileItem {
   filePath: string
   fileName: string
   ext: string
+  /** 文件大小（字节） */
+  sizeBytes: number
+  /** 最后修改时间（毫秒时间戳） */
+  mtimeMs: number
   hasLrc: boolean
   lrcPath?: string
 }
@@ -193,19 +197,31 @@ export function listDirAudioFiles(
     const baseName = path.parse(ent.name).name
     const key = normName(baseName)
     const lrcPath = lrcByBase.get(key)
+    const full = path.join(dirPath, ent.name)
+    let sizeBytes = 0
+    let mtimeMs = 0
+    try {
+      const stat = fs.statSync(full)
+      sizeBytes = Number(stat.size)
+      mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
+      if (!Number.isFinite(sizeBytes)) sizeBytes = 0
+      if (!Number.isFinite(mtimeMs)) mtimeMs = 0
+    } catch {
+      /* 无法 stat 时保留 0 */
+    }
 
     items.push({
-      filePath: path.join(dirPath, ent.name),
+      filePath: full,
       fileName: ent.name,
       ext,
+      sizeBytes,
+      mtimeMs,
       hasLrc: lrcByBase.has(key),
       lrcPath
     })
   }
 
-  return items.sort((a, b) =>
-    a.fileName.localeCompare(b.fileName, undefined, { sensitivity: 'base' })
-  )
+  return items
 }
 
 export function browseCreateDir(params: BrowseCreateDirParams): { path: string } {
