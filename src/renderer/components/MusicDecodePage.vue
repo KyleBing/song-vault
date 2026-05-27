@@ -23,6 +23,7 @@ import {
   Key,
   Play,
   Refresh,
+  SearchOutline,
   TrashOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
@@ -47,6 +48,7 @@ import {
   type DirFileSortKey,
   type DirFileSortOrder
 } from '@renderer/composables/dirFileTable'
+import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { wrapAudioMetaHover } from '@renderer/utils/audioMetaHoverCell'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
@@ -122,6 +124,8 @@ const {
   onTableMouseDown,
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
+
+const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
 const sortKey = ref<DirFileSortKey>('fileName')
 const sortOrder = ref<DirFileSortOrder>('asc')
@@ -351,7 +355,11 @@ function fileRowKey(row: DirAudioFileItem): string {
 }
 
 const sortedDirFiles = computed(() =>
-  sortDirAudioFiles(dirFiles.value, sortKey.value, sortOrder.value)
+  sortDirAudioFiles(
+    filterByFileName(dirFiles.value),
+    sortKey.value,
+    sortOrder.value
+  )
 )
 
 const orderedFileKeys = computed(() =>
@@ -888,9 +896,25 @@ onMounted(() => {
 
           <div class="files-pane">
             <div class="pane-toolbar">
-              <span class="pane-title">
-                {{ selectedDir ? shortPath(selectedDir) : '加密文件' }}
-              </span>
+              <div class="pane-toolbar-leading">
+                <span class="pane-title">
+                  {{ selectedDir ? shortPath(selectedDir) : '加密文件' }}
+                </span>
+                <NInput
+                  v-model:value="fileNameFilter"
+                  class="file-name-filter"
+                  size="small"
+                  clearable
+                  placeholder="搜索文件名"
+                  :disabled="!selectedDir"
+                >
+                  <template #prefix>
+                    <NIcon :size="14" class="filter-prefix-icon">
+                      <SearchOutline />
+                    </NIcon>
+                  </template>
+                </NInput>
+              </div>
               <div class="pane-actions files-head-actions">
                 <NButton
                   size="small"
@@ -927,7 +951,7 @@ onMounted(() => {
             </div>
             <NSpin :show="filesLoading" class="files-spin">
               <div
-                v-if="selectedDir && dirFiles.length"
+                v-if="selectedDir && sortedDirFiles.length"
                 class="files-table-wrap"
                 @mousedown.capture="onTableMouseDown"
               >
@@ -945,7 +969,19 @@ onMounted(() => {
                 />
               </div>
               <div v-else class="files-empty">
-                <p v-if="selectedDir && !filesLoading">当前目录没有可解密的文件</p>
+                <p
+                  v-if="
+                    selectedDir &&
+                    !filesLoading &&
+                    dirFiles.length > 0 &&
+                    sortedDirFiles.length === 0
+                  "
+                >
+                  没有匹配「{{ fileNameFilter.trim() }}」的文件
+                </p>
+                <p v-else-if="selectedDir && !filesLoading">
+                  当前目录没有可解密的文件
+                </p>
                 <p v-else-if="!selectedDir">选择左侧目录查看加密音乐</p>
               </div>
             </NSpin>
@@ -1214,6 +1250,24 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 10px;
   flex-shrink: 0;
+}
+
+.pane-toolbar-leading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-name-filter {
+  flex: 1;
+  min-width: 120px;
+  max-width: 240px;
+}
+
+.filter-prefix-icon {
+  opacity: 0.45;
 }
 
 .pane-toolbar-actions {
