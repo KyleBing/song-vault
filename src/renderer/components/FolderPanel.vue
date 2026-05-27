@@ -14,14 +14,23 @@ import { Add, Close, FolderOpen } from '@vicons/ionicons5'
 /** 父组件绑定的文件夹路径列表 */
 const paths = defineModel<string[]>({ required: true })
 
-defineProps<{
-  /** 面板标题 */
-  title: string
-  /** 副标题说明 */
-  hint: string
-  /** 列表为空时的提示 */
-  emptyText?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 面板标题（hideHeader 为 true 时可省略） */
+    title?: string
+    /** 副标题说明（hideHeader 为 true 时可由父级展示） */
+    hint?: string
+    /** 列表为空时的提示 */
+    emptyText?: string
+    /** 标题与说明由父级放在卡片外时设为 true */
+    hideHeader?: boolean
+  }>(),
+  {
+    title: '',
+    hint: '',
+    hideHeader: false
+  }
+)
 
 /** 通过系统对话框添加文件夹，自动去重 */
 async function addFolder(): Promise<void> {
@@ -39,21 +48,12 @@ function removeAt(index: number): void {
 
 <template>
   <NCard class="folder-panel" :bordered="false" size="small">
-    <template #header>
+    <template v-if="!props.hideHeader" #header>
       <div class="panel-header">
-        <span class="panel-title">{{ title }}</span>
-        <NText depth="3" class="panel-hint">{{ hint }}</NText>
+        <span class="panel-title">{{ props.title }}</span>
+        <NText v-if="props.hint" depth="3" class="panel-hint">{{ props.hint }}</NText>
       </div>
     </template>
-    <template #header-extra>
-      <NButton secondary type="primary" size="small" @click="addFolder">
-        <template #icon>
-          <NIcon><Add /></NIcon>
-        </template>
-        添加文件夹
-      </NButton>
-    </template>
-
     <NList v-if="paths.length" class="path-list" bordered>
       <NListItem size="small" v-for="(p, index) in paths" :key="p">
         <div class="path-row">
@@ -81,9 +81,16 @@ function removeAt(index: number): void {
     <NEmpty
       v-else
       size="small"
-      :description="emptyText ?? '点击右上角添加文件夹'"
+      :description="emptyText ?? '尚未添加文件夹'"
       class="panel-empty"
     />
+
+    <NButton secondary type="primary" size="small" class="add-folder-btn" @click="addFolder">
+      <template #icon>
+        <NIcon><Add /></NIcon>
+      </template>
+      添加文件夹
+    </NButton>
   </NCard>
 </template>
 
@@ -93,9 +100,20 @@ function removeAt(index: number): void {
 .folder-panel {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: $surface-panel;
   border: 1px solid $border-subtle;
   border-radius: $radius-panel;
+
+  :deep(.n-card__content) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .panel-header {
@@ -114,6 +132,9 @@ function removeAt(index: number): void {
 }
 
 .path-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   background: transparent;
 }
 
@@ -145,6 +166,17 @@ function removeAt(index: number): void {
 }
 
 .panel-empty {
+  flex: 1;
+  min-height: 48px;
   padding: 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-folder-btn {
+  flex-shrink: 0;
+  margin-top: 12px;
+  align-self: flex-start;
 }
 </style>

@@ -1,7 +1,9 @@
+import fs from 'fs'
 import path from 'path'
 import { parseFile, type IAudioMetadata } from 'music-metadata'
 import {
   emptyAudioFileMeta,
+  formatNativeTagValue,
   recordFromMetaObject,
   type AudioFileMetaInfo,
   type AudioNativeTagEntry
@@ -23,20 +25,24 @@ function nativeTagsFromMeta(meta: IAudioMetadata): AudioNativeTagEntry[] {
   if (!native) return out
   for (const [formatId, tags] of Object.entries(native)) {
     for (const tag of tags) {
+      const fullId = `${formatId}:${tag.id}`
       const value =
-        typeof tag.value === 'string'
-          ? tag.value.trim()
-          : tag.value === null || tag.value === undefined
-            ? ''
-            : String(tag.value)
+        formatNativeTagValue(fullId, tag.value) ??
+        formatNativeTagValue(tag.id, tag.value)
       if (!value) continue
-      out.push({
-        id: `${formatId}:${tag.id}`,
-        value
-      })
+      out.push({ id: fullId, value })
     }
   }
   return out
+}
+
+function readFileSizeBytes(filePath: string): number | undefined {
+  try {
+    const n = Number(fs.statSync(filePath).size)
+    return Number.isFinite(n) && n >= 0 ? n : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** 读取单个音频文件的完整标签与格式信息 */
@@ -45,13 +51,14 @@ export async function readAudioFileMeta(
 ): Promise<AudioFileMetaInfo> {
   const resolved = path.resolve(filePath)
   const ext = path.extname(resolved).slice(1).toLowerCase()
+  const fileSizeBytes = readFileSizeBytes(resolved)
 
   if (isDecryptableExtension(ext)) {
-    return emptyAudioFileMeta(resolved, '加密格式，需解密后才能查看标签')
+    return { ...emptyAudioFileMeta(resolved, '加密格式，需解密后才能查看标签'), fileSizeBytes }
   }
 
   if (!AUDIO_EXTENSIONS.has(ext)) {
-    return emptyAudioFileMeta(resolved, '非音频文件')
+    return { ...emptyAudioFileMeta(resolved, '非音频文件'), fileSizeBytes }
   }
 
   try {
@@ -62,6 +69,7 @@ export async function readAudioFileMeta(
     return {
       filePath: resolved,
       ok: true,
+      fileSizeBytes,
       coverDataUrl: coverDataUrlFromMeta(meta),
       common: recordFromMetaObject(
         meta.common as unknown as Record<string, unknown>
@@ -73,7 +81,7 @@ export async function readAudioFileMeta(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return emptyAudioFileMeta(resolved, msg || '无法解析元数据')
+    return { ...emptyAudioFileMeta(resolved, msg || '无法解析元数据'), fileSizeBytes }
   }
 }
 

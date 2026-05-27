@@ -3,9 +3,15 @@ import { computed } from 'vue'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
 import type { AudioMetaHoverDisplayMode } from '@shared/audioMetaHoverSettings'
 import {
+  AUDIO_META_NORMAL_DISPLAY_KEYS,
   labelForCommonKey,
-  labelForFormatKey
+  labelForFormatKey,
+  labelForNativeTag
 } from '@shared/audioMetaLabels'
+import {
+  formatFileSize,
+  formatMetaFieldDisplay
+} from '@shared/formatAudioDisplay'
 
 const props = defineProps<{
   meta: AudioFileMetaInfo | null
@@ -24,42 +30,41 @@ const heroSkipKeys = computed(() =>
   props.meta?.coverDataUrl ? new Set(['title', 'artist', 'album']) : undefined
 )
 
+
 const commonRows = computed(() => {
-  if (isMinimal.value) return []
+  if (isMinimal.value || isNormal.value) return []
   const rows = objectRows(props.meta?.common, heroSkipKeys.value)
-  if (isNormal.value) {
-    return rows.map((row) => ({
-      key: row.key,
-      label: labelForCommonKey(row.key),
-      value: row.value
-    }))
-  }
   return rows.map((row) => ({
     key: row.key,
-    label: row.key,
+    label: labelForCommonKey(row.key),
     value: row.value
   }))
 })
 
 const formatRows = computed(() => {
   if (isMinimal.value) return []
-  const rows = objectRows(props.meta?.format)
+  const format = props.meta?.format
+  if (!format) return []
+
   if (isNormal.value) {
-    return rows.map((row) => ({
-      key: row.key,
-      label: labelForFormatKey(row.key),
-      value: row.value
-    }))
+    return buildNormalDisplayRows(props.meta, format)
   }
-  return rows.map((row) => ({
+
+  return objectRows(format).map((row) => ({
     key: row.key,
-    label: row.key,
-    value: row.value
+    label: labelForFormatKey(row.key),
+    value: formatMetaFieldDisplay(row.key, row.value)
   }))
 })
 
 const nativeRows = computed(() =>
-  isFull.value ? (props.meta?.native ?? []) : []
+  isFull.value
+    ? (props.meta?.native ?? []).map((row) => ({
+        id: row.id,
+        label: labelForNativeTag(row.id),
+        value: row.value
+      }))
+    : []
 )
 
 const hasBody = computed(
@@ -77,6 +82,33 @@ const showHero = computed(
       props.meta.common.artist ||
       props.meta.common.album)
 )
+
+function buildNormalDisplayRows(
+  meta: AudioFileMetaInfo | null | undefined,
+  format: Record<string, string>
+): { key: string; label: string; value: string }[] {
+  const rows: { key: string; label: string; value: string }[] = []
+  for (const key of AUDIO_META_NORMAL_DISPLAY_KEYS) {
+    if (key === 'fileSize') {
+      const bytes = meta?.fileSizeBytes
+      if (bytes === undefined || bytes <= 0) continue
+      rows.push({
+        key,
+        label: labelForFormatKey(key),
+        value: formatFileSize(bytes)
+      })
+      continue
+    }
+    const raw = format[key]
+    if (!raw) continue
+    rows.push({
+      key,
+      label: labelForFormatKey(key),
+      value: formatMetaFieldDisplay(key, raw)
+    })
+  }
+  return rows
+}
 
 function objectRows(
   obj: Record<string, string> | undefined,
@@ -137,7 +169,7 @@ function objectRows(
           <h4 v-if="isFull" class="audio-meta-popper__heading">标签</h4>
           <dl class="audio-meta-popper__dl">
             <template v-for="row in commonRows" :key="'c-' + row.key">
-              <dt>{{ row.label }}</dt>
+              <dt :title="row.key">{{ row.label }}</dt>
               <dd>{{ row.value }}</dd>
             </template>
           </dl>
@@ -147,7 +179,7 @@ function objectRows(
           <h4 v-if="isFull" class="audio-meta-popper__heading">格式</h4>
           <dl class="audio-meta-popper__dl">
             <template v-for="row in formatRows" :key="'f-' + row.key">
-              <dt>{{ row.label }}</dt>
+              <dt :title="row.key">{{ row.label }}</dt>
               <dd>{{ row.value }}</dd>
             </template>
           </dl>
@@ -157,7 +189,7 @@ function objectRows(
           <h4 class="audio-meta-popper__heading">原生</h4>
           <dl class="audio-meta-popper__dl">
             <template v-for="row in nativeRows" :key="'n-' + row.id">
-              <dt>{{ row.id }}</dt>
+              <dt :title="row.id">{{ row.label }}</dt>
               <dd>{{ row.value }}</dd>
             </template>
           </dl>
@@ -182,10 +214,12 @@ function objectRows(
 
 <style lang="scss" scoped>
 .audio-meta-popper {
-  max-width: min(380px, 92vw);
+  max-width: 100%;
+  min-width: 0;
   font-size: 10px;
   line-height: 1.35;
   color: var(--app-text);
+  box-sizing: border-box;
 
   &--minimal {
     max-width: min(260px, 88vw);
@@ -194,13 +228,13 @@ function objectRows(
 
 .audio-meta-popper__path {
   margin: 0 0 6px;
+  max-width: 300px;
   font-size: 9px;
+  line-height: 1.45;
   opacity: 0.55;
+  white-space: normal;
+  overflow-wrap: anywhere;
   word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .audio-meta-popper__state,

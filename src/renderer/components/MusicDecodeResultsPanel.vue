@@ -4,7 +4,6 @@ import {
   NTabPane,
   NTabs,
   NTag,
-  NTooltip,
   type DataTableColumns
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
@@ -17,6 +16,7 @@ import type {
   PlainMp3Item
 } from '@shared/musicScanJob'
 import { relativeToRoots } from '@renderer/utils/displayPath'
+import { lrcPresenceCell } from '@renderer/utils/lrcPresenceCell'
 import {
   applySortableHeaders,
   handleTableSorterUpdate,
@@ -51,22 +51,11 @@ function pathCell(full: string, short: string) {
 }
 
 function lrcCell(row: { hasLrc: boolean; lrcPath?: string }) {
-  if (!row.hasLrc) {
-    return h(NTag, { size: 'small', round: true }, () => '无')
-  }
-  const path = row.lrcPath
-  if (!path) {
-    return h(NTag, { type: 'success', size: 'small', round: true }, () => '有')
-  }
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () =>
-        h(NTag, { type: 'success', size: 'small', round: true }, () => '有'),
-      default: () => path
-    }
-  )
+  return lrcPresenceCell({
+    hasLrc: row.hasLrc,
+    tooltipText: row.lrcPath,
+    noLabel: '无'
+  })
 }
 
 const platformTagType: Record<
