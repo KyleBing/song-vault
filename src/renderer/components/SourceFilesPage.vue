@@ -41,7 +41,9 @@ import {
   type DirFileSortOrder
 } from '@renderer/composables/dirFileTable'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
+import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { relativeToRoots } from '@renderer/utils/displayPath'
+import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 
 const searchRoots = defineModel<string[]>('searchRoots', { required: true })
 
@@ -62,8 +64,15 @@ const maxHeightForTable = computed(() => insets.value.windowHeight - 165)
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
 const audioFiles = ref<DirAudioFileItem[]>([])
-const selectedFileKeys = ref<string[]>([])
 const filesLoading = ref(false)
+
+const {
+  selectedKeys: selectedFileKeys,
+  clearSelection: clearFileSelection,
+  onUpdateCheckedRowKeys: onFileCheckedRowKeysUpdate,
+  onTableMouseDown,
+  rowProps: fileRowProps
+} = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
 const deletingFiles = ref(false)
 
 const sortKey = ref<DirFileSortKey>('fileName')
@@ -137,7 +146,7 @@ async function rebuildTreeKeepSelection(): Promise<void> {
     selectedKeys.value = []
     selectedDir.value = null
     audioFiles.value = []
-    selectedFileKeys.value = []
+    clearFileSelection()
   }
 }
 
@@ -153,7 +162,7 @@ function isUnderAnyRoot(target: string): boolean {
 /** 加载选中目录下的音频文件列表 */
 async function loadAudioFiles(dirPath: string): Promise<void> {
   filesLoading.value = true
-  selectedFileKeys.value = []
+  clearFileSelection()
   try {
     const items = await window.electronAPI.listDirAudioFiles({
       dirPath,
@@ -186,7 +195,7 @@ function onSelectKeys(keys: string[]): void {
     void loadAudioFiles(dir)
   } else {
     audioFiles.value = []
-    selectedFileKeys.value = []
+    clearFileSelection()
   }
 }
 
@@ -215,6 +224,26 @@ function fileRowKey(row: DirAudioFileItem): string {
 const sortedAudioFiles = computed(() =>
   sortDirAudioFiles(audioFiles.value, sortKey.value, sortOrder.value)
 )
+
+const orderedFileKeys = computed(() =>
+  sortedAudioFiles.value.map((row) => row.filePath)
+)
+
+function onFileCheckedRowKeys(
+  keys: Array<string | number>,
+  _rows: object[],
+  meta: { row: object | undefined; action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll' }
+): void {
+  onFileCheckedRowKeysUpdate(
+    keys.map(String),
+    orderedFileKeys,
+    meta as { row: object | undefined; action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll' }
+  )
+}
+
+function fileTableRowProps(row: DirAudioFileItem) {
+  return fileRowProps(row, orderedFileKeys)
+}
 
 function onDirFileSorterUpdate(
   sorter: Parameters<typeof handleDirFileSorterUpdate>[0]
@@ -258,6 +287,10 @@ const selectedDirStatsText = computed(() => {
 
 const canManageDir = computed(() => !!selectedDir.value)
 
+function openSelectedDirInFileManager(): void {
+  void openDirInFileManager(selectedDir.value, message)
+}
+
 watch(
   () => props.fileListColumns,
   () => {
@@ -297,7 +330,7 @@ watch(
       selectedKeys.value = []
       selectedDir.value = null
       audioFiles.value = []
-      selectedFileKeys.value = []
+      clearFileSelection()
     }
   }
 )
@@ -410,7 +443,7 @@ async function deleteDir(): Promise<void> {
       selectedKeys.value = []
       selectedDir.value = null
       audioFiles.value = []
-      selectedFileKeys.value = []
+      clearFileSelection()
     } else {
       const parent = parentDirPath(target)
       removeNodeFromTree(target)
@@ -424,7 +457,7 @@ async function deleteDir(): Promise<void> {
         selectedKeys.value = []
         selectedDir.value = null
         audioFiles.value = []
-        selectedFileKeys.value = []
+        clearFileSelection()
       }
     }
     message.success('文件夹已删除')
@@ -451,7 +484,7 @@ async function deleteSelectedFiles(): Promise<void> {
         `${res.errors.length} 个文件删除失败：${res.errors[0]?.message ?? ''}`
       )
     }
-    selectedFileKeys.value = []
+    clearFileSelection()
     if (selectedDir.value) void loadAudioFiles(selectedDir.value)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -515,6 +548,21 @@ onMounted(() => {
         <div class="pane-head">
           <span>目录</span>
           <div class="head-actions">
+            <NTooltip>
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :disabled="!canManageDir"
+                  @click="openSelectedDirInFileManager"
+                >
+                  <template #icon>
+                    <NIcon :size="16"><FolderOpen /></NIcon>
+                  </template>
+                </NButton>
+              </template>
+              在文件管理器中打开
+            </NTooltip>
             <NTooltip>
               <template #trigger>
                 <NButton
@@ -620,18 +668,25 @@ onMounted(() => {
         </div>
 
         <NSpin :show="filesLoading" class="files-spin">
-          <NDataTable
-            v-if="selectedDir"
-            v-model:checked-row-keys="selectedFileKeys"
-            :columns="tableColumns"
-            :data="sortedAudioFiles"
-            :row-key="fileRowKey"
-            :max-height="maxHeightForTable"
-            size="small"
-            striped
-            @update:sorter="onDirFileSorterUpdate"
-          />
-          <div v-else class="files-placeholder">
+          <div
+            v-if="selectedDir && sortedAudioFiles.length"
+            class="files-table-wrap"
+            @mousedown.capture="onTableMouseDown"
+          >
+            <NDataTable
+              :columns="tableColumns"
+              :data="sortedAudioFiles"
+              :row-key="fileRowKey"
+              :checked-row-keys="selectedFileKeys"
+              :row-props="fileTableRowProps"
+              :max-height="maxHeightForTable"
+              size="small"
+              striped
+              @update:checked-row-keys="onFileCheckedRowKeys"
+              @update:sorter="onDirFileSorterUpdate"
+            />
+          </div>
+          <div v-else-if="!selectedDir" class="files-placeholder">
             <NEmpty size="small" description="点击目录树中的文件夹查看音频" />
           </div>
           <p
@@ -730,6 +785,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.files-table-wrap {
+  min-height: 0;
 }
 
 .tree-spin,

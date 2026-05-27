@@ -7,6 +7,7 @@ import {
   NIcon,
   NInput,
   NModal,
+  NPopconfirm,
   NProgress,
   NScrollbar,
   NSpin,
@@ -55,6 +56,7 @@ import {
   type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
 import { relativeToRoots } from '@renderer/utils/displayPath'
+import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import MusicDecryptHelpModal from '@renderer/components/MusicDecryptHelpModal.vue'
 import { storage } from '@unlock/utils/storage'
 
@@ -110,6 +112,7 @@ const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
 const dirFiles = ref<DirAudioFileItem[]>([])
 const filesLoading = ref(false)
+const deletingFiles = ref(false)
 
 const {
   selectedKeys: selectedFileKeys,
@@ -254,8 +257,41 @@ function fileTableRowProps(row: DirAudioFileItem) {
   return fileRowProps(row, orderedFileKeys)
 }
 
+/** 删除文件列表中勾选的加密音乐文件 */
+async function deleteSelectedFiles(): Promise<void> {
+  if (!selectedFileKeys.value.length) return
+  deletingFiles.value = true
+  const toDelete = new Set(selectedFileKeys.value)
+  try {
+    const res = await window.electronAPI.browseDeleteFiles({
+      filePaths: [...selectedFileKeys.value],
+      browseRoots: browseRoots.value
+    })
+    if (res.deleted > 0) {
+      message.success(`已删除 ${res.deleted} 个文件`)
+      decryptQueue.value = decryptQueue.value.filter((p) => !toDelete.has(p))
+    }
+    if (res.errors.length) {
+      message.warning(
+        `${res.errors.length} 个文件删除失败：${res.errors[0]?.message ?? ''}`
+      )
+    }
+    clearFileSelection()
+    if (selectedDir.value) void loadDirFiles(selectedDir.value)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    message.error(msg)
+  } finally {
+    deletingFiles.value = false
+  }
+}
+
 function shortPath(p: string): string {
   return relativeToRoots(p, decodeSourceDirs.value)
+}
+
+function openSelectedDirInFileManager(): void {
+  void openDirInFileManager(selectedDir.value, message)
 }
 
 function fileNameOf(p: string): string {
@@ -721,16 +757,38 @@ onMounted(() => {
           <div class="tree-pane">
             <div class="pane-toolbar">
               <span class="pane-title">目录</span>
-              <NButton
-                quaternary
-                size="tiny"
-                :disabled="!selectedDir"
-                @click="selectedDir && loadDirFiles(selectedDir)"
-              >
-                <template #icon>
-                  <NIcon :size="16"><Refresh /></NIcon>
-                </template>
-              </NButton>
+              <div class="pane-toolbar-actions">
+                <NTooltip>
+                  <template #trigger>
+                    <NButton
+                      quaternary
+                      size="tiny"
+                      :disabled="!selectedDir"
+                      @click="openSelectedDirInFileManager"
+                    >
+                      <template #icon>
+                        <NIcon :size="16"><FolderOpen /></NIcon>
+                      </template>
+                    </NButton>
+                  </template>
+                  在文件管理器中打开
+                </NTooltip>
+                <NTooltip>
+                  <template #trigger>
+                    <NButton
+                      quaternary
+                      size="tiny"
+                      :disabled="!selectedDir"
+                      @click="selectedDir && loadDirFiles(selectedDir)"
+                    >
+                      <template #icon>
+                        <NIcon :size="16"><Refresh /></NIcon>
+                      </template>
+                    </NButton>
+                  </template>
+                  刷新当前目录文件列表
+                </NTooltip>
+              </div>
             </div>
             <div class="tree-body">
               <NTree
@@ -779,11 +837,32 @@ onMounted(() => {
               <div class="pane-actions files-head-actions">
                 <NButton
                   size="small"
+                  type="primary"
                   :disabled="!selectedFileKeys.length"
                   @click="addSelectedToQueue"
                 >
                   加入队列 ({{ selectedFileKeys.length }})
                 </NButton>
+                <NPopconfirm
+                  :disabled="!selectedFileKeys.length"
+                  @positive-click="deleteSelectedFiles"
+                >
+                  <template #trigger>
+                    <NButton
+                      size="small"
+                      type="error"
+                      secondary
+                      :disabled="!selectedFileKeys.length"
+                      :loading="deletingFiles"
+                    >
+                      <template #icon>
+                        <NIcon><TrashOutline /></NIcon>
+                      </template>
+                      删除选中 ({{ selectedFileKeys.length }})
+                    </NButton>
+                  </template>
+                  确定删除选中的 {{ selectedFileKeys.length }} 个文件？
+                </NPopconfirm>
                 <NButton size="small" @click="pickFilesFromDialog">
                   从磁盘选择…
                 </NButton>
@@ -1070,6 +1149,13 @@ onMounted(() => {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.pane-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
 }
 

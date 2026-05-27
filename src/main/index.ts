@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import {
   copyLrcToAudio,
@@ -213,6 +213,13 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('reveal-app-config-in-folder', () => {
     return toIpcPlain(revealAppConfigInFolder())
+  })
+
+  ipcMain.handle('open-path-in-file-manager', (_, dirPath: string) => {
+    if (typeof dirPath !== 'string' || !dirPath.trim()) {
+      return '无效路径'
+    }
+    return shell.openPath(dirPath)
   })
 }
 

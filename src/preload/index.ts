@@ -158,6 +158,10 @@ const api = {
   revealAppConfigInFolder: (): Promise<{ filePath: string }> =>
     ipcRenderer.invoke('reveal-app-config-in-folder').then((result) => toIpcPlain(result)),
 
+  /** 在系统文件管理器中打开目录；成功返回空字符串，失败返回错误信息 */
+  openPathInFileManager: (dirPath: string): Promise<string> =>
+    ipcRenderer.invoke('open-path-in-file-manager', dirPath),
+
   readAudioMetricsBatch: async (
     filePaths: string[]
   ): Promise<Record<string, AudioFileMetrics>> => {
