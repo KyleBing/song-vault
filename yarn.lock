@@ -976,6 +976,11 @@
   resolved "https://registry.yarnpkg.com/@vue/shared/-/shared-3.5.34.tgz#665f2b2fd600f6c180668423909a6fde64cbfccd"
   integrity sha512-24uqU4OIiX29ryC3MeWid/Xf2fa2EFRUVLb77nRhk+UrTVrh/XiGtFAFmJBAtBRbjwNdsPRP+jj/OL27Eg1NDA==
 
+"@xhacker/qmcwasm@^1.0.0":
+  version "1.0.0"
+  resolved "https://registry.npmmirror.com/@xhacker/qmcwasm/-/qmcwasm-1.0.0.tgz#b20edbebcfdca756ff3eff1bc511ae36e301ab5e"
+  integrity sha512-oE6isNLmCDqIvxJV9KyDVlIzMISQzTj8o1ePWtQ+DhfXLI0hel/DwOIQ3icCikWnfwA/5SDs2hYw5BvrxdJ63g==
+
 "@xmldom/xmldom@^0.9.10":
   version "0.9.10"
   resolved "https://registry.npmmirror.com/@xmldom/xmldom/-/xmldom-0.9.10.tgz#a0ad5a26fe8aa996310870726e1704977f769dee"
@@ -3017,11 +3022,6 @@ postcss@^8.4.43, postcss@^8.5.14:
     nanoid "^3.3.12"
     picocolors "^1.1.1"
     source-map-js "^1.2.1"
-
-prettier@^3.5.3:
-  version "3.8.3"
-  resolved "https://registry.npmmirror.com/prettier/-/prettier-3.8.3.tgz#560f2de55bf01b4c0503bc629d5df99b9a1d09b0"
-  integrity sha512-7igPTM53cGHMW8xWuVTydi2KO233VFiTNyF5hLJqpilHfmn8C8gPf+PS7dUT64YcXFbiMGZxS9pCSxL/Dxm/Jw==
 
 process@^0.11.10:
   version "0.11.10"

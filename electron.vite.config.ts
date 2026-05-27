@@ -27,7 +27,9 @@ export default defineConfig({
         'music-metadata-browser',
         'browser-id3-writer',
         'metaflac-js',
-        'iconv-lite'
+        'iconv-lite',
+        '@xhacker/qmcwasm/QmcWasmBundle',
+        '@jixun/qmc2-crypto/QMC2-wasm-bundle'
       ]
     },
     assetsInclude: ['**/*.wasm'],

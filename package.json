@@ -20,6 +20,7 @@
   "dependencies": {
     "@jixun/qmc2-crypto": "file:./vendor/qmc2-crypto",
     "@vicons/ionicons5": "^0.12.0",
+    "@xhacker/qmcwasm": "^1.0.0",
     "browser-id3-writer": "^4.4.0",
     "buffer": "^6.0.3",
     "crypto-js": "^4.1.1",
