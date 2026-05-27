@@ -107,6 +107,63 @@ body,
   border-color: var(--app-surface-raised);
 }
 
+/** 音频封面原图预览（Teleport 至 body） */
+.audio-cover-lightbox-root {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.audio-cover-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  cursor: pointer;
+}
+
+.audio-cover-lightbox-stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(600px, 100vw);
+}
+
+.audio-cover-lightbox-meta {
+  margin: 3px 0 0;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.72);
+  text-align: center;
+  user-select: none;
+  pointer-events: none;
+}
+
+img.audio-cover-lightbox {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 600px;
+  max-height: 600px;
+  object-fit: contain;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useAudioCoverLightbox } from '@renderer/composables/useAudioCoverLightbox'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
 import type { AudioMetaHoverDisplayMode } from '@shared/audioMetaHoverSettings'
 import {
@@ -83,6 +84,13 @@ const showHero = computed(
       props.meta.common.album)
 )
 
+const { open: openCoverLightbox } = useAudioCoverLightbox()
+
+function onCoverClick(): void {
+  const src = props.meta?.coverDataUrl
+  if (src) openCoverLightbox(src)
+}
+
 function buildNormalDisplayRows(
   meta: AudioFileMetaInfo | null | undefined,
   format: Record<string, string>
@@ -146,6 +154,8 @@ function objectRows(
           :class="{ 'audio-meta-popper__cover--minimal': isMinimal }"
           :src="meta.coverDataUrl"
           alt="封面"
+          title="点击查看原图"
+          @click.stop="onCoverClick"
         />
         <div class="audio-meta-popper__hero-text">
           <p v-if="meta.common.title" class="audio-meta-popper__title">
@@ -261,6 +271,7 @@ function objectRows(
   border-radius: 4px;
   flex-shrink: 0;
   background: rgba(128, 128, 128, 0.15);
+  cursor: pointer;
 
   &--minimal {
     width: 64px;
