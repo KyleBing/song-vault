@@ -4,6 +4,11 @@ import {
   type FileListColumnsSettings
 } from './fileListColumns'
 import {
+  createDefaultAudioMetaHoverSettings,
+  normalizeAudioMetaHoverSettings,
+  type AudioMetaHoverSettings
+} from './audioMetaHoverSettings'
+import {
   createDefaultPathFilterRules,
   normalizePathFilterRules,
   type PathFilterRule
@@ -12,6 +17,10 @@ import {
 export type { FileListColumnsSettings, FileListColumnId, FileListKind } from './fileListColumns'
 
 export type { PathFilterRule }
+export type {
+  AudioMetaHoverSettings,
+  AudioMetaHoverDisplayMode
+} from './audioMetaHoverSettings'
 
 /** 持久化配置文件名（保存在用户主目录） */
 export const APP_CONFIG_FILE_NAME = 'config_search_match_replace.json'
@@ -45,6 +54,8 @@ export interface AppConfig {
   pathFilterRules: PathFilterRule[]
   /** 各文件列表页表格可见列（顺序即展示顺序） */
   fileListColumns: FileListColumnsSettings
+  /** 音频文件悬停标签信息 */
+  audioMetaHover: AudioMetaHoverSettings
 }
 
 export function createDefaultAppConfig(): AppConfig {
@@ -56,7 +67,8 @@ export function createDefaultAppConfig(): AppConfig {
     decodeOutputDir: '',
     appearance: 'light',
     pathFilterRules: createDefaultPathFilterRules(),
-    fileListColumns: createDefaultFileListColumns()
+    fileListColumns: createDefaultFileListColumns(),
+    audioMetaHover: createDefaultAudioMetaHoverSettings()
   }
 }
 
@@ -94,6 +106,7 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
       ? obj.appearance
       : createDefaultAppConfig().appearance,
     pathFilterRules: normalizePathFilterRules(obj.pathFilterRules),
-    fileListColumns: normalizeFileListColumns(obj.fileListColumns)
+    fileListColumns: normalizeFileListColumns(obj.fileListColumns),
+    audioMetaHover: normalizeAudioMetaHoverSettings(obj.audioMetaHover)
   }
 }

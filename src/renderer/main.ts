@@ -32,7 +32,6 @@ async function bootstrap(): Promise<void> {
       'audio-meta': {
         $extend: 'tooltip',
         distance: 2,
-        delay: { show: 280, hide: 220 },
         triggers: ['hover'],
         popperTriggers: ['hover']
       }

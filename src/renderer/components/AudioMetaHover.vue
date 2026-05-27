@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Tooltip } from 'floating-vue'
 import { computed, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { isMusicFilePathForMetaHover } from '@shared/isAudioFilePath'
 import { useAudioMetaCache } from '@renderer/composables/useAudioMetaCache'
+import { useAudioMetaHoverSettingsStore } from '@renderer/stores/audioMetaHoverSettings'
 import AudioMetaPopperContent from './AudioMetaPopperContent.vue'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
 
@@ -20,9 +22,22 @@ const props = withDefaults(
   }
 )
 
+const hoverStore = useAudioMetaHoverSettingsStore()
+const { settings } = storeToRefs(hoverStore)
+
 const enabled = computed(
-  () => !props.disabled && isMusicFilePathForMetaHover(props.filePath)
+  () =>
+    settings.value.enabled &&
+    !props.disabled &&
+    isMusicFilePathForMetaHover(props.filePath)
 )
+
+const popperShowPath = computed(() => props.showPath)
+
+const hoverDelay = computed(() => ({
+  show: settings.value.showDelayMs,
+  hide: 220
+}))
 
 const { getMeta } = useAudioMetaCache()
 const meta = ref<AudioFileMetaInfo | null>(null)
@@ -46,10 +61,10 @@ function onHide(): void {
 <template>
   <Tooltip
     v-if="enabled"
-    placement="bottom-start"
+    placement="left"
     :distance="2"
     :skidding="0"
-    :delay="{ show: 280, hide: 220 }"
+    :delay="hoverDelay"
     :triggers="['hover']"
     :popper-triggers="['hover']"
     theme="audio-meta"
@@ -66,7 +81,8 @@ function onHide(): void {
       <AudioMetaPopperContent
         :meta="meta"
         :loading="loading"
-        :file-path="showPath ? filePath : undefined"
+        :file-path="popperShowPath ? filePath : undefined"
+        :display-mode="settings.displayMode"
       />
     </template>
   </Tooltip>
