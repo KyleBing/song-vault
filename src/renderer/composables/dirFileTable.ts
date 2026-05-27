@@ -142,6 +142,15 @@ function lrcCell(row: DirAudioFileItem) {
   return h(NTag, { type: 'success', size: 'small', round: true }, () => '有')
 }
 
+function inSearchTargetPathsContent(paths: string[]) {
+  if (paths.length === 1) return paths[0]
+  return h(
+    'ul',
+    { class: 'in-search-target-path-list' },
+    paths.map((p, i) => h('li', { key: i }, p))
+  )
+}
+
 function inSearchTargetCell(row: DirAudioFileItem) {
   if (row.sourceAudioChecked === false) {
     return h(
@@ -165,7 +174,7 @@ function inSearchTargetCell(row: DirAudioFileItem) {
     {
       trigger: () =>
         h(NTag, { type: 'success', size: 'small', round: true }, () => label),
-      default: () => paths.join('\n')
+      default: () => inSearchTargetPathsContent(paths)
     }
   )
 }
@@ -247,7 +256,7 @@ function columnDef(
       }
     case 'inSearchTarget':
       return {
-        title: '目标已有',
+        title: '库中已有',
         key: 'inSearchTarget',
         width: 96,
         align: 'center',
@@ -543,7 +552,7 @@ export function buildSortKeyOptions(
     options.push({ value, label })
   }
   if (visible.has('fileName')) add('fileName', '文件名')
-  if (visible.has('inSearchTarget')) add('inSearchTarget', '目标已有')
+  if (visible.has('inSearchTarget')) add('inSearchTarget', '库中已有')
   if (visible.has('ext')) add('ext', '文件格式')
   if (visible.has('birthtimeMs')) add('birthtimeMs', '创建时间')
   if (visible.has('mtimeMs')) add('mtimeMs', '修改时间')

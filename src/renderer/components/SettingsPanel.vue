@@ -54,6 +54,7 @@ const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', 
 
 const emit = defineEmits<{
   close: []
+  'open-view': [view: 'lrc' | 'decode' | 'library']
 }>()
 
 const themeStore = useThemeStore()
@@ -236,8 +237,22 @@ async function revealConfigFile(): Promise<void> {
 
             <div class="settings-pane-body">
               <section class="settings-group">
-                <h3 class="settings-group-title">音频搜索目标</h3>
-                <p class="settings-group-desc">递归子目录；扫描时会跳过下方 LRC 源目录</p>
+                <div class="settings-group-head">
+                  <div class="settings-group-head-text">
+                    <h3 class="settings-group-title">音频搜索目标</h3>
+                    <p class="settings-group-desc">
+                      递归子目录；扫描时会跳过下方 LRC 源目录
+                    </p>
+                  </div>
+                  <NButton
+                    text
+                    size="tiny"
+                    class="settings-group-link"
+                    @click="emit('open-view', 'library')"
+                  >
+                    打开音频库
+                  </NButton>
+                </div>
                 <FolderPanel
                   v-model="searchRoots"
                   class="settings-folder-panel"
@@ -249,8 +264,20 @@ async function revealConfigFile(): Promise<void> {
               <NDivider class="settings-divider" />
 
               <section class="settings-group">
-                <h3 class="settings-group-title">LRC 源文件夹</h3>
-                <p class="settings-group-desc">递归扫描 .lrc 歌词文件</p>
+                <div class="settings-group-head">
+                  <div class="settings-group-head-text">
+                    <h3 class="settings-group-title">LRC 源文件夹</h3>
+                    <p class="settings-group-desc">递归扫描 .lrc 歌词文件</p>
+                  </div>
+                  <NButton
+                    text
+                    size="tiny"
+                    class="settings-group-link"
+                    @click="emit('open-view', 'lrc')"
+                  >
+                    去歌词归位
+                  </NButton>
+                </div>
                 <FolderPanel
                   v-model="lrcDirs"
                   class="settings-folder-panel"
@@ -262,10 +289,22 @@ async function revealConfigFile(): Promise<void> {
               <NDivider class="settings-divider" />
 
               <section class="settings-group">
-                <h3 class="settings-group-title">音乐解码浏览目录</h3>
-                <p class="settings-group-desc">
-                  如 QQ 音乐、网易云等客户端的下载目录，用于浏览加密音乐
-                </p>
+                <div class="settings-group-head">
+                  <div class="settings-group-head-text">
+                    <h3 class="settings-group-title">音乐解码浏览目录</h3>
+                    <p class="settings-group-desc">
+                      如 QQ 音乐、网易云等客户端的下载目录，用于浏览加密音乐
+                    </p>
+                  </div>
+                  <NButton
+                    text
+                    size="tiny"
+                    class="settings-group-link"
+                    @click="emit('open-view', 'decode')"
+                  >
+                    打开音乐解码
+                  </NButton>
+                </div>
                 <FolderPanel
                   v-model="decodeSourceDirs"
                   class="settings-folder-panel"
@@ -466,6 +505,26 @@ $settings-content-max: 720px;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+}
+
+.settings-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-group-head-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-group-link {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .settings-group-title {

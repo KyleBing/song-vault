@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import {
   copyLrcToAudio,
@@ -257,8 +258,19 @@ const DEFAULT_WINDOW_WIDTH = DEFAULT_WINDOW_HEIGHT * 2
 const MIN_WINDOW_HEIGHT = 600
 const MIN_WINDOW_WIDTH = MIN_WINDOW_HEIGHT * 2
 
+/** 应用图标（开发：build/icon.png；打包：extraResources/icon.png） */
+function resolveAppIconPath(): string | undefined {
+  const candidates = [
+    join(process.resourcesPath, 'icon.png'),
+    join(app.getAppPath(), 'build', 'icon.png'),
+    join(__dirname, '../../build/icon.png')
+  ]
+  return candidates.find((p) => existsSync(p))
+}
+
 /** 创建并加载主窗口 */
 function createWindow(): void {
+  const iconPath = resolveAppIconPath()
   const mainWindow = new BrowserWindow({
     width: DEFAULT_WINDOW_WIDTH,
     height: DEFAULT_WINDOW_HEIGHT,
@@ -267,6 +279,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'LRC 歌词归位',
+    ...(iconPath ? { icon: iconPath } : {}),
     backgroundColor: '#0f1117',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

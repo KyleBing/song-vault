@@ -48,11 +48,18 @@
     "appId": "com.lrc-copy-tool.desktop",
     "productName": "LRC 歌词归位",
     "copyright": "Copyright © LRC 歌词归位",
+    "icon": "build/icon.png",
     "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "files": [
       "out/**/*",
       "package.json"

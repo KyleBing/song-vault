@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAudioCoverLightbox } from '@renderer/composables/useAudioCoverLightbox'
-import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
+import {
+  splitMetaDisplayValues,
+  type AudioFileMetaInfo
+} from '@shared/audioFileMeta'
 import type { AudioMetaHoverDisplayMode } from '@shared/audioMetaHoverSettings'
 import {
   AUDIO_META_NORMAL_DISPLAY_KEYS,
@@ -128,6 +131,11 @@ function objectRows(
     .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
     .map(([key, value]) => ({ key, value }))
 }
+
+function displayValues(value: string): string[] {
+  const parts = splitMetaDisplayValues(value)
+  return parts.length > 0 ? parts : [value]
+}
 </script>
 
 <template>
@@ -159,14 +167,45 @@ function objectRows(
         />
         <div class="audio-meta-popper__hero-text">
           <p v-if="meta.common.title" class="audio-meta-popper__title">
-            {{ meta.common.title }}
+            <template v-if="displayValues(meta.common.title).length > 1">
+              <span
+                v-for="(item, i) in displayValues(meta.common.title)"
+                :key="i"
+                class="audio-meta-popper__hero-value"
+              >
+                {{ item }}
+              </span>
+            </template>
+            <template v-else>{{ meta.common.title }}</template>
           </p>
-          <p v-if="meta.common.artist" class="audio-meta-popper__artist">
-            {{ meta.common.artist }}
-          </p>
-          <p v-if="meta.common.album" class="audio-meta-popper__album">
-            {{ meta.common.album }}
-          </p>
+          <div v-if="meta.common.artist" class="audio-meta-popper__artist">
+            <ul
+              v-if="displayValues(meta.common.artist).length > 1"
+              class="audio-meta-popper__value-list"
+            >
+              <li
+                v-for="(item, i) in displayValues(meta.common.artist)"
+                :key="i"
+              >
+                {{ item }}
+              </li>
+            </ul>
+            <template v-else>{{ meta.common.artist }}</template>
+          </div>
+          <div v-if="meta.common.album" class="audio-meta-popper__album">
+            <ul
+              v-if="displayValues(meta.common.album).length > 1"
+              class="audio-meta-popper__value-list"
+            >
+              <li
+                v-for="(item, i) in displayValues(meta.common.album)"
+                :key="i"
+              >
+                {{ item }}
+              </li>
+            </ul>
+            <template v-else>{{ meta.common.album }}</template>
+          </div>
         </div>
       </div>
 
@@ -180,7 +219,20 @@ function objectRows(
           <dl class="audio-meta-popper__dl">
             <template v-for="row in commonRows" :key="'c-' + row.key">
               <dt :title="row.key">{{ row.label }}</dt>
-              <dd>{{ row.value }}</dd>
+              <dd>
+                <ul
+                  v-if="displayValues(row.value).length > 1"
+                  class="audio-meta-popper__value-list"
+                >
+                  <li
+                    v-for="(item, i) in displayValues(row.value)"
+                    :key="i"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+                <template v-else>{{ row.value }}</template>
+              </dd>
             </template>
           </dl>
         </section>
@@ -190,7 +242,20 @@ function objectRows(
           <dl class="audio-meta-popper__dl">
             <template v-for="row in formatRows" :key="'f-' + row.key">
               <dt :title="row.key">{{ row.label }}</dt>
-              <dd>{{ row.value }}</dd>
+              <dd>
+                <ul
+                  v-if="displayValues(row.value).length > 1"
+                  class="audio-meta-popper__value-list"
+                >
+                  <li
+                    v-for="(item, i) in displayValues(row.value)"
+                    :key="i"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+                <template v-else>{{ row.value }}</template>
+              </dd>
             </template>
           </dl>
         </section>
@@ -200,7 +265,20 @@ function objectRows(
           <dl class="audio-meta-popper__dl">
             <template v-for="row in nativeRows" :key="'n-' + row.id">
               <dt :title="row.id">{{ row.label }}</dt>
-              <dd>{{ row.value }}</dd>
+              <dd>
+                <ul
+                  v-if="displayValues(row.value).length > 1"
+                  class="audio-meta-popper__value-list"
+                >
+                  <li
+                    v-for="(item, i) in displayValues(row.value)"
+                    :key="i"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+                <template v-else>{{ row.value }}</template>
+              </dd>
             </template>
           </dl>
         </section>
@@ -302,6 +380,24 @@ function objectRows(
 .audio-meta-popper__album {
   margin: 2px 0 0;
   opacity: 0.75;
+}
+
+.audio-meta-popper__hero-value {
+  display: block;
+
+  & + & {
+    margin-top: 2px;
+  }
+}
+
+.audio-meta-popper__value-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li + li {
+    margin-top: 2px;
+  }
 }
 
 .audio-meta-popper__scroll {
