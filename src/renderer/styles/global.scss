@@ -85,6 +85,24 @@ body,
   text-align: center;
 }
 
+/** floating-vue：音频元数据悬停层 */
+.v-popper--theme-audio-meta .v-popper__inner {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border-subtle);
+  background: var(--app-surface-raised);
+  color: var(--app-text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.v-popper--theme-audio-meta .v-popper__arrow-outer {
+  border-color: var(--app-border-subtle);
+}
+
+.v-popper--theme-audio-meta .v-popper__arrow-inner {
+  border-color: var(--app-surface-raised);
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

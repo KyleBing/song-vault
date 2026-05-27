@@ -31,6 +31,10 @@ import {
   formatSampleRate,
   formatTag
 } from '@renderer/utils/formatAudioMetrics'
+import {
+  audioAwarePathCell,
+  wrapAudioMetaHover
+} from '@renderer/utils/audioMetaHoverCell'
 
 export type DirFileSortKey =
   | FileListColumnId
@@ -90,16 +94,6 @@ export function formatSizeMb(bytes: unknown): string {
   return formatFileSize(bytes)
 }
 
-function pathCell(full: string, short: string) {
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () => h('span', { class: 'path-cell' }, short),
-      default: () => full
-    }
-  )
-}
 
 const EXT_TAG_TYPE: Record<string, TagProps['type']> = {
   mp3: 'info',
@@ -199,8 +193,10 @@ function inSearchTargetCell(row: DirAudioFileItem) {
   )
 }
 
-function metricCell(text: string) {
-  return h('span', { class: 'metric-cell' }, text)
+function metricCell(text: string, filePath?: string) {
+  const inner = () => h('span', { class: 'metric-cell' }, text)
+  if (filePath) return wrapAudioMetaHover(filePath, inner)
+  return inner()
 }
 
 function columnDef(
@@ -215,7 +211,7 @@ function columnDef(
         minWidth: listKind === 'decode' ? 180 : 200,
         ellipsis: { tooltip: false },
         render(row) {
-          return pathCell(row.filePath, row.fileName)
+          return audioAwarePathCell(row.filePath, row.fileName)
         }
       }
     case 'ext':
@@ -302,7 +298,7 @@ function columnDef(
         width: 96,
         align: 'right',
         render(row) {
-          return metricCell(formatBitrate(row.audio))
+          return metricCell(formatBitrate(row.audio), row.filePath)
         }
       }
     case 'duration':
@@ -312,7 +308,7 @@ function columnDef(
         width: 72,
         align: 'right',
         render(row) {
-          return metricCell(formatDuration(row.audio))
+          return metricCell(formatDuration(row.audio), row.filePath)
         }
       }
     case 'sampleRate':
@@ -322,7 +318,7 @@ function columnDef(
         width: 88,
         align: 'right',
         render(row) {
-          return metricCell(formatSampleRate(row.audio))
+          return metricCell(formatSampleRate(row.audio), row.filePath)
         }
       }
     case 'channels':
@@ -331,7 +327,7 @@ function columnDef(
         key: 'channels',
         width: 80,
         render(row) {
-          return metricCell(formatChannels(row.audio))
+          return metricCell(formatChannels(row.audio), row.filePath)
         }
       }
     case 'codec':
@@ -340,7 +336,7 @@ function columnDef(
         key: 'codec',
         width: 88,
         render(row) {
-          return metricCell(formatCodec(row.audio))
+          return metricCell(formatCodec(row.audio), row.filePath)
         }
       }
     case 'bitsPerSample':
@@ -350,7 +346,7 @@ function columnDef(
         width: 72,
         align: 'right',
         render(row) {
-          return metricCell(formatBitsPerSample(row.audio))
+          return metricCell(formatBitsPerSample(row.audio), row.filePath)
         }
       }
     case 'title':
@@ -360,7 +356,7 @@ function columnDef(
         minWidth: 120,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.title))
+          return metricCell(formatTag(row.audio?.title), row.filePath)
         }
       }
     case 'artist':
@@ -370,7 +366,7 @@ function columnDef(
         minWidth: 100,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.artist))
+          return metricCell(formatTag(row.audio?.artist), row.filePath)
         }
       }
     case 'album':
@@ -380,7 +376,7 @@ function columnDef(
         minWidth: 100,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.album))
+          return metricCell(formatTag(row.audio?.album), row.filePath)
         }
       }
     case 'genre':
@@ -390,7 +386,7 @@ function columnDef(
         width: 88,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.genre))
+          return metricCell(formatTag(row.audio?.genre), row.filePath)
         }
       }
     case 'year':
@@ -400,7 +396,7 @@ function columnDef(
         width: 64,
         align: 'right',
         render(row) {
-          return metricCell(formatTag(row.audio?.year))
+          return metricCell(formatTag(row.audio?.year), row.filePath)
         }
       }
     default:

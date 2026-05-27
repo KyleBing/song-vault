@@ -23,6 +23,7 @@ import {
   sortRows,
   type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
+import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
 
 const props = defineProps<{
   result: MusicScanResult
@@ -46,14 +47,7 @@ function shortPath(p: string): string {
 }
 
 function pathCell(full: string, short: string) {
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () => h('span', { class: 'path-cell' }, short),
-      default: () => full
-    }
-  )
+  return audioAwarePathCell(full, short)
 }
 
 function lrcCell(row: { hasLrc: boolean; lrcPath?: string }) {

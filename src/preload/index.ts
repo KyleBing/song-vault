@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioFileMetrics } from '../shared/audioFileMetrics'
+import type { AudioFileMetaInfo } from '../shared/audioFileMeta'
 import type { AppConfig } from '../shared/appConfig'
 import type {
   CopyLrcParams,
@@ -169,6 +170,11 @@ const api = {
       'read-audio-metrics-batch',
       toIpcPlain(filePaths)
     )
+    return toIpcPlain(result)
+  },
+
+  readAudioMeta: async (filePath: string): Promise<AudioFileMetaInfo> => {
+    const result = await ipcRenderer.invoke('read-audio-meta', filePath)
     return toIpcPlain(result)
   }
 }

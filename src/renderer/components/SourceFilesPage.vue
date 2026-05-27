@@ -204,18 +204,6 @@ function shortPath(p: string): string {
   return relativeToRoots(p, searchRoots.value)
 }
 
-/** 表格路径单元格（短路径 + 悬停完整路径） */
-function pathCell(full: string, short: string) {
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () => h('span', { class: 'path-cell' }, short),
-      default: () => full
-    }
-  )
-}
-
 /** 文件列表表格行主键 */
 function fileRowKey(row: DirAudioFileItem): string {
   return row.filePath
