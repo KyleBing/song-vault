@@ -10,7 +10,11 @@ import {
 import type { FileListColumnsSettings } from '@shared/appConfig'
 import type { PathFilterRule } from '@shared/pathFilters'
 import { plainFindAudioInSearchRootsParams } from '@renderer/utils/ipcPayload'
-import { PLATFORM_LABELS, classifyEncryptedExtension } from '@shared/musicFormats'
+import {
+  OTHER_ENCRYPTED_EXTENSIONS,
+  PLATFORM_LABELS,
+  classifyEncryptedExtension
+} from '@shared/musicFormats'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { formatFileTime } from '@renderer/utils/formatFileTime'
 import {
@@ -115,6 +119,27 @@ function extCell(row: DirAudioFileItem) {
   )
 }
 
+function decodeFormatTagType(ext: string): TagProps['type'] {
+  const platform = classifyEncryptedExtension(ext)
+  if (platform === 'netease') return 'warning'
+  if (platform === 'qq') return 'info'
+  if (OTHER_ENCRYPTED_EXTENSIONS.has(ext.toLowerCase())) return 'success'
+  return 'default'
+}
+
+function decodeFormatCell(row: DirAudioFileItem) {
+  return h(
+    NTag,
+    {
+      type: decodeFormatTagType(row.ext),
+      size: 'small',
+      round: true,
+      bordered: false
+    },
+    () => `.${row.ext}`
+  )
+}
+
 function platformCell(row: DirAudioFileItem) {
   const platform = classifyEncryptedExtension(row.ext)
   if (!platform) {
@@ -198,9 +223,10 @@ function columnDef(
         ? {
             title: '格式',
             key: 'ext',
-            width: 72,
+            width: 88,
+            align: 'center',
             render(row) {
-              return `.${row.ext}`
+              return h('div', { class: 'table-status-cell' }, [decodeFormatCell(row)])
             }
           }
         : {

@@ -216,7 +216,7 @@ async function revealConfigFile(): Promise<void> {
 @use '../styles/variables' as *;
 
 $settings-inline-pad: 16px;
-$settings-aside-width: clamp(300px, 32vw, 420px);
+$settings-aside-width: clamp(300px, 35vw, 500px);
 
 .settings-page {
   flex: 1;
