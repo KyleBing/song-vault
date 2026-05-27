@@ -11,13 +11,14 @@ import {
     type DataTableColumns
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, ref, watch, type Ref } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import SourceLrcSelect from './SourceLrcSelect.vue'
 import type {
     AudioJobItem,
     AudioItemStatus,
     JobResult,
+    OrphanAudioItem,
     OrphanLrcItem
 } from '@shared/lrcJob'
 import {
@@ -27,6 +28,7 @@ import {
     type SourceSelection
 } from '@shared/sourcePick'
 import { dirnameOf } from '@shared/pathLite'
+import { formatFileSize } from '@shared/formatAudioDisplay'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
 import { lrcPresenceCell } from '@renderer/utils/lrcPresenceCell'
 import { joinPath, relativeToRoots } from '@renderer/utils/displayPath'
@@ -36,6 +38,7 @@ import {
     sortRows,
     type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
+import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 
 const props = defineProps<{
     result: JobResult
@@ -56,6 +59,44 @@ const selectedOrphanKeys = defineModel<string[]>('selectedOrphanKeys', {
     default: () => []
 })
 
+const selectedOrphanAudioKeys = defineModel<string[]>('selectedOrphanAudioKeys', {
+    default: () => []
+})
+
+const {
+    selectedKeys: orphanLrcSelectedKeys,
+    onUpdateCheckedRowKeys: onOrphanLrcCheckedRowKeysUpdate,
+    onTableMouseDown: onOrphanLrcTableMouseDown,
+    rowProps: orphanLrcRowPropsFn
+} = useShiftRowSelection((row) => (row as { key: string }).key)
+
+const {
+    selectedKeys: orphanAudioSelectedKeys,
+    onUpdateCheckedRowKeys: onOrphanAudioCheckedRowKeysUpdate,
+    onTableMouseDown: onOrphanAudioTableMouseDown,
+    rowProps: orphanAudioRowPropsFn
+} = useShiftRowSelection((row) => (row as { key: string }).key)
+
+function syncShiftSelection(model: Ref<string[]>, shiftKeys: Ref<string[]>): void {
+    watch(model, (v) => {
+        if (v.join('\0') !== shiftKeys.value.join('\0')) {
+            shiftKeys.value = [...v]
+        }
+    })
+    watch(
+        shiftKeys,
+        (v) => {
+            if (v.join('\0') !== model.value.join('\0')) {
+                model.value = [...v]
+            }
+        },
+        { deep: true }
+    )
+}
+
+syncShiftSelection(selectedOrphanKeys, orphanLrcSelectedKeys)
+syncShiftSelection(selectedOrphanAudioKeys, orphanAudioSelectedKeys)
+
 const message = useMessage()
 const activeTab = ref('all')
 const copyingAudioPath = ref<string | null>(null)
@@ -71,6 +112,9 @@ const audioSortKey = ref('audioPath')
 const audioSortOrder = ref<TableSortOrder>('asc')
 const orphanSortKey = ref('lrcPath')
 const orphanSortOrder = ref<TableSortOrder>('asc')
+const orphanAudioSortKey = ref('audioPath')
+const orphanAudioSortOrder = ref<TableSortOrder>('asc')
+const orphanSubTab = ref('lrc')
 
 const AUDIO_STATUS_RANK: Record<AudioItemStatus, number> = {
     matched: 1,
@@ -115,6 +159,9 @@ function compareOrphanRows(
     b: OrphanLrcItem,
     key: string
 ): number {
+    if (key === 'fileSizeBytes') {
+        return a.fileSizeBytes - b.fileSizeBytes
+    }
     if (key === 'message') {
         return a.message.localeCompare(b.message, undefined, {
             sensitivity: 'base'
@@ -135,6 +182,35 @@ function onOrphanSorterUpdate(
     sorter: Parameters<typeof handleTableSorterUpdate>[0]
 ): void {
     handleTableSorterUpdate(sorter, orphanSortKey, orphanSortOrder, 'lrcPath')
+}
+
+function compareOrphanAudioRows(
+    a: OrphanAudioItem,
+    b: OrphanAudioItem,
+    key: string
+): number {
+    if (key === 'fileSizeBytes') {
+        return a.fileSizeBytes - b.fileSizeBytes
+    }
+    if (key === 'message') {
+        return a.message.localeCompare(b.message, undefined, {
+            sensitivity: 'base'
+        })
+    }
+    return a.audioName.localeCompare(b.audioName, undefined, {
+        sensitivity: 'base'
+    })
+}
+
+function onOrphanAudioSorterUpdate(
+    sorter: Parameters<typeof handleTableSorterUpdate>[0]
+): void {
+    handleTableSorterUpdate(
+        sorter,
+        orphanAudioSortKey,
+        orphanAudioSortOrder,
+        'audioPath'
+    )
 }
 
 const audioStatusMeta: Record<
@@ -214,6 +290,21 @@ function shortLrcSource(p: string): string {
 /** 表格单元格：短路径；音频文件悬停显示完整标签 */
 function pathCell(full: string, short: string) {
     return audioAwarePathCell(full, short)
+}
+
+/** 多余列表：重复文件路径（正常字号），原文件路径（小字，同单元格下方） */
+function orphanFileCell(duplicatePath: string, originalPath?: string) {
+    const children = [
+        pathCell(duplicatePath, shortAudio(duplicatePath))
+    ]
+    if (originalPath) {
+        children.push(
+            h('div', { class: 'orphan-file-cell__original' }, [
+                pathCell(originalPath, shortAudio(originalPath))
+            ])
+        )
+    }
+    return h('div', { class: 'orphan-file-cell' }, children)
 }
 
 /** 计划复制到目标目录的歌词完整路径 */
@@ -383,20 +474,71 @@ const orphanColumns = computed<DataTableColumns<OrphanLrcItem>>(() =>
                 key: 'lrcPath',
                 ellipsis: { tooltip: false },
                 render(row) {
-                    return pathCell(row.lrcPath, shortAudio(row.lrcPath))
+                    return orphanFileCell(row.lrcPath, row.canonicalPath)
+                }
+            },
+            {
+                title: '大小',
+                key: 'fileSizeBytes',
+                width: 88,
+                align: 'right',
+                render(row) {
+                    return formatFileSize(row.fileSizeBytes)
                 }
             },
             {
                 title: '说明',
                 key: 'message',
-                width: 220
+                width: 400
             }
         ],
         {
             sortKey: orphanSortKey.value,
             sortOrder: orphanSortOrder.value,
-            isSortable: (key) => key === 'lrcPath' || key === 'message',
+            isSortable: (key) =>
+                key === 'lrcPath' ||
+                key === 'fileSizeBytes' ||
+                key === 'message',
             compare: (key) => (a, b) => compareOrphanRows(a, b, key)
+        }
+    )
+)
+
+const orphanAudioColumns = computed<DataTableColumns<OrphanAudioItem>>(() =>
+    applySortableHeaders(
+        [
+            { type: 'selection' },
+            {
+                title: '音频文件',
+                key: 'audioPath',
+                ellipsis: { tooltip: false },
+                render(row) {
+                    return orphanFileCell(row.audioPath, row.canonicalPath)
+                }
+            },
+            {
+                title: '大小',
+                key: 'fileSizeBytes',
+                width: 88,
+                align: 'right',
+                render(row) {
+                    return formatFileSize(row.fileSizeBytes)
+                }
+            },
+            {
+                title: '说明',
+                key: 'message',
+                width: 400
+            }
+        ],
+        {
+            sortKey: orphanAudioSortKey.value,
+            sortOrder: orphanAudioSortOrder.value,
+            isSortable: (key) =>
+                key === 'audioPath' ||
+                key === 'fileSizeBytes' ||
+                key === 'message',
+            compare: (key) => (a, b) => compareOrphanAudioRows(a, b, key)
         }
     )
 )
@@ -435,6 +577,14 @@ const plainOrphan = computed(() =>
     props.result.orphanLrcItems.map((r) => ({ ...r, key: r.lrcPath }))
 )
 
+const plainOrphanAudio = computed(() =>
+    props.result.orphanAudioItems.map((r) => ({ ...r, key: r.audioPath }))
+)
+
+const orphanTotal = computed(
+    () => stats.value.orphanLrc + stats.value.orphanAudio
+)
+
 const sortedPlainAudio = computed(() => sortAudioItems(plainAudio.value))
 const sortedMatchedAudio = computed(() => sortAudioItems(matchedAudio.value))
 const sortedCanCopyAudio = computed(() => sortAudioItems(canCopyAudio.value))
@@ -451,8 +601,68 @@ const sortedPlainOrphan = computed(() =>
     )
 )
 
+const sortedPlainOrphanAudio = computed(() =>
+    sortRows(
+        plainOrphanAudio.value,
+        orphanAudioSortKey.value,
+        orphanAudioSortOrder.value,
+        compareOrphanAudioRows
+    )
+)
+
+const orderedOrphanLrcKeys = computed(() =>
+    sortedPlainOrphan.value.map((row) => row.key)
+)
+
+const orderedOrphanAudioKeys = computed(() =>
+    sortedPlainOrphanAudio.value.map((row) => row.key)
+)
+
+function onOrphanLrcCheckedRowKeys(
+    keys: Array<string | number>,
+    _rows: object[],
+    meta: {
+        row: object | undefined
+        action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
+    }
+): void {
+    onOrphanLrcCheckedRowKeysUpdate(
+        keys.map(String),
+        orderedOrphanLrcKeys,
+        meta
+    )
+}
+
+function onOrphanAudioCheckedRowKeys(
+    keys: Array<string | number>,
+    _rows: object[],
+    meta: {
+        row: object | undefined
+        action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
+    }
+): void {
+    onOrphanAudioCheckedRowKeysUpdate(
+        keys.map(String),
+        orderedOrphanAudioKeys,
+        meta
+    )
+}
+
+function orphanLrcTableRowProps(row: { key: string }) {
+    return orphanLrcRowPropsFn(row, orderedOrphanLrcKeys)
+}
+
+function orphanAudioTableRowProps(row: { key: string }) {
+    return orphanAudioRowPropsFn(row, orderedOrphanAudioKeys)
+}
+
 /** 多余歌词表格行主键 */
 function orphanRowKey(row: { key: string }): string {
+  return row.key
+}
+
+/** 多余音频表格行主键 */
+function orphanAudioRowKey(row: { key: string }): string {
   return row.key
 }
 </script>
@@ -504,12 +714,48 @@ function orphanRowKey(row: { key: string }): string {
                 </div>
             </NTabPane>
 
-            <NTabPane name="orphan" :tab="`多余 (${stats.orphanLrc})`">
+            <NTabPane name="orphan" :tab="`多余 (${orphanTotal})`">
                 <div class="tab-pane-body">
-                    <NDataTable v-model:checked-row-keys="selectedOrphanKeys" :columns="orphanColumns"
-                        :data="sortedPlainOrphan" :row-key="orphanRowKey"
-                        :max-height="maxHeightForTable" size="small" striped
-                        @update:sorter="onOrphanSorterUpdate" />
+                    <NTabs v-model:value="orphanSubTab" type="segment" size="small" class="orphan-sub-tabs">
+                        <NTabPane name="lrc" :tab="`歌词 (${stats.orphanLrc})`">
+                            <div
+                                class="orphan-table-wrap"
+                                @mousedown.capture="onOrphanLrcTableMouseDown"
+                            >
+                                <NDataTable
+                                    :checked-row-keys="orphanLrcSelectedKeys"
+                                    :columns="orphanColumns"
+                                    :data="sortedPlainOrphan"
+                                    :row-key="orphanRowKey"
+                                    :row-props="orphanLrcTableRowProps"
+                                    :max-height="maxHeightForTable"
+                                    size="small"
+                                    striped
+                                    @update:checked-row-keys="onOrphanLrcCheckedRowKeys"
+                                    @update:sorter="onOrphanSorterUpdate"
+                                />
+                            </div>
+                        </NTabPane>
+                        <NTabPane name="audio" :tab="`音频 (${stats.orphanAudio})`">
+                            <div
+                                class="orphan-table-wrap"
+                                @mousedown.capture="onOrphanAudioTableMouseDown"
+                            >
+                                <NDataTable
+                                    :checked-row-keys="orphanAudioSelectedKeys"
+                                    :columns="orphanAudioColumns"
+                                    :data="sortedPlainOrphanAudio"
+                                    :row-key="orphanAudioRowKey"
+                                    :row-props="orphanAudioTableRowProps"
+                                    :max-height="maxHeightForTable"
+                                    size="small"
+                                    striped
+                                    @update:checked-row-keys="onOrphanAudioCheckedRowKeys"
+                                    @update:sorter="onOrphanAudioSorterUpdate"
+                                />
+                            </div>
+                        </NTabPane>
+                    </NTabs>
                 </div>
             </NTabPane>
         </NTabs>
@@ -592,6 +838,14 @@ function orphanRowKey(row: { key: string }): string {
     min-height: 0;
 }
 
+.orphan-sub-tabs {
+    margin-top: 4px;
+
+    :deep(.n-tab-pane) {
+        padding-top: 8px !important;
+    }
+}
+
 .path-cell {
     display: inline-block;
     max-width: 100%;
@@ -600,6 +854,25 @@ function orphanRowKey(row: { key: string }): string {
     white-space: nowrap;
     font-family: $font-mono;
     font-size: 12px;
+}
+
+.orphan-file-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+
+    &__original {
+        min-width: 0;
+        font-size: 11px;
+        opacity: 0.55;
+        line-height: 1.35;
+
+        :deep(.path-cell) {
+            font-size: 11px;
+        }
+    }
 }
 
 .source-pick-cell {

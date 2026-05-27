@@ -51,6 +51,22 @@ export interface OrphanLrcItem {
   lrcName: string
   destDir: string
   message: string
+  fileSizeBytes: number
+  /** 文件名与大小均匹配的对应文件（重复副本判定用） */
+  canonicalPath?: string
+  canonicalSizeBytes?: number
+}
+
+/** 目标文件夹中 macOS 编号重复的「多余」音频 */
+export interface OrphanAudioItem {
+  audioPath: string
+  audioName: string
+  destDir: string
+  message: string
+  fileSizeBytes: number
+  /** 文件名与大小均匹配的对应文件（重复副本判定用） */
+  canonicalPath?: string
+  canonicalSizeBytes?: number
 }
 
 /** 任务汇总统计 */
@@ -63,12 +79,14 @@ export interface JobStats {
   copied: number
   copyErrors: number
   orphanLrc: number
+  orphanAudio: number
 }
 
 /** runJob 的完整返回 */
 export interface JobResult {
   audioItems: AudioJobItem[]
   orphanLrcItems: OrphanLrcItem[]
+  orphanAudioItems: OrphanAudioItem[]
   stats: JobStats
   empty: boolean
   execute: boolean
@@ -99,7 +117,12 @@ export interface DeleteOrphanParams {
   lrcPaths: string[]
 }
 
-/** 删除多余歌词结果 */
+/** 删除多余音频入参 */
+export interface DeleteOrphanAudioParams {
+  audioPaths: string[]
+}
+
+/** 删除多余文件结果 */
 export interface DeleteOrphanResult {
   deleted: number
   errors: Array<{ path: string; message: string }>
@@ -107,6 +130,103 @@ export interface DeleteOrphanResult {
 
 function normName(name: string): string {
   return name.toLowerCase()
+}
+
+/**
+ * macOS 复制同名文件时产生的编号后缀，如 abc(1) → abc。
+ * 若搜索范围内存在同名 abc.* 且字节大小相同，则 abc(1).* 视为重复副本。
+ */
+function parseMacOsDuplicateBase(basename: string): string | null {
+  const m = basename.match(/^(.+)\((\d+)\)$/i)
+  if (!m) return null
+  return normName(m[1])
+}
+
+function readFileSizeBytes(filePath: string): number {
+  try {
+    return fs.statSync(filePath).size
+  } catch {
+    return -1
+  }
+}
+
+interface ScannedTargetFile {
+  path: string
+  name: string
+  dir: string
+  key: string
+  sizeBytes: number
+}
+
+/** 递归遍历搜索目标目录（跳过 LRC 源目录） */
+function walkTargetDirs(
+  searchRoots: string[],
+  lrcDirs: string[],
+  pathFilterRules: PathFilterRule[],
+  onDir: (dir: string) => void
+): void {
+  const lrcResolved = lrcDirs.map((d) => path.resolve(d))
+
+  function walk(dir: string): void {
+    const current = path.resolve(dir)
+    if (isInsideAny(current, lrcResolved)) return
+
+    onDir(current)
+
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue
+      if (shouldFilterEntry(ent.name, true, pathFilterRules)) continue
+      const full = path.join(current, ent.name)
+      const fullResolved = path.resolve(full)
+      if (
+        lrcResolved.some(
+          (p) => fullResolved === p || isInside(fullResolved, p)
+        )
+      ) {
+        continue
+      }
+      walk(full)
+    }
+  }
+
+  for (const searchRoot of searchRoots) {
+    walk(path.resolve(searchRoot))
+  }
+}
+
+function findSizeMatchedCanonical(
+  candidates: ScannedTargetFile[],
+  sizeBytes: number,
+  preferDir?: string
+): ScannedTargetFile | null {
+  const matched = candidates.filter(
+    (c) => c.sizeBytes >= 0 && c.sizeBytes === sizeBytes
+  )
+  if (matched.length === 0) return null
+  if (preferDir) {
+    const sameDir = matched.find((c) => c.dir === preferDir)
+    if (sameDir) return sameDir
+  }
+  return matched.sort((a, b) =>
+    a.path.localeCompare(b.path, undefined, { sensitivity: 'base' })
+  )[0]
+}
+
+function duplicateOrphanMessage(
+  matched: ScannedTargetFile,
+  itemDir: string
+): string {
+  if (matched.dir === itemDir) {
+    return `与 ${matched.name} 大小相同，同目录重复副本`
+  }
+  return `与 ${matched.name} 大小相同，重复副本`
 }
 
 function isInside(child: string, parent: string): boolean {
@@ -271,18 +391,17 @@ function collectAllAudioPaths(
   )
 }
 
-/** 收集目标文件夹内「多余」歌词：同级没有同名音频的 .lrc */
+/** 收集目标文件夹内「多余」歌词：无对应音频，或搜索范围内大小相同的编号重复副本 */
 function collectOrphanLrcInTargets(
   searchRoots: string[],
   lrcDirs: string[],
   extensions: Set<string>,
   pathFilterRules: PathFilterRule[]
 ): OrphanLrcItem[] {
-  const lrcResolved = lrcDirs.map((d) => path.resolve(d))
-  const orphans: OrphanLrcItem[] = []
-  const seen = new Set<string>()
+  const allLrc: ScannedTargetFile[] = []
+  const audioKeysByDir = new Map<string, Set<string>>()
 
-  function scanDir(dir: string): void {
+  walkTargetDirs(searchRoots, lrcDirs, pathFilterRules, (dir) => {
     let entries: fs.Dirent[]
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -293,7 +412,6 @@ function collectOrphanLrcInTargets(
     }
 
     const audioKeys = new Set<string>()
-    const lrcFiles: Array<{ path: string; key: string; name: string }> = []
 
     for (const ent of entries) {
       if (!ent.isFile()) continue
@@ -303,61 +421,159 @@ function collectOrphanLrcInTargets(
       const ext = path.extname(ent.name).slice(1).toLowerCase()
 
       if (ext === 'lrc') {
-        lrcFiles.push({ path: full, key, name: ent.name })
+        allLrc.push({
+          path: full,
+          name: ent.name,
+          dir,
+          key,
+          sizeBytes: readFileSizeBytes(full)
+        })
       } else if (extensions.has(ext)) {
         audioKeys.add(key)
       }
     }
 
-    for (const lrc of lrcFiles) {
-      if (audioKeys.has(lrc.key)) continue
-      const resolved = path.resolve(lrc.path)
-      if (seen.has(resolved)) continue
-      seen.add(resolved)
-      orphans.push({
-        lrcPath: lrc.path,
-        lrcName: lrc.name,
-        destDir: dir,
-        message: '同级目录无同名音频'
-      })
-    }
+    audioKeysByDir.set(dir, audioKeys)
+  })
+
+  const canonicalByKey = new Map<string, ScannedTargetFile[]>()
+  for (const lrc of allLrc) {
+    const base = path.parse(lrc.name).name
+    if (parseMacOsDuplicateBase(base)) continue
+    const list = canonicalByKey.get(lrc.key) ?? []
+    list.push(lrc)
+    canonicalByKey.set(lrc.key, list)
   }
 
-  function walk(dir: string): void {
-    const current = path.resolve(dir)
-    if (isInsideAny(current, lrcResolved)) return
+  const orphans: OrphanLrcItem[] = []
+  const seen = new Set<string>()
 
-    scanDir(current)
+  for (const lrc of allLrc) {
+    const base = path.parse(lrc.name).name
+    const dupCanonical = parseMacOsDuplicateBase(base)
+    if (!dupCanonical) continue
 
-    let entries: fs.Dirent[]
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true })
-    } catch {
-      return
-    }
+    const matched = findSizeMatchedCanonical(
+      canonicalByKey.get(dupCanonical) ?? [],
+      lrc.sizeBytes,
+      lrc.dir
+    )
+    if (!matched) continue
 
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue
-      if (shouldFilterEntry(ent.name, true, pathFilterRules)) continue
-      const full = path.join(current, ent.name)
-      const fullResolved = path.resolve(full)
-      if (
-        lrcResolved.some(
-          (p) => fullResolved === p || isInside(fullResolved, p)
-        )
-      ) {
-        continue
-      }
-      walk(full)
-    }
+    const resolved = path.resolve(lrc.path)
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+
+    orphans.push({
+      lrcPath: lrc.path,
+      lrcName: lrc.name,
+      destDir: lrc.dir,
+      fileSizeBytes: lrc.sizeBytes,
+      canonicalPath: matched.path,
+      canonicalSizeBytes: matched.sizeBytes,
+      message: duplicateOrphanMessage(matched, lrc.dir)
+    })
   }
 
-  for (const searchRoot of searchRoots) {
-    walk(path.resolve(searchRoot))
+  for (const lrc of allLrc) {
+    const resolved = path.resolve(lrc.path)
+    if (seen.has(resolved)) continue
+    if (audioKeysByDir.get(lrc.dir)?.has(lrc.key)) continue
+    seen.add(resolved)
+
+    orphans.push({
+      lrcPath: lrc.path,
+      lrcName: lrc.name,
+      destDir: lrc.dir,
+      fileSizeBytes: lrc.sizeBytes,
+      message: '同级目录无同名音频'
+    })
   }
 
   return orphans.sort((a, b) =>
     a.lrcPath.localeCompare(b.lrcPath, undefined, { sensitivity: 'base' })
+  )
+}
+
+/** 收集目标文件夹内「多余」音频：搜索范围内大小相同的 abc(1).mp3 等重复副本 */
+function collectOrphanAudioInTargets(
+  searchRoots: string[],
+  lrcDirs: string[],
+  extensions: Set<string>,
+  pathFilterRules: PathFilterRule[]
+): OrphanAudioItem[] {
+  const allAudio: Array<ScannedTargetFile & { ext: string }> = []
+
+  walkTargetDirs(searchRoots, lrcDirs, pathFilterRules, (dir) => {
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`Warning: cannot read ${dir}: ${msg}`)
+      return
+    }
+
+    for (const ent of entries) {
+      if (!ent.isFile()) continue
+      if (shouldFilterEntry(ent.name, false, pathFilterRules)) continue
+      const full = path.join(dir, ent.name)
+      const ext = path.extname(ent.name).slice(1).toLowerCase()
+      if (!extensions.has(ext)) continue
+
+      allAudio.push({
+        path: full,
+        name: ent.name,
+        dir,
+        key: normName(path.parse(ent.name).name),
+        sizeBytes: readFileSizeBytes(full),
+        ext
+      })
+    }
+  })
+
+  const canonicalByExtKey = new Map<string, ScannedTargetFile[]>()
+  for (const audio of allAudio) {
+    const base = path.parse(audio.name).name
+    if (parseMacOsDuplicateBase(base)) continue
+    const indexKey = `${audio.ext}:${audio.key}`
+    const list = canonicalByExtKey.get(indexKey) ?? []
+    list.push(audio)
+    canonicalByExtKey.set(indexKey, list)
+  }
+
+  const orphans: OrphanAudioItem[] = []
+  const seen = new Set<string>()
+
+  for (const audio of allAudio) {
+    const base = path.parse(audio.name).name
+    const dupCanonical = parseMacOsDuplicateBase(base)
+    if (!dupCanonical) continue
+
+    const matched = findSizeMatchedCanonical(
+      canonicalByExtKey.get(`${audio.ext}:${dupCanonical}`) ?? [],
+      audio.sizeBytes,
+      audio.dir
+    )
+    if (!matched) continue
+
+    const resolved = path.resolve(audio.path)
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+
+    orphans.push({
+      audioPath: audio.path,
+      audioName: audio.name,
+      destDir: audio.dir,
+      fileSizeBytes: audio.sizeBytes,
+      canonicalPath: matched.path,
+      canonicalSizeBytes: matched.sizeBytes,
+      message: duplicateOrphanMessage(matched, audio.dir)
+    })
+  }
+
+  return orphans.sort((a, b) =>
+    a.audioPath.localeCompare(b.audioPath, undefined, { sensitivity: 'base' })
   )
 }
 
@@ -370,7 +586,8 @@ function emptyStats(): JobStats {
     sourceAmbiguous: 0,
     copied: 0,
     copyErrors: 0,
-    orphanLrc: 0
+    orphanLrc: 0,
+    orphanAudio: 0
   }
 }
 
@@ -422,14 +639,24 @@ export function runJob(params: RunJobParams): JobResult {
     AUDIO_EXTENSIONS,
     pathFilterRules
   )
+  const orphanAudioItems = collectOrphanAudioInTargets(
+    searchRoots,
+    lrcDirs,
+    AUDIO_EXTENSIONS,
+    pathFilterRules
+  )
+  const orphanAudioPaths = new Set(
+    orphanAudioItems.map((item) => path.resolve(item.audioPath))
+  )
 
   const stats = emptyStats()
-  stats.audioTotal = audioPaths.length
   stats.orphanLrc = orphanLrcItems.length
+  stats.orphanAudio = orphanAudioItems.length
 
   const audioItems: AudioJobItem[] = []
 
   for (const audioPath of audioPaths) {
+    if (orphanAudioPaths.has(path.resolve(audioPath))) continue
     const audioName = path.basename(audioPath)
     const songKey = normName(path.parse(audioName).name)
     const destDir = path.dirname(audioPath)
@@ -506,11 +733,17 @@ export function runJob(params: RunJobParams): JobResult {
     audioItems.push(item)
   }
 
+  stats.audioTotal = audioItems.length
+
   return {
     audioItems,
     orphanLrcItems,
+    orphanAudioItems,
     stats,
-    empty: audioItems.length === 0 && orphanLrcItems.length === 0,
+    empty:
+      audioItems.length === 0 &&
+      orphanLrcItems.length === 0 &&
+      orphanAudioItems.length === 0,
     execute
   }
 }
@@ -540,20 +773,31 @@ export function copyLrcToAudio(params: CopyLrcParams): CopyLrcResult {
 
 /** 删除目标文件夹中的多余 .lrc 文件 */
 export function deleteOrphanLrc(params: DeleteOrphanParams): DeleteOrphanResult {
+  return deleteOrphanFiles(params.lrcPaths)
+}
+
+/** 删除目标文件夹中的多余音频文件 */
+export function deleteOrphanAudio(
+  params: DeleteOrphanAudioParams
+): DeleteOrphanResult {
+  return deleteOrphanFiles(params.audioPaths)
+}
+
+function deleteOrphanFiles(filePaths: string[]): DeleteOrphanResult {
   let deleted = 0
   const errors: Array<{ path: string; message: string }> = []
 
-  for (const lrcPath of params.lrcPaths) {
+  for (const filePath of filePaths) {
     try {
-      if (!fs.existsSync(lrcPath)) {
-        errors.push({ path: lrcPath, message: '文件不存在' })
+      if (!fs.existsSync(filePath)) {
+        errors.push({ path: filePath, message: '文件不存在' })
         continue
       }
-      fs.unlinkSync(lrcPath)
+      fs.unlinkSync(filePath)
       deleted++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      errors.push({ path: lrcPath, message: msg })
+      errors.push({ path: filePath, message: msg })
     }
   }
 

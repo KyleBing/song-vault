@@ -108,6 +108,7 @@ const result = ref<JobResult | null>(null)
 const lastPreview = ref<JobResult | null>(null)
 const sourceSelection = ref<SourceSelection>({ sourceOverrides: {} })
 const selectedOrphanKeys = ref<string[]>([])
+const selectedOrphanAudioKeys = ref<string[]>([])
 
 const canPreview = computed(
   () => lrcDirs.value.length > 0 && searchRoots.value.length > 0
@@ -153,6 +154,7 @@ async function run(execute: boolean): Promise<void> {
 function preview(): void {
   sourceSelection.value = { sourceOverrides: {} }
   selectedOrphanKeys.value = []
+  selectedOrphanAudioKeys.value = []
   void run(false)
 }
 
@@ -319,6 +321,7 @@ watch(
                 :result="result"
                 :source-selection="sourceSelection"
                 :selected-orphan-keys="selectedOrphanKeys"
+                :selected-orphan-audio-keys="selectedOrphanAudioKeys"
                 @deleted="preview"
               />
             </div>
@@ -376,6 +379,7 @@ watch(
                 v-if="showResults"
                 v-model:source-selection="sourceSelection"
                 v-model:selected-orphan-keys="selectedOrphanKeys"
+                v-model:selected-orphan-audio-keys="selectedOrphanAudioKeys"
                 :result="result!"
                 :search-roots="searchRoots"
                 :lrc-dirs="lrcDirs"

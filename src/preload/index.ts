@@ -5,6 +5,7 @@ import type { AppConfig } from '../shared/appConfig'
 import type {
   CopyLrcParams,
   CopyLrcResult,
+  DeleteOrphanAudioParams,
   DeleteOrphanParams,
   DeleteOrphanResult,
   JobResult,
@@ -128,6 +129,16 @@ const api = {
   ): Promise<DeleteOrphanResult> => {
     const result = await ipcRenderer.invoke(
       'delete-orphan-lrc',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  deleteOrphanAudio: async (
+    params: DeleteOrphanAudioParams
+  ): Promise<DeleteOrphanResult> => {
+    const result = await ipcRenderer.invoke(
+      'delete-orphan-audio',
       toIpcPlain(params)
     )
     return toIpcPlain(result)
