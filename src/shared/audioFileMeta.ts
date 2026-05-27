@@ -1,3 +1,5 @@
+import { formatFileSize, formatMetaFieldFromRaw } from './formatAudioDisplay'
+
 /** 单条原生标签（如 ID3v2 / Vorbis comment） */
 export interface AudioNativeTagEntry {
   id: string
@@ -11,6 +13,8 @@ export interface AudioFileMetaInfo {
   ok: boolean
   /** 加密格式、非音频、解析失败等说明 */
   message?: string
+  /** 磁盘上的文件大小（字节） */
+  fileSizeBytes?: number
   coverDataUrl?: string
   common: Record<string, string>
   format: Record<string, string>
@@ -28,6 +32,71 @@ export function emptyAudioFileMeta(filePath: string, message?: string): AudioFil
   }
 }
 
+const EMBEDDED_PICTURE_TAG_IDS = new Set([
+  'METADATA_BLOCK_PICTURE',
+  'APIC',
+  'PIC',
+  'covr',
+  'COVERART'
+])
+
+function isBinaryPayload(value: unknown): value is Buffer | Uint8Array {
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return true
+  return value instanceof Uint8Array
+}
+
+function binaryPayloadLength(value: unknown): number | undefined {
+  if (isBinaryPayload(value)) return value.length
+  if (Array.isArray(value)) return value.length
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    if (obj.type === 'Buffer' && Array.isArray(obj.data)) return obj.data.length
+  }
+  return undefined
+}
+
+function nativeTagBaseId(tagId: string): string {
+  const sep = tagId.lastIndexOf(':')
+  return sep >= 0 ? tagId.slice(sep + 1) : tagId
+}
+
+/** 是否为嵌入封面类原生标签（Vorbis / ID3 APIC / MP4 covr 等） */
+export function isEmbeddedPictureNativeTag(tagId: string): boolean {
+  const base = nativeTagBaseId(tagId)
+  if (EMBEDDED_PICTURE_TAG_IDS.has(base)) return true
+  return /PICTURE$/i.test(base)
+}
+
+/** 将 music-metadata 的封面块格式化为可读摘要 */
+export function formatEmbeddedPicture(value: unknown): string | undefined {
+  if (isBinaryPayload(value)) {
+    return `嵌入封面 (${formatFileSize(value.length)})`
+  }
+  if (!value || typeof value !== 'object') return undefined
+
+  const obj = value as Record<string, unknown>
+  const len = binaryPayloadLength(obj.data)
+  const mime = typeof obj.format === 'string' ? obj.format.trim() : undefined
+  const desc = typeof obj.description === 'string' ? obj.description.trim() : undefined
+
+  if (len === undefined && !mime && !desc) return undefined
+
+  const detail: string[] = []
+  if (mime) detail.push(mime)
+  if (len !== undefined && len > 0) detail.push(formatFileSize(len))
+
+  const title = desc || '嵌入封面'
+  return detail.length > 0 ? `${title} (${detail.join(', ')})` : title
+}
+
+/** 将单条原生标签值格式化为可展示字符串 */
+export function formatNativeTagValue(tagId: string, value: unknown): string | undefined {
+  if (isEmbeddedPictureNativeTag(tagId)) {
+    return formatEmbeddedPicture(value)
+  }
+  return formatMetaValue(value)
+}
+
 function formatMetaValue(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined
   if (typeof value === 'string') {
@@ -39,6 +108,9 @@ function formatMetaValue(value: unknown): string | undefined {
   }
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   if (value instanceof Date) return value.toISOString()
+  if (isBinaryPayload(value)) {
+    return `二进制数据 (${formatFileSize(value.length)})`
+  }
   if (Array.isArray(value)) {
     const parts = value
       .map((item) => formatMetaValue(item))
@@ -46,9 +118,10 @@ function formatMetaValue(value: unknown): string | undefined {
     return parts.length > 0 ? parts.join('; ') : undefined
   }
   if (typeof value === 'object') {
+    const embedded = formatEmbeddedPicture(value)
+    if (embedded) return embedded
     const obj = value as Record<string, unknown>
     if ('text' in obj) return formatMetaValue(obj.text)
-    if ('name' in obj && 'data' in obj) return formatMetaValue(obj.name)
   }
   return undefined
 }
@@ -62,7 +135,7 @@ export function recordFromMetaObject(
   if (!obj) return out
   for (const [key, value] of Object.entries(obj)) {
     if (skipKeys.has(key)) continue
-    const text = formatMetaValue(value)
+    const text = formatMetaFieldFromRaw(key, value) ?? formatMetaValue(value)
     if (text) out[key] = text
   }
   return out

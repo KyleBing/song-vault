@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { NButton, NCard, NIcon, NRadio, NRadioGroup, NText, useMessage } from 'naive-ui'
+import {
+  NButton,
+  NDivider,
+  NIcon,
+  NRadio,
+  NRadioGroup,
+  NTabPane,
+  NTabs,
+  NText,
+  useMessage
+} from 'naive-ui'
 import {
   ArrowBack,
   ColorPaletteOutline,
   FilterOutline,
-  InformationCircleOutline,
-  ListOutline
+  FolderOutline,
+  OptionsOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { onMounted, ref } from 'vue'
@@ -50,6 +60,10 @@ const themeStore = useThemeStore()
 const { appearance } = storeToRefs(themeStore)
 const audioMetaHoverStore = useAudioMetaHoverSettingsStore()
 const { settings: audioMetaHover } = storeToRefs(audioMetaHoverStore)
+
+type SettingsTab = 'general' | 'display' | 'paths' | 'filter'
+
+const activeTab = ref<SettingsTab>('general')
 
 const appearanceOptions: { value: AppAppearance; label: string; desc: string }[] =
   [
@@ -97,119 +111,197 @@ async function revealConfigFile(): Promise<void> {
     </header>
 
     <div class="settings-body">
-      <div class="settings-layout">
-        <aside class="settings-aside">
-          <NCard class="settings-card" :bordered="false" size="small">
-            <template #header>
-              <div class="card-header">
-                <NIcon :size="18" class="card-header-icon">
-                  <ColorPaletteOutline />
-                </NIcon>
-                <span>界面主题</span>
-              </div>
-            </template>
+      <NTabs
+        v-model:value="activeTab"
+        type="line"
+        placement="left"
+        class="settings-tabs"
+        animated
+      >
+        <NTabPane name="general">
+          <template #tab>
+            <span class="settings-tab-label">
+              <NIcon :size="18"><ColorPaletteOutline /></NIcon>
+              常规
+            </span>
+          </template>
 
-            <NRadioGroup
-              :value="appearance"
-              class="appearance-group"
-              @update:value="onAppearanceChange"
-            >
-              <label
-                v-for="opt in appearanceOptions"
-                :key="opt.value"
-                class="appearance-option"
-                :class="{ 'appearance-option--active': appearance === opt.value }"
-              >
-                <NRadio :value="opt.value" />
-                <div class="appearance-option-text">
-                  <span class="appearance-option-label">{{ opt.label }}</span>
-                  <NText depth="3" class="appearance-option-desc">{{ opt.desc }}</NText>
+          <div class="settings-pane">
+            <header class="settings-pane-header">
+              <h2>常规</h2>
+              <p class="settings-pane-desc">界面主题与整体外观</p>
+            </header>
+
+            <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">界面主题</h3>
+                <div class="settings-group-panel">
+                  <NRadioGroup
+                    :value="appearance"
+                    class="appearance-group"
+                    @update:value="onAppearanceChange"
+                  >
+                    <label
+                      v-for="opt in appearanceOptions"
+                      :key="opt.value"
+                      class="appearance-option"
+                      :class="{ 'appearance-option--active': appearance === opt.value }"
+                    >
+                      <NRadio :value="opt.value" />
+                      <div class="appearance-option-text">
+                        <span class="appearance-option-label">{{ opt.label }}</span>
+                        <NText depth="3" class="appearance-option-desc">{{ opt.desc }}</NText>
+                      </div>
+                      <span
+                        class="appearance-swatch"
+                        :class="`appearance-swatch--${opt.value}`"
+                        aria-hidden="true"
+                      />
+                    </label>
+                  </NRadioGroup>
                 </div>
-                <span
-                  class="appearance-swatch"
-                  :class="`appearance-swatch--${opt.value}`"
-                  aria-hidden="true"
+              </section>
+            </div>
+          </div>
+        </NTabPane>
+
+        <NTabPane name="display">
+          <template #tab>
+            <span class="settings-tab-label">
+              <NIcon :size="18"><OptionsOutline /></NIcon>
+              显示
+            </span>
+          </template>
+
+          <div class="settings-pane">
+            <header class="settings-pane-header">
+              <h2>显示</h2>
+              <p class="settings-pane-desc">文件列表列与悬停时展示的音频信息</p>
+            </header>
+
+            <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">悬停信息</h3>
+                <p class="settings-group-desc">
+                  在音频文件上悬停时弹出元数据卡片；关闭后仅显示路径提示
+                </p>
+                <div class="settings-group-panel settings-group-panel--flush">
+                  <AudioMetaHoverSettingsEditor v-model:settings="audioMetaHover" />
+                </div>
+              </section>
+
+              <NDivider class="settings-divider" />
+
+              <section class="settings-group">
+                <h3 class="settings-group-title">文件列表列</h3>
+                <p class="settings-group-desc">
+                  分别配置「音频搜索」与「音乐解码」结果表中显示的列
+                </p>
+                <div class="settings-columns-row">
+                  <div class="settings-group-panel settings-group-panel--columns">
+                    <span class="settings-sub-label">音频搜索</span>
+                    <FileListColumnsEditor
+                      v-model="fileListColumns"
+                      kind="source"
+                      hide-title
+                    />
+                  </div>
+                  <div class="settings-group-panel settings-group-panel--columns">
+                    <span class="settings-sub-label">音乐解码</span>
+                    <FileListColumnsEditor
+                      v-model="fileListColumns"
+                      kind="decode"
+                      hide-title
+                    />
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </NTabPane>
+
+        <NTabPane name="paths">
+          <template #tab>
+            <span class="settings-tab-label">
+              <NIcon :size="18"><FolderOutline /></NIcon>
+              路径
+            </span>
+          </template>
+
+          <div class="settings-pane">
+            <header class="settings-pane-header">
+              <h2>路径</h2>
+              <p class="settings-pane-desc">搜索、歌词与加密音乐浏览所用目录</p>
+            </header>
+
+            <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">音频搜索目标</h3>
+                <p class="settings-group-desc">递归子目录；扫描时会跳过下方 LRC 源目录</p>
+                <FolderPanel
+                  v-model="searchRoots"
+                  class="settings-folder-panel"
+                  hide-header
+                  empty-text="添加搜索目标"
                 />
-              </label>
-            </NRadioGroup>
-          </NCard>
+              </section>
 
-          <NCard class="settings-card" :bordered="false" size="small">
-            <template #header>
-              <div class="card-header">
-                <NIcon :size="18" class="card-header-icon">
-                  <InformationCircleOutline />
-                </NIcon>
-                <span>悬停信息</span>
-              </div>
-            </template>
+              <NDivider class="settings-divider" />
 
-            <AudioMetaHoverSettingsEditor v-model:settings="audioMetaHover" />
-          </NCard>
+              <section class="settings-group">
+                <h3 class="settings-group-title">LRC 源文件夹</h3>
+                <p class="settings-group-desc">递归扫描 .lrc 歌词文件</p>
+                <FolderPanel
+                  v-model="lrcDirs"
+                  class="settings-folder-panel"
+                  hide-header
+                  empty-text="添加 LRC 源"
+                />
+              </section>
 
-          <NCard class="settings-card" :bordered="false" size="small">
-            <template #header>
-              <div class="card-header">
-                <NIcon :size="18" class="card-header-icon">
-                  <ListOutline />
-                </NIcon>
-                <span>文件列表列</span>
-              </div>
-            </template>
+              <NDivider class="settings-divider" />
 
-            <FileListColumnsEditor
-              v-model="fileListColumns"
-              kind="source"
-              title="音频搜索目标 · 文件列表"
-            />
-            <FileListColumnsEditor
-              v-model="fileListColumns"
-              kind="decode"
-              title="音乐解码 · 文件列表"
-              class="columns-editor-second"
-            />
-          </NCard>
-        </aside>
+              <section class="settings-group">
+                <h3 class="settings-group-title">音乐解码浏览目录</h3>
+                <p class="settings-group-desc">
+                  如 QQ 音乐、网易云等客户端的下载目录，用于浏览加密音乐
+                </p>
+                <FolderPanel
+                  v-model="decodeSourceDirs"
+                  class="settings-folder-panel"
+                  hide-header
+                  empty-text="添加用于浏览加密音乐的文件夹"
+                />
+              </section>
+            </div>
+          </div>
+        </NTabPane>
 
-        <main class="settings-main">
-          <FolderPanel
-            v-model="searchRoots"
-            class="settings-folder-panel"
-            title="音频搜索目标"
-            hint="递归子目录，跳过 LRC 源"
-            empty-text="添加搜索目标"
-          />
+        <NTabPane name="filter">
+          <template #tab>
+            <span class="settings-tab-label">
+              <NIcon :size="18"><FilterOutline /></NIcon>
+              过滤
+            </span>
+          </template>
 
-          <FolderPanel
-            v-model="lrcDirs"
-            class="settings-folder-panel"
-            title="LRC 源文件夹"
-            hint="递归扫描 .lrc"
-            empty-text="添加 LRC 源"
-          />
+          <div class="settings-pane">
+            <header class="settings-pane-header">
+              <h2>过滤</h2>
+              <p class="settings-pane-desc">按文件名或路径排除不需要参与扫描的文件</p>
+            </header>
 
-          <FolderPanel
-            v-model="decodeSourceDirs"
-            class="settings-folder-panel"
-            title="音乐解码浏览目录"
-            hint="添加 QQ 音乐、网易云下载目录；详细说明见音乐解码页「下载与解密说明」"
-            empty-text="添加用于浏览加密音乐的文件夹"
-          />
-
-          <NCard class="settings-card" :bordered="false" size="small">
-            <template #header>
-              <div class="card-header">
-                <NIcon :size="18" class="card-header-icon">
-                  <FilterOutline />
-                </NIcon>
-                <span>名称过滤</span>
-              </div>
-            </template>
-
-            <PathFilterRulesEditor v-model:rules="pathFilterRules" />
-          </NCard>
-        </main>
-      </div>
+            <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">名称过滤规则</h3>
+                <div class="settings-group-panel">
+                  <PathFilterRulesEditor v-model:rules="pathFilterRules" />
+                </div>
+              </section>
+            </div>
+          </div>
+        </NTabPane>
+      </NTabs>
 
       <footer class="settings-footer">
         <NText depth="3" class="config-file-line">
@@ -233,8 +325,9 @@ async function revealConfigFile(): Promise<void> {
 <style lang="scss" scoped>
 @use '../styles/variables' as *;
 
-$settings-inline-pad: 16px;
-$settings-aside-width: clamp(300px, 35vw, 500px);
+$settings-inline-pad: 20px;
+$settings-nav-width: 132px;
+$settings-content-max: 720px;
 
 .settings-page {
   flex: 1;
@@ -242,10 +335,7 @@ $settings-aside-width: clamp(300px, 35vw, 500px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse 70% 45% at 12% -8%, $glow-primary, transparent),
-    radial-gradient(ellipse 50% 40% at 95% 100%, $glow-accent, transparent),
-    $color-bg;
+  background: $color-bg;
 }
 
 .page-header {
@@ -255,6 +345,7 @@ $settings-aside-width: clamp(300px, 35vw, 500px);
   padding: 12px $settings-inline-pad;
   flex-shrink: 0;
   border-bottom: 1px solid $border-subtle;
+  background: $surface-panel;
 }
 
 .header-text {
@@ -263,87 +354,182 @@ $settings-aside-width: clamp(300px, 35vw, 500px);
 
   h1 {
     margin: 0;
-    font-size: 17px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 600;
   }
 }
 
 .settings-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  width: 100%;
-  padding: 20px $settings-inline-pad 28px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
   box-sizing: border-box;
 }
 
-.settings-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.settings-tabs {
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  min-height: min(100%, 480px);
+
+  :deep(.n-tabs) {
+    height: 100%;
+  }
+
+  :deep(.n-tabs-nav-scroll-content) {
+    padding: 12px 0;
+  }
+
+  :deep(.n-tabs-nav) {
+    width: $settings-nav-width;
+    flex-shrink: 0;
+    padding: 8px 0 8px 12px;
+    box-sizing: border-box;
+    border-right: 1px solid $border-subtle;
+    background: $surface-panel;
+  }
+
+  :deep(.n-tabs-tab) {
+    justify-content: flex-start;
+    padding: 8px 12px !important;
+    font-size: 13px;
+  }
+
+  :deep(.n-tabs-tab__label) {
+    width: 100%;
+  }
+
+  :deep(.n-tabs-pane-wrapper) {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+    box-sizing: border-box;
+    background: $color-bg;
+  }
+
+  :deep(.n-tab-pane) {
+    height: 100%;
+    overflow: hidden;
+    padding: 0 !important;
+    box-sizing: border-box;
+  }
 }
 
-.settings-aside,
-.settings-main {
+.settings-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.2;
+}
+
+.settings-pane {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px 28px 32px;
+  box-sizing: border-box;
+}
+
+.settings-pane-header {
+  max-width: $settings-content-max;
+  margin-bottom: 24px;
+
+  h2 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+}
+
+.settings-pane-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.settings-pane-body {
+  max-width: $settings-content-max;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
 }
 
-@media (min-width: 880px) {
-  .settings-layout {
-    flex-direction: row;
-    align-items: stretch;
-    gap: 20px;
-  }
-
-  .settings-aside {
-    flex: 0 0 $settings-aside-width;
-    width: $settings-aside-width;
-  }
-
-  .settings-main {
-    flex: 1;
-    min-width: 0;
-    padding-left: 20px;
-    border-left: 1px solid $border-subtle;
-  }
+.settings-group-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
-.settings-card,
-.settings-folder-panel {
+.settings-group-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.6;
+}
+
+.settings-group-panel {
+  margin-top: 4px;
+  padding: 14px 16px;
   background: $surface-panel;
   border: 1px solid $border-subtle;
   border-radius: $radius-panel;
-}
 
-.settings-card {
-  :deep(.n-card-header) {
-    padding-bottom: 4px;
+  &--flush {
+    padding: 16px;
   }
 
-  :deep(.n-card__content) {
-    padding-top: 4px;
+  &--columns {
+    padding: 12px 14px 14px;
+    min-height: 0;
+  }
+}
+
+.settings-sub-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.settings-divider {
+  margin: 20px 0 !important;
+  opacity: 0.55;
+}
+
+.settings-columns-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 4px;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
   }
 }
 
 .settings-folder-panel {
-  flex: none;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 15px;
-}
-
-.card-header-icon {
-  opacity: 0.85;
+  margin-top: 4px;
+  min-height: 160px;
+  max-height: 240px;
+  background: $surface-panel;
+  border: 1px solid $border-subtle;
+  border-radius: $radius-panel;
 }
 
 .appearance-group {
@@ -409,16 +595,11 @@ $settings-aside-width: clamp(300px, 35vw, 500px);
   }
 }
 
-.columns-editor-second {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid $border-subtle;
-}
-
 .settings-footer {
-  margin-top: 20px;
-  padding-top: 12px;
+  flex-shrink: 0;
+  padding: 10px $settings-inline-pad 12px;
   border-top: 1px solid $border-subtle;
+  background: $surface-panel;
 }
 
 .config-file-line {

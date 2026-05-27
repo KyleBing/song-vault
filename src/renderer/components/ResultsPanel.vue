@@ -7,7 +7,6 @@ import {
     NTabs,
     NTabPane,
     NTag,
-    NTooltip,
     useMessage,
     type DataTableColumns
 } from 'naive-ui'
@@ -29,6 +28,7 @@ import {
 } from '@shared/sourcePick'
 import { dirnameOf } from '@shared/pathLite'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
+import { lrcPresenceCell } from '@renderer/utils/lrcPresenceCell'
 import { joinPath, relativeToRoots } from '@renderer/utils/displayPath'
 import {
     applySortableHeaders,
@@ -88,11 +88,7 @@ function compareAudioRows(
 ): number {
     switch (key) {
         case 'localLrcPath':
-            return (a.localLrcPath ?? '').localeCompare(
-                b.localLrcPath ?? '',
-                undefined,
-                { sensitivity: 'base' }
-            )
+            return Number(a.hasLocalLrc) - Number(b.hasLocalLrc)
         case 'status':
             return (
                 AUDIO_STATUS_RANK[displayStatus(a)] -
@@ -283,16 +279,19 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             }
         },
         {
-            title: '本目录歌词',
+            title: '歌词',
             key: 'localLrcPath',
-            width: 230,
-            ellipsis: { tooltip: false },
+            width: 76,
+            align: 'center',
             render(row) {
-                if (!row.hasLocalLrc || !row.localLrcPath) return '无'
-                return pathCell(
-                    row.localLrcPath,
-                    shortAudio(row.localLrcPath)
-                )
+                return h('div', { class: 'table-status-cell' }, [
+                    lrcPresenceCell({
+                        hasLrc: row.hasLocalLrc,
+                        tooltipText: row.localLrcPath
+                            ? shortAudio(row.localLrcPath)
+                            : undefined
+                    })
+                ])
             }
         },
         {

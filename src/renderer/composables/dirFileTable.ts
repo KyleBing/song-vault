@@ -69,26 +69,10 @@ export function normalizeDirAudioFileItem(
   }
 }
 
-/** 按量级选用 B / KB / MB / GB / TB（1024 进制） */
-export function formatFileSize(bytes: unknown): string {
-  const n = toFiniteNumber(bytes)
-  if (n <= 0) return '—'
-  const KB = 1024
-  const MB = KB * 1024
-  const GB = MB * 1024
-  const TB = GB * 1024
+import { formatFileSize } from '@shared/formatAudioDisplay'
+import { lrcPresenceCell } from '@renderer/utils/lrcPresenceCell'
 
-  const format = (value: number, unit: string): string => {
-    const digits = value >= 100 ? 1 : value >= 10 ? 2 : 2
-    return `${value.toFixed(digits)} ${unit}`
-  }
-
-  if (n >= TB) return format(n / TB, 'TB')
-  if (n >= GB) return format(n / GB, 'GB')
-  if (n >= MB) return format(n / MB, 'MB')
-  if (n >= KB) return format(n / KB, 'KB')
-  return `${n} B`
-}
+export { formatFileSize } from '@shared/formatAudioDisplay'
 
 /** @deprecated 请用 {@link formatFileSize} */
 export function formatSizeMb(bytes: unknown): string {
@@ -153,17 +137,9 @@ function platformCell(row: DirAudioFileItem) {
 
 function lrcCell(row: DirAudioFileItem) {
   if (!row.hasLrc) {
-    return h(NTag, { size: 'small', round: true }, () => '无')
+    return h(NTag, { size: 'small', round: true }, () => '没有')
   }
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () =>
-        h(NTag, { type: 'success', size: 'small', round: true }, () => '有'),
-      default: () => row.lrcPath ?? row.fileName
-    }
-  )
+  return h(NTag, { type: 'success', size: 'small', round: true }, () => '有')
 }
 
 function inSearchTargetCell(row: DirAudioFileItem) {
@@ -261,9 +237,9 @@ function columnDef(
       }
     case 'hasLrc':
       return {
-        title: '同级 LRC',
+        title: '歌词',
         key: 'hasLrc',
-        width: 88,
+        width: 76,
         align: 'center',
         render(row) {
           return h('div', { class: 'table-status-cell' }, [lrcCell(row)])

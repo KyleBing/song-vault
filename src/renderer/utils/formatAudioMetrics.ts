@@ -1,26 +1,28 @@
 import type { AudioFileMetrics } from '@shared/audioFileMetrics'
+import {
+  formatBitrateKbps,
+  formatBitsPerSample as formatBitsPerSampleValue,
+  formatDurationSeconds,
+  formatSampleRateHz
+} from '@shared/formatAudioDisplay'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 
 export function formatBitrate(metrics: AudioFileMetrics | undefined): string {
   const kbps = metrics?.bitrateKbps
   if (typeof kbps !== 'number' || kbps <= 0) return '—'
-  return `${kbps} kbps`
+  return formatBitrateKbps(kbps)
 }
 
 export function formatDuration(metrics: AudioFileMetrics | undefined): string {
   const sec = metrics?.durationSec
   if (typeof sec !== 'number' || sec <= 0) return '—'
-  const total = Math.round(sec)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${String(s).padStart(2, '0')}`
+  return formatDurationSeconds(sec)
 }
 
 export function formatSampleRate(metrics: AudioFileMetrics | undefined): string {
   const hz = metrics?.sampleRateHz
   if (typeof hz !== 'number' || hz <= 0) return '—'
-  if (hz >= 1000) return `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)} kHz`
-  return `${hz} Hz`
+  return formatSampleRateHz(hz)
 }
 
 export function formatChannels(metrics: AudioFileMetrics | undefined): string {
@@ -41,7 +43,7 @@ export function formatBitsPerSample(
 ): string {
   const bits = metrics?.bitsPerSample
   if (typeof bits !== 'number' || bits <= 0) return '—'
-  return `${bits} bit`
+  return formatBitsPerSampleValue(bits)
 }
 
 export function formatTag(value: string | number | undefined): string {

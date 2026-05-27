@@ -1,3 +1,5 @@
+import { AUDIO_META_NORMAL_FORMAT_KEYS } from './audioMetaLabels'
+
 /** 目录文件列表种类 */
 export type FileListKind = 'source' | 'decode'
 
@@ -37,7 +39,7 @@ export const FILE_LIST_COLUMN_DEFS: FileListColumnDef[] = [
   { id: 'ext', label: '格式', category: 'basic', kinds: ['source', 'decode'] },
   { id: 'platform', label: '平台', category: 'basic', kinds: ['decode'] },
   { id: 'sizeBytes', label: '大小', category: 'basic', kinds: ['source', 'decode'] },
-  { id: 'hasLrc', label: '同级 LRC', category: 'basic', kinds: ['source'] },
+  { id: 'hasLrc', label: '歌词', category: 'basic', kinds: ['source'] },
   {
     id: 'inSearchTarget',
     label: '目标已有',
@@ -70,7 +72,13 @@ export interface FileListColumnsSettings {
 
 export function createDefaultFileListColumns(): FileListColumnsSettings {
   return {
-    source: ['fileName', 'ext', 'sizeBytes', 'hasLrc'],
+    source: [
+      'fileName',
+      'ext',
+      'sizeBytes',
+      'hasLrc',
+      ...AUDIO_META_NORMAL_FORMAT_KEYS
+    ],
     decode: [
       'fileName',
       'inSearchTarget',

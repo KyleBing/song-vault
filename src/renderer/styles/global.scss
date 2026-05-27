@@ -80,6 +80,8 @@ body,
 .n-data-table-td[data-col-key='status'],
 .n-data-table-th[data-col-key='hasLrc'],
 .n-data-table-td[data-col-key='hasLrc'],
+.n-data-table-th[data-col-key='localLrcPath'],
+.n-data-table-td[data-col-key='localLrcPath'],
 .n-data-table-th[data-col-key='platform'],
 .n-data-table-td[data-col-key='platform'] {
   text-align: center;
@@ -87,12 +89,14 @@ body,
 
 /** floating-vue：音频元数据悬停层 */
 .v-popper--theme-audio-meta .v-popper__inner {
+  max-width: min(380px, 92vw);
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--app-border-subtle);
   background: var(--app-surface-raised);
   color: var(--app-text);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  box-sizing: border-box;
 }
 
 .v-popper--theme-audio-meta .v-popper__arrow-outer {

@@ -61,7 +61,7 @@ function onHide(): void {
 <template>
   <Tooltip
     v-if="enabled"
-    placement="left"
+    placement="top"
     :distance="2"
     :skidding="0"
     :delay="hoverDelay"

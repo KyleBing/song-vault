@@ -13,10 +13,18 @@ import {
 
 const model = defineModel<FileListColumnsSettings>({ required: true })
 
-const props = defineProps<{
-  kind: FileListKind
-  title: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    kind: FileListKind
+    title?: string
+    /** 标题由父级放在卡片外时设为 true */
+    hideTitle?: boolean
+  }>(),
+  {
+    title: '',
+    hideTitle: false
+  }
+)
 
 const defsForKind = computed(() =>
   FILE_LIST_COLUMN_DEFS.filter((d) => d.kinds.includes(props.kind))
@@ -60,8 +68,15 @@ function resetDefaults(): void {
 <template>
   <div class="columns-editor">
     <div class="columns-editor-head">
-      <span class="columns-editor-title">{{ title }}</span>
-      <NButton size="tiny" quaternary @click="resetDefaults">恢复默认</NButton>
+      <span v-if="!props.hideTitle" class="columns-editor-title">{{ props.title }}</span>
+      <NButton
+        size="tiny"
+        quaternary
+        class="columns-editor-reset"
+        @click="resetDefaults"
+      >
+        恢复默认
+      </NButton>
     </div>
     <NText depth="3" class="columns-editor-hint">
       <template v-if="kind === 'decode'">
@@ -100,6 +115,8 @@ function resetDefaults(): void {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
 }
 
 .columns-editor-head {
@@ -107,6 +124,10 @@ function resetDefaults(): void {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.columns-editor-reset {
+  margin-left: auto;
 }
 
 .columns-editor-title {
