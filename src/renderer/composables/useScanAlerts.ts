@@ -63,7 +63,17 @@ export function useScanAlerts(
   )
 
   const showOrphanHint = computed(
+    () =>
+      hasResult.value &&
+      ((stats.value?.orphanLrc ?? 0) > 0 || (stats.value?.orphanAudio ?? 0) > 0)
+  )
+
+  const showOrphanLrcHint = computed(
     () => hasResult.value && (stats.value?.orphanLrc ?? 0) > 0
+  )
+
+  const showOrphanAudioHint = computed(
+    () => hasResult.value && (stats.value?.orphanAudio ?? 0) > 0
   )
 
   return {
@@ -77,6 +87,8 @@ export function useScanAlerts(
     noCopyNeeded,
     copyDone,
     showPickHint,
-    showOrphanHint
+    showOrphanHint,
+    showOrphanLrcHint,
+    showOrphanAudioHint
   }
 }

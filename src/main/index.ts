@@ -3,9 +3,11 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import {
   copyLrcToAudio,
+  deleteOrphanAudio,
   deleteOrphanLrc,
   runJob,
   type CopyLrcParams,
+  type DeleteOrphanAudioParams,
   type DeleteOrphanParams,
   type RunJobParams
 } from '../shared/lrcJob'
@@ -60,6 +62,7 @@ const IPC_CHANNELS = [
   'browse-delete-path',
   'browse-delete-files',
   'delete-orphan-lrc',
+  'delete-orphan-audio',
   'copy-lrc-to-audio',
   'load-app-config',
   'save-app-config',
@@ -187,6 +190,13 @@ function registerIpcHandlers(): void {
   ipcMain.handle('delete-orphan-lrc', async (_, params: DeleteOrphanParams) => {
     return toIpcPlain(deleteOrphanLrc(toIpcPlain(params)))
   })
+
+  ipcMain.handle(
+    'delete-orphan-audio',
+    async (_, params: DeleteOrphanAudioParams) => {
+      return toIpcPlain(deleteOrphanAudio(toIpcPlain(params)))
+    }
+  )
 
   ipcMain.handle('copy-lrc-to-audio', async (_, params: CopyLrcParams) => {
     return toIpcPlain(copyLrcToAudio(toIpcPlain(params)))

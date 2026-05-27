@@ -11,6 +11,7 @@ const props = defineProps<{
   result: JobResult | null
   sourceSelection: SourceSelection
   selectedOrphanKeys?: string[]
+  selectedOrphanAudioKeys?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -18,7 +19,8 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
-const deleting = ref(false)
+const deletingLrc = ref(false)
+const deletingAudio = ref(false)
 
 /** 删除右侧「多余」页中已勾选的无对应音频歌词文件 */
 async function deleteOrphans(): Promise<void> {
@@ -27,21 +29,46 @@ async function deleteOrphans(): Promise<void> {
     message.warning('请先在右侧「多余」页勾选要删除的歌词')
     return
   }
-  deleting.value = true
+  deletingLrc.value = true
   try {
     const res = await window.electronAPI.deleteOrphanLrc({ lrcPaths })
     if (res.deleted > 0) {
-      message.success(`已删除 ${res.deleted} 个文件`)
+      message.success(`已删除 ${res.deleted} 个歌词文件`)
     }
     if (res.errors.length > 0) {
-      message.error(`${res.errors.length} 个文件删除失败`)
+      message.error(`${res.errors.length} 个歌词文件删除失败`)
     }
     emit('deleted')
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     message.error(msg)
   } finally {
-    deleting.value = false
+    deletingLrc.value = false
+  }
+}
+
+/** 删除右侧「多余」页中已勾选的重复音频文件 */
+async function deleteOrphanAudio(): Promise<void> {
+  const audioPaths = plainStringList(unref(props.selectedOrphanAudioKeys))
+  if (audioPaths.length === 0) {
+    message.warning('请先在右侧「多余」页勾选要删除的音频')
+    return
+  }
+  deletingAudio.value = true
+  try {
+    const res = await window.electronAPI.deleteOrphanAudio({ audioPaths })
+    if (res.deleted > 0) {
+      message.success(`已删除 ${res.deleted} 个音频文件`)
+    }
+    if (res.errors.length > 0) {
+      message.error(`${res.errors.length} 个音频文件删除失败`)
+    }
+    emit('deleted')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    message.error(msg)
+  } finally {
+    deletingAudio.value = false
   }
 }
 
@@ -57,6 +84,8 @@ const {
   copyDone,
   showPickHint,
   showOrphanHint,
+  showOrphanLrcHint,
+  showOrphanAudioHint,
   hasResult
 } = useScanAlerts(resultRef, computed(() => props.sourceSelection))
 
@@ -123,14 +152,14 @@ const showPanel = computed(() => hasResult.value)
     </NAlert>
 
     <div v-if="showOrphanHint" class="orphan-actions">
-      <NPopconfirm @positive-click="deleteOrphans">
+      <NPopconfirm v-if="showOrphanLrcHint" @positive-click="deleteOrphans">
         <template #trigger>
           <NButton
             block
             type="error"
             size="small"
             :disabled="(selectedOrphanKeys?.length ?? 0) === 0"
-            :loading="deleting"
+            :loading="deletingLrc"
           >
             <template #icon>
               <NIcon><Trash /></NIcon>
@@ -138,9 +167,30 @@ const showPanel = computed(() => hasResult.value)
             删除选中多余歌词 ({{ selectedOrphanKeys?.length ?? 0 }})
           </NButton>
         </template>
-        确定删除选中的 {{ selectedOrphanKeys?.length ?? 0 }} 个文件？不可恢复。
+        确定删除选中的 {{ selectedOrphanKeys?.length ?? 0 }} 个歌词文件？不可恢复。
       </NPopconfirm>
-      <p class="orphan-tip">在右侧「多余」页勾选要删除的 .lrc</p>
+
+      <NPopconfirm v-if="showOrphanAudioHint" @positive-click="deleteOrphanAudio">
+        <template #trigger>
+          <NButton
+            block
+            type="error"
+            size="small"
+            :disabled="(selectedOrphanAudioKeys?.length ?? 0) === 0"
+            :loading="deletingAudio"
+          >
+            <template #icon>
+              <NIcon><Trash /></NIcon>
+            </template>
+            删除选中多余音频 ({{ selectedOrphanAudioKeys?.length ?? 0 }})
+          </NButton>
+        </template>
+        确定删除选中的 {{ selectedOrphanAudioKeys?.length ?? 0 }} 个音频文件？不可恢复。
+      </NPopconfirm>
+
+      <p class="orphan-tip">
+        在右侧「多余」页勾选要删除的文件。重复副本需在搜索范围内找到同名且大小一致的 abc.* 才会列出。
+      </p>
     </div>
   </section>
 </template>
