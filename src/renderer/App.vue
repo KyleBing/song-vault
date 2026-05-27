@@ -43,6 +43,7 @@ import {
   type SourceSelection
 } from '@shared/sourcePick'
 import ResultsPanel from './components/ResultsPanel.vue'
+import AudioCoverLightbox from './components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
 import styleTokens from './styles/variables.module.scss'
 
@@ -222,6 +223,7 @@ watch(
     :theme-overrides="themeOverrides"
   >
     <NMessageProvider>
+      <AudioCoverLightbox />
       <div class="app-shell">
         <SettingsPanel
           v-if="showSettings"
