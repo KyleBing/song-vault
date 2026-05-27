@@ -4,6 +4,7 @@ import {
   ArrowBack,
   ColorPaletteOutline,
   FilterOutline,
+  InformationCircleOutline,
   ListOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
@@ -11,10 +12,12 @@ import { onMounted, ref } from 'vue'
 import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
 import { APP_CONFIG_FILE_NAME } from '@shared/appConfig'
 import { useThemeStore } from '@renderer/stores/theme'
+import { useAudioMetaHoverSettingsStore } from '@renderer/stores/audioMetaHoverSettings'
 import FolderPanel from './FolderPanel.vue'
 import type { FileListColumnsSettings } from '@shared/appConfig'
 import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
 import FileListColumnsEditor from './FileListColumnsEditor.vue'
+import AudioMetaHoverSettingsEditor from './AudioMetaHoverSettingsEditor.vue'
 
 const message = useMessage()
 const configFilePath = ref('')
@@ -45,6 +48,8 @@ const emit = defineEmits<{
 
 const themeStore = useThemeStore()
 const { appearance } = storeToRefs(themeStore)
+const audioMetaHoverStore = useAudioMetaHoverSettingsStore()
+const { settings: audioMetaHover } = storeToRefs(audioMetaHoverStore)
 
 const appearanceOptions: { value: AppAppearance; label: string; desc: string }[] =
   [
@@ -127,6 +132,19 @@ async function revealConfigFile(): Promise<void> {
                 />
               </label>
             </NRadioGroup>
+          </NCard>
+
+          <NCard class="settings-card" :bordered="false" size="small">
+            <template #header>
+              <div class="card-header">
+                <NIcon :size="18" class="card-header-icon">
+                  <InformationCircleOutline />
+                </NIcon>
+                <span>悬停信息</span>
+              </div>
+            </template>
+
+            <AudioMetaHoverSettingsEditor v-model:settings="audioMetaHover" />
           </NCard>
 
           <NCard class="settings-card" :bordered="false" size="small">

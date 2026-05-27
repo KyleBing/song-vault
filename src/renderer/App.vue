@@ -24,6 +24,7 @@ import {
   saveAppConfig
 } from '@renderer/lib/appConfigClient'
 import { useThemeStore } from '@renderer/stores/theme'
+import { useAudioMetaHoverSettingsStore } from '@renderer/stores/audioMetaHoverSettings'
 import SettingsPanel from './components/SettingsPanel.vue'
 import MusicDecodePage from './components/MusicDecodePage.vue'
 import SourceFilesPage from './components/SourceFilesPage.vue'
@@ -47,7 +48,9 @@ import styleTokens from './styles/variables.module.scss'
 
 const layoutStore = useLayoutStore()
 const themeStore = useThemeStore()
+const audioMetaHoverStore = useAudioMetaHoverSettingsStore()
 const { appearance } = storeToRefs(themeStore)
+const { settings: audioMetaHoverSettings } = storeToRefs(audioMetaHoverStore)
 
 const naiveTheme = computed(() =>
   appearance.value === 'dark' ? darkTheme : null
@@ -158,7 +161,8 @@ function buildAppConfig(): AppConfig {
     fileListColumns: {
       source: [...columns.source],
       decode: [...columns.decode]
-    }
+    },
+    audioMetaHover: { ...toRaw(audioMetaHoverSettings.value) }
   }
 }
 
@@ -184,6 +188,7 @@ onMounted(async () => {
     decodeOutputDir.value = config.decodeOutputDir
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
+    audioMetaHoverStore.apply(config.audioMetaHover)
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -203,7 +208,8 @@ watch(
     decodeOutputDir,
     pathFilterRules,
     fileListColumns,
-    appearance
+    appearance,
+    audioMetaHoverSettings
   ],
   () => void persistFolderConfig(),
   { deep: true }

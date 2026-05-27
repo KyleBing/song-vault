@@ -1,27 +1,81 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
+import type { AudioMetaHoverDisplayMode } from '@shared/audioMetaHoverSettings'
+import {
+  labelForCommonKey,
+  labelForFormatKey
+} from '@shared/audioMetaLabels'
 
 const props = defineProps<{
   meta: AudioFileMetaInfo | null
   loading?: boolean
   filePath?: string
+  displayMode: AudioMetaHoverDisplayMode
 }>()
 
+const isMinimal = computed(() => props.displayMode === 'minimal')
+const isNormal = computed(() => props.displayMode === 'normal')
+const isFull = computed(() => props.displayMode === 'full')
+
+const showPath = computed(() => Boolean(props.filePath))
+
+const heroSkipKeys = computed(() =>
+  props.meta?.coverDataUrl ? new Set(['title', 'artist', 'album']) : undefined
+)
+
 const commonRows = computed(() => {
-  const skip = props.meta?.coverDataUrl
-    ? new Set(['title', 'artist', 'album'])
-    : undefined
-  return objectRows(props.meta?.common, skip)
+  if (isMinimal.value) return []
+  const rows = objectRows(props.meta?.common, heroSkipKeys.value)
+  if (isNormal.value) {
+    return rows.map((row) => ({
+      key: row.key,
+      label: labelForCommonKey(row.key),
+      value: row.value
+    }))
+  }
+  return rows.map((row) => ({
+    key: row.key,
+    label: row.key,
+    value: row.value
+  }))
 })
-const formatRows = computed(() => objectRows(props.meta?.format))
-const nativeRows = computed(() => props.meta?.native ?? [])
+
+const formatRows = computed(() => {
+  if (isMinimal.value) return []
+  const rows = objectRows(props.meta?.format)
+  if (isNormal.value) {
+    return rows.map((row) => ({
+      key: row.key,
+      label: labelForFormatKey(row.key),
+      value: row.value
+    }))
+  }
+  return rows.map((row) => ({
+    key: row.key,
+    label: row.key,
+    value: row.value
+  }))
+})
+
+const nativeRows = computed(() =>
+  isFull.value ? (props.meta?.native ?? []) : []
+)
 
 const hasBody = computed(
   () =>
     commonRows.value.length > 0 ||
     formatRows.value.length > 0 ||
     nativeRows.value.length > 0
+)
+
+const showHero = computed(
+  () =>
+    props.meta &&
+    (props.meta.coverDataUrl ||
+      props.meta.common.title ||
+      props.meta.common.artist ||
+      props.meta.common.album)
 )
 
 function objectRows(
@@ -37,16 +91,27 @@ function objectRows(
 </script>
 
 <template>
-  <div class="audio-meta-popper">
-    <p v-if="filePath" class="audio-meta-popper__path" :title="filePath">
+  <div
+    class="audio-meta-popper"
+    :class="{
+      'audio-meta-popper--minimal': isMinimal
+    }"
+  >
+    <p v-if="showPath" class="audio-meta-popper__path" :title="filePath">
       {{ filePath }}
     </p>
 
     <div v-if="loading" class="audio-meta-popper__state">读取标签…</div>
     <template v-else-if="meta">
-      <div v-if="meta.coverDataUrl" class="audio-meta-popper__hero">
+      <div
+        v-if="showHero"
+        class="audio-meta-popper__hero"
+        :class="{ 'audio-meta-popper__hero--minimal': isMinimal }"
+      >
         <img
+          v-if="meta.coverDataUrl"
           class="audio-meta-popper__cover"
+          :class="{ 'audio-meta-popper__cover--minimal': isMinimal }"
           :src="meta.coverDataUrl"
           alt="封面"
         />
@@ -69,20 +134,20 @@ function objectRows(
 
       <div v-if="hasBody" class="audio-meta-popper__scroll">
         <section v-if="commonRows.length" class="audio-meta-popper__section">
-          <h4 class="audio-meta-popper__heading">标签</h4>
+          <h4 v-if="isFull" class="audio-meta-popper__heading">标签</h4>
           <dl class="audio-meta-popper__dl">
             <template v-for="row in commonRows" :key="'c-' + row.key">
-              <dt>{{ row.key }}</dt>
+              <dt>{{ row.label }}</dt>
               <dd>{{ row.value }}</dd>
             </template>
           </dl>
         </section>
 
         <section v-if="formatRows.length" class="audio-meta-popper__section">
-          <h4 class="audio-meta-popper__heading">格式</h4>
+          <h4 v-if="isFull" class="audio-meta-popper__heading">格式</h4>
           <dl class="audio-meta-popper__dl">
             <template v-for="row in formatRows" :key="'f-' + row.key">
-              <dt>{{ row.key }}</dt>
+              <dt>{{ row.label }}</dt>
               <dd>{{ row.value }}</dd>
             </template>
           </dl>
@@ -100,7 +165,13 @@ function objectRows(
       </div>
 
       <p
-        v-else-if="meta.ok && !meta.coverDataUrl"
+        v-else-if="meta.ok && !showHero && isFull"
+        class="audio-meta-popper__hint"
+      >
+        无标签信息
+      </p>
+      <p
+        v-else-if="meta.ok && !showHero && isMinimal"
         class="audio-meta-popper__hint"
       >
         无标签信息
@@ -115,6 +186,10 @@ function objectRows(
   font-size: 10px;
   line-height: 1.35;
   color: var(--app-text);
+
+  &--minimal {
+    max-width: min(260px, 88vw);
+  }
 }
 
 .audio-meta-popper__path {
@@ -139,6 +214,10 @@ function objectRows(
   gap: 8px;
   margin-bottom: 6px;
   align-items: flex-start;
+
+  &--minimal {
+    margin-bottom: 0;
+  }
 }
 
 .audio-meta-popper__cover {
@@ -148,6 +227,11 @@ function objectRows(
   border-radius: 4px;
   flex-shrink: 0;
   background: rgba(128, 128, 128, 0.15);
+
+  &--minimal {
+    width: 64px;
+    height: 64px;
+  }
 }
 
 .audio-meta-popper__hero-text {
@@ -155,10 +239,18 @@ function objectRows(
   flex: 1;
 }
 
+.audio-meta-popper--minimal .audio-meta-popper__hero-text:only-child {
+  width: 100%;
+}
+
 .audio-meta-popper__title {
   margin: 0;
   font-size: 11px;
   font-weight: 600;
+}
+
+.audio-meta-popper--minimal .audio-meta-popper__title {
+  font-size: 12px;
 }
 
 .audio-meta-popper__artist,

@@ -1,6 +1,7 @@
 import { NIcon, NTag, NTooltip, type DataTableColumns, type TagProps } from 'naive-ui'
 import { FolderOpen } from '@vicons/ionicons5'
 import { computed, h, type ComputedRef, type Ref } from 'vue'
+import { useAudioMetaHoverSettingsStore } from '@renderer/stores/audioMetaHoverSettings'
 import { needsAudioMetadata } from '@shared/audioFileMetrics'
 import {
   columnsForKind,
@@ -193,15 +194,20 @@ function inSearchTargetCell(row: DirAudioFileItem) {
   )
 }
 
-function metricCell(text: string, filePath?: string) {
+function metricCell(
+  text: string,
+  filePath: string | undefined,
+  hoverEnabled: boolean
+) {
   const inner = () => h('span', { class: 'metric-cell' }, text)
-  if (filePath) return wrapAudioMetaHover(filePath, inner)
+  if (filePath && hoverEnabled) return wrapAudioMetaHover(filePath, inner)
   return inner()
 }
 
 function columnDef(
   id: FileListColumnId,
-  listKind: FileListKind
+  listKind: FileListKind,
+  hoverEnabled: boolean
 ): DataTableColumns<DirAudioFileItem>[number] | null {
   switch (id) {
     case 'fileName':
@@ -298,7 +304,7 @@ function columnDef(
         width: 96,
         align: 'right',
         render(row) {
-          return metricCell(formatBitrate(row.audio), row.filePath)
+          return metricCell(formatBitrate(row.audio), row.filePath, hoverEnabled)
         }
       }
     case 'duration':
@@ -308,7 +314,7 @@ function columnDef(
         width: 72,
         align: 'right',
         render(row) {
-          return metricCell(formatDuration(row.audio), row.filePath)
+          return metricCell(formatDuration(row.audio), row.filePath, hoverEnabled)
         }
       }
     case 'sampleRate':
@@ -318,7 +324,7 @@ function columnDef(
         width: 88,
         align: 'right',
         render(row) {
-          return metricCell(formatSampleRate(row.audio), row.filePath)
+          return metricCell(formatSampleRate(row.audio), row.filePath, hoverEnabled)
         }
       }
     case 'channels':
@@ -327,7 +333,7 @@ function columnDef(
         key: 'channels',
         width: 80,
         render(row) {
-          return metricCell(formatChannels(row.audio), row.filePath)
+          return metricCell(formatChannels(row.audio), row.filePath, hoverEnabled)
         }
       }
     case 'codec':
@@ -336,7 +342,7 @@ function columnDef(
         key: 'codec',
         width: 88,
         render(row) {
-          return metricCell(formatCodec(row.audio), row.filePath)
+          return metricCell(formatCodec(row.audio), row.filePath, hoverEnabled)
         }
       }
     case 'bitsPerSample':
@@ -346,7 +352,7 @@ function columnDef(
         width: 72,
         align: 'right',
         render(row) {
-          return metricCell(formatBitsPerSample(row.audio), row.filePath)
+          return metricCell(formatBitsPerSample(row.audio), row.filePath, hoverEnabled)
         }
       }
     case 'title':
@@ -356,7 +362,7 @@ function columnDef(
         minWidth: 120,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.title), row.filePath)
+          return metricCell(formatTag(row.audio?.title), row.filePath, hoverEnabled)
         }
       }
     case 'artist':
@@ -366,7 +372,7 @@ function columnDef(
         minWidth: 100,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.artist), row.filePath)
+          return metricCell(formatTag(row.audio?.artist), row.filePath, hoverEnabled)
         }
       }
     case 'album':
@@ -376,7 +382,7 @@ function columnDef(
         minWidth: 100,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.album), row.filePath)
+          return metricCell(formatTag(row.audio?.album), row.filePath, hoverEnabled)
         }
       }
     case 'genre':
@@ -386,7 +392,7 @@ function columnDef(
         width: 88,
         ellipsis: { tooltip: true },
         render(row) {
-          return metricCell(formatTag(row.audio?.genre), row.filePath)
+          return metricCell(formatTag(row.audio?.genre), row.filePath, hoverEnabled)
         }
       }
     case 'year':
@@ -396,7 +402,7 @@ function columnDef(
         width: 64,
         align: 'right',
         render(row) {
-          return metricCell(formatTag(row.audio?.year), row.filePath)
+          return metricCell(formatTag(row.audio?.year), row.filePath, hoverEnabled)
         }
       }
     default:
@@ -406,12 +412,13 @@ function columnDef(
 
 export function buildDirFileTableColumns(
   listKind: FileListKind,
-  settings: FileListColumnsSettings
+  settings: FileListColumnsSettings,
+  hoverEnabled = true
 ): DataTableColumns<DirAudioFileItem> {
   const ids = columnsForKind(settings, listKind)
   const cols: DataTableColumns<DirAudioFileItem> = [{ type: 'selection' }]
   for (const id of ids) {
-    const col = columnDef(id, listKind)
+    const col = columnDef(id, listKind, hoverEnabled)
     if (col) cols.push(col)
   }
   return cols
@@ -586,8 +593,14 @@ export function useDirFileTableColumns(
   sortKey: Ref<DirFileSortKey>,
   sortOrder: Ref<DirFileSortOrder>
 ): ComputedRef<DataTableColumns<DirAudioFileItem>> {
+  const hoverStore = useAudioMetaHoverSettingsStore()
   return computed(() => {
-    const columns = buildDirFileTableColumns(listKind, columnSettings.value)
+    const hoverEnabled = hoverStore.settings.enabled
+    const columns = buildDirFileTableColumns(
+      listKind,
+      columnSettings.value,
+      hoverEnabled
+    )
     return applySortableHeaders(columns, {
       sortKey: sortKey.value,
       sortOrder: sortOrder.value,
