@@ -452,7 +452,14 @@ export async function embedDecryptMetadata(
   const ext = result.ext?.toLowerCase();
   if (ext !== 'mp3' && ext !== 'flac') return result;
 
-  const parsed = await metaParseBlob(result.blob);
+  let parsed: IAudioMetadata;
+  try {
+    parsed = await metaParseBlob(result.blob);
+  } catch (e) {
+    console.warn('parse decrypted audio failed, skip metadata embed.', e);
+    return result;
+  }
+
   let picture: ArrayBuffer | undefined;
   if (result.picture?.startsWith('blob:')) {
     try {
@@ -463,6 +470,11 @@ export async function embedDecryptMetadata(
     }
   }
 
+  const common = parsed.common;
+  const hasEmbeddedTags = !!(common.album || common.artists?.length || common.title);
+  // 对齐 UM：音频已有标签且无封面时，不再重复写入
+  if (hasEmbeddedTags && !picture) return result;
+
   const explicit: Partial<IMusicMeta> = {
     title: result.title,
     album: result.album,
@@ -470,20 +482,26 @@ export async function embedDecryptMetadata(
     picture
   };
   const merged = buildMusicMetaFromSources(explicit, parsed);
-  const buffer = Buffer.from(await result.blob.arrayBuffer());
-  const tagged =
-    ext === 'mp3'
-      ? WriteMetaToMp3(buffer, merged, parsed)
-      : WriteMetaToFlac(buffer, merged, parsed);
-  const blob = new Blob([tagged], { type: result.mime });
-  const oldFile = result.file;
-  const next: DecryptResult = {
-    ...result,
-    blob,
-    file: URL.createObjectURL(blob)
-  };
-  if (oldFile?.startsWith('blob:')) URL.revokeObjectURL(oldFile);
-  return next;
+
+  try {
+    const buffer = Buffer.from(await result.blob.arrayBuffer());
+    const tagged =
+      ext === 'mp3'
+        ? WriteMetaToMp3(buffer, merged, parsed)
+        : WriteMetaToFlac(buffer, merged, parsed);
+    const blob = new Blob([tagged], { type: result.mime });
+    const oldFile = result.file;
+    const next: DecryptResult = {
+      ...result,
+      blob,
+      file: URL.createObjectURL(blob)
+    };
+    if (oldFile?.startsWith('blob:')) URL.revokeObjectURL(oldFile);
+    return next;
+  } catch (e) {
+    console.warn('embed metadata failed, skip.', e);
+    return result;
+  }
 }
 
 export function SplitFilename(n: string): { name: string; ext: string } {
