@@ -18,6 +18,7 @@ import {
   CreateOutline,
   FolderOpen,
   Refresh,
+  SearchOutline,
   TrashOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
@@ -40,6 +41,7 @@ import {
   type DirFileSortKey,
   type DirFileSortOrder
 } from '@renderer/composables/dirFileTable'
+import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { relativeToRoots } from '@renderer/utils/displayPath'
@@ -74,6 +76,8 @@ const {
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
 const deletingFiles = ref(false)
+
+const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
 const sortKey = ref<DirFileSortKey>('fileName')
 const sortOrder = ref<DirFileSortOrder>('asc')
@@ -210,7 +214,11 @@ function fileRowKey(row: DirAudioFileItem): string {
 }
 
 const sortedAudioFiles = computed(() =>
-  sortDirAudioFiles(audioFiles.value, sortKey.value, sortOrder.value)
+  sortDirAudioFiles(
+    filterByFileName(audioFiles.value),
+    sortKey.value,
+    sortOrder.value
+  )
 )
 
 const orderedFileKeys = computed(() =>
@@ -628,10 +636,30 @@ onMounted(() => {
       </aside>
 
       <section class="files-pane">
-        <div class="pane-head">
-          <span v-if="selectedDir">当前：{{ selectedDirLabel }}</span>
-          <span v-else class="pane-head-muted">请选择左侧目录</span>
-          <div class="head-actions files-head-actions">
+        <div class="files-toolbar">
+          <div class="files-toolbar-leading">
+            <span v-if="selectedDir" class="files-toolbar-title">
+              当前：{{ selectedDirLabel }}
+            </span>
+            <span v-else class="files-toolbar-title files-toolbar-title--muted">
+              请选择左侧目录
+            </span>
+            <NInput
+              v-model:value="fileNameFilter"
+              class="file-name-filter"
+              size="small"
+              clearable
+              placeholder="搜索文件名"
+              :disabled="!selectedDir"
+            >
+              <template #prefix>
+                <NIcon :size="14" class="filter-prefix-icon">
+                  <SearchOutline />
+                </NIcon>
+              </template>
+            </NInput>
+          </div>
+          <div class="files-toolbar-actions">
             <NPopconfirm
               :disabled="!selectedFileKeys.length"
               @positive-click="deleteSelectedFiles"
@@ -678,7 +706,18 @@ onMounted(() => {
             <NEmpty size="small" description="点击目录树中的文件夹查看音频" />
           </div>
           <p
-            v-if="selectedDir && !filesLoading && audioFiles.length === 0"
+            v-if="
+              selectedDir &&
+              !filesLoading &&
+              audioFiles.length > 0 &&
+              sortedAudioFiles.length === 0
+            "
+            class="files-empty-hint"
+          >
+            没有匹配「{{ fileNameFilter.trim() }}」的文件
+          </p>
+          <p
+            v-else-if="selectedDir && !filesLoading && audioFiles.length === 0"
             class="files-empty-hint"
           >
             该目录下没有音频文件
@@ -764,9 +803,44 @@ onMounted(() => {
   border-bottom: 1px solid $border-subtle;
 }
 
-.pane-head-muted {
+.files-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid $border-subtle;
+}
+
+.files-toolbar-leading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.files-toolbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(100%, 320px);
+}
+
+.files-toolbar-title--muted {
   font-weight: 400;
   opacity: 0.5;
+}
+
+.files-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .head-actions {
@@ -847,6 +921,16 @@ onMounted(() => {
   font-family: $font-mono;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.file-name-filter {
+  flex: 1;
+  min-width: 140px;
+  max-width: 320px;
+}
+
+.filter-prefix-icon {
+  opacity: 0.45;
 }
 
 .files-head-actions {
