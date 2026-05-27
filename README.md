@@ -1,19 +1,12 @@
-# move_lrc_to_audio
+# LRC 歌词归位 — Electron 桌面版
 
-根据 `.lrc` 文件名（不含后缀）在指定目录中查找同名音频，并将 `.lrc` **复制**到音频所在文件夹（**不删除、不移动**源文件）。
+Vue 3 + TypeScript + Electron，图形界面完成 LRC 复制归位（与 `nodejs/` 命令行版规则一致）。
 
-## 版本
+## 要求
 
-| 目录 | 说明 |
-|------|------|
-| [**`electron/`**](electron/) | **Electron 桌面版**（推荐，Vue 3 + TypeScript，现代 UI） |
-| [`nodejs/`](nodejs/) | Node.js 命令行交互版 |
+- Node.js 18+
 
----
-
-## Electron 桌面版（推荐）
-
-见 [`electron/README.md`](electron/README.md)。
+## 开发
 
 ```powershell
 cd electron
@@ -21,23 +14,56 @@ yarn install
 yarn dev
 ```
 
----
-
-## Node.js 命令行版
-
-见 [`nodejs/README.md`](nodejs/README.md)。
+## 构建
 
 ```powershell
-cd nodejs
-node move_lrc_to_audio.js
+yarn build
+yarn preview
 ```
 
-## 规则（各版本相同）
+## 打包客户端
 
-- **复制**到音频旁，LRC 源目录中的文件保留
-- 匹配：`歌曲.lrc` ↔ `歌曲.flac` / `歌曲.mp3`（忽略大小写）
+先 `yarn install`，再在本机平台打包（产物在 `release/`）：
+
+```powershell
+# macOS → .dmg
+yarn pack:mac
+
+# Windows → 安装包（在 Windows 上执行最省事）
+yarn pack:win
+```
+
+`pack:mac` / `pack:win` 会使用 `node_modules/electron` 里已安装的 Electron，**不必再从 GitHub 下载约 100MB**。若仍卡在 `downloading ... electron-...zip`，可改用镜像脚本：
+
+```powershell
+yarn pack:mac:mirror
+yarn pack:win:mirror
+```
+
+首次打包若需下载依赖，请保持网络畅通；国内可依赖 `.npmrc` 中的 `electron_mirror`。
+
+## 使用流程
+
+1. 添加一个或多个 **LRC 源文件夹**（递归扫描子文件夹中的 `.lrc`）
+2. 添加一个或多个 **音频搜索目标**（递归子目录）
+3. 点击 **预览匹配** 查看结果（以**音频**为主的多个标签页）
+4. 确认后点击 **执行复制**（源文件夹中的 `.lrc` 保留）
+5. 在 **多余歌词** 标签中可勾选并删除目标文件夹内无同级同名音频的 `.lrc`
+
+## 结果标签页
+
+| 标签 | 内容 |
+|------|------|
+| 全部音频 | 目标文件夹内所有音频及匹配状态 |
+| 已匹配 | 本目录已有同级同名歌词与音频 |
+| 待复制 | 可从 LRC 源复制到本目录 |
+| 缺歌词 | 本目录无歌词且源中无/有多个同名 |
+| 多余歌词 | 目标内无配对音频的歌词，支持删除 |
+
+## 规则
+
+- **复制**到音频旁，不删除、不移动源文件
+- 按文件名（不含后缀）匹配，忽略大小写
 - 扫描音频时跳过所有 LRC 源目录
-- LRC 源目录递归扫描子文件夹
-- 以目标文件夹内**音频**为主展示；**已匹配**指同级已有同名 `.lrc` 与音频
-- 可删除目标内**多余歌词**（同级无同名音频的 `.lrc`）
-- 同名音频在多个不同文件夹 → 重名冲突，跳过
+- **已匹配**：目标文件夹**同级目录**下，同时存在主文件名相同的 `.lrc` 与音频
+- 同名音频分布在多个不同文件夹 → 重名冲突，跳过
