@@ -31,7 +31,7 @@ export async function Decrypt(file: File, raw_filename: string, _: string): Prom
 interface NcmMusicMeta {
   //musicId: number
   musicName?: string;
-  artist?: Array<string | number>[];
+  artist?: string | Array<string | number | Array<string | number>>[];
   format?: string;
   album?: string;
   albumPic?: string;
@@ -137,7 +137,7 @@ class NcmDecrypt {
     } else {
       result = JSON.parse(plainText.slice(labelIndex + 1));
     }
-    if (!!result.albumPic) {
+    if (result.albumPic) {
       result.albumPic = result.albumPic.replace('http://', 'https://') + '?param=500y500';
     }
     return result;
@@ -158,11 +158,20 @@ class NcmDecrypt {
 
     // build artists
     let artists: string[] = [];
-    if (!!this.oriMeta.artist) {
-      this.oriMeta.artist.forEach((arr) => artists.push(<string>arr[0]));
+    if (typeof this.oriMeta.artist === 'string') {
+      // v3.0: artist 现在可能是字符串
+      artists.push(this.oriMeta.artist);
+    } else if (Array.isArray(this.oriMeta.artist)) {
+      this.oriMeta.artist.forEach((artist) => {
+        if (typeof artist === 'string') {
+          artists.push(artist);
+        } else if (Array.isArray(artist) && artist[0] && typeof artist[0] === 'string') {
+          artists.push(artist[0]);
+        }
+      });
     }
 
-    if (artists.length === 0 && !!info.artist) {
+    if (artists.length === 0 && info.artist) {
       artists = info.artist
         .split(',')
         .map((val) => val.trim())
@@ -207,12 +216,31 @@ class NcmDecrypt {
     this.audio = this._getAudio(keyBox);
     this.format = this.oriMeta.format || SniffAudioExt(this.audio);
     this.mime = AudioMimeType[this.format];
-    await this._buildMeta();
+
     try {
+      await this._buildMeta();
       await this._writeMeta();
     } catch (e) {
-      console.warn('write meta data failed', e);
+      console.warn('build/write meta failed, skip.', e);
     }
+
+    if (!this.blob && this.audio) {
+      this.blob = new Blob([this.audio], { type: this.mime });
+    }
+    if (!this.newMeta) {
+      const info = GetMetaFromFile(this.filename, this.oriMeta?.musicName);
+      this.newMeta = {
+        title: info.title,
+        artists: info.artist
+          ? info.artist
+              .split(',')
+              .map((val) => val.trim())
+              .filter((val) => val != '')
+          : [],
+        album: this.oriMeta?.album,
+      };
+    }
+
     return this.gatherResult();
   }
 }
