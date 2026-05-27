@@ -68,6 +68,22 @@ body,
   }
 }
 
+/** 解码页「库中已有」tooltip：多条路径逐行展示 */
+.in-search-target-path-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li + li {
+    margin-top: 4px;
+  }
+
+  li {
+    word-break: break-all;
+    white-space: normal;
+  }
+}
+
 /** 表格中状态 / 标签类列的内容居中 */
 .table-status-cell {
   display: flex;

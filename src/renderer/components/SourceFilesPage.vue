@@ -61,7 +61,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 165)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 178)
 
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
@@ -529,7 +529,8 @@ onMounted(() => {
         </template>
       </NButton>
       <div class="header-text">
-        <h1>文件管理</h1>
+        <h1>音频库</h1>
+        <p>浏览与管理音频搜索目标中的文件</p>
       </div>
       <NButton quaternary size="small" @click="refreshAll">
         <template #icon>

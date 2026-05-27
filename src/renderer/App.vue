@@ -57,9 +57,22 @@ const naiveTheme = computed(() =>
   appearance.value === 'dark' ? darkTheme : null
 )
 
-const showSettings = ref(false)
-const showMusicDecode = ref(false)
-const showSourceFiles = ref(false)
+type AppView = 'lrc' | 'decode' | 'library' | 'settings'
+
+const activeView = ref<AppView>('lrc')
+
+/** 从主界面或设置页进入指定工作台 */
+function openView(view: Exclude<AppView, 'settings'>): void {
+  activeView.value = view
+}
+
+function openSettings(): void {
+  activeView.value = 'settings'
+}
+
+function closeOverlay(): void {
+  activeView.value = 'lrc'
+}
 
 /** 窗口尺寸变化时更新布局 store */
 function onWindowResize(): void {
@@ -226,32 +239,33 @@ watch(
       <AudioCoverLightbox />
       <div class="app-shell">
         <SettingsPanel
-          v-if="showSettings"
+          v-if="activeView === 'settings'"
           v-model:path-filter-rules="pathFilterRules"
           v-model:search-roots="searchRoots"
           v-model:lrc-dirs="lrcDirs"
           v-model:decode-source-dirs="decodeSourceDirs"
           v-model:file-list-columns="fileListColumns"
           class="settings-layer"
-          @close="showSettings = false"
+          @open-view="openView"
+          @close="closeOverlay"
         />
         <SourceFilesPage
-          v-else-if="showSourceFiles"
+          v-else-if="activeView === 'library'"
           v-model:search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
           class="settings-layer"
-          @close="showSourceFiles = false"
+          @close="closeOverlay"
         />
         <MusicDecodePage
-          v-else-if="showMusicDecode"
+          v-else-if="activeView === 'decode'"
           v-model:decode-source-dirs="decodeSourceDirs"
           v-model:decode-output-dir="decodeOutputDir"
           :search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
           class="settings-layer"
-          @close="showMusicDecode = false"
+          @close="closeOverlay"
         />
         <div v-else class="workspace">
           <aside class="sidebar">
@@ -270,7 +284,7 @@ watch(
                 <p class="config-hint-text">
                   请在「设置」中配置音频搜索目标与 LRC 源文件夹
                 </p>
-                <NButton size="small" @click="showSettings = true">
+                <NButton size="small" @click="openSettings">
                   打开设置
                 </NButton>
               </section>
@@ -309,25 +323,14 @@ watch(
               />
             </div>
 
-            <div class="sidebar-foot">
+            <nav class="sidebar-nav" aria-label="其他工作台">
+              <p class="sidebar-nav-label">其他工作台</p>
               <NButton
-                quaternary
                 block
+                tertiary
                 size="small"
-                class="settings-btn"
-                @click="showSourceFiles = true"
-              >
-                <template #icon>
-                  <NIcon><FolderOpen /></NIcon>
-                </template>
-                文件管理
-              </NButton>
-              <NButton
-                quaternary
-                block
-                size="small"
-                class="settings-btn"
-                @click="showMusicDecode = true"
+                class="nav-item"
+                @click="openView('decode')"
               >
                 <template #icon>
                   <NIcon><Key /></NIcon>
@@ -335,11 +338,26 @@ watch(
                 音乐解码
               </NButton>
               <NButton
+                block
+                tertiary
+                size="small"
+                class="nav-item"
+                @click="openView('library')"
+              >
+                <template #icon>
+                  <NIcon><FolderOpen /></NIcon>
+                </template>
+                音频库
+              </NButton>
+            </nav>
+
+            <div class="sidebar-foot">
+              <NButton
                 quaternary
                 block
                 size="small"
                 class="settings-btn"
-                @click="showSettings = true"
+                @click="openSettings"
               >
                 <template #icon>
                   <NIcon><SettingsOutline /></NIcon>
@@ -347,7 +365,7 @@ watch(
                 设置
               </NButton>
               <p class="sidebar-foot-note">
-                以音频为主 · 同级同名即已匹配
+                建议流程：解码 → 音频库 → 歌词归位
               </p>
             </div>
           </aside>
@@ -494,16 +512,41 @@ watch(
   flex-direction: column;
 }
 
+.sidebar-nav {
+  flex-shrink: 0;
+  padding: 4px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid $border-subtle;
+}
+
+.sidebar-nav-label {
+  margin: 0;
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.42;
+}
+
+.nav-item {
+  justify-content: flex-start;
+}
+
 .sidebar-foot {
   flex-shrink: 0;
-  padding: 8px 12px 16px;
+  padding: 10px 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border-top: 1px solid $border-subtle;
 }
 
 .settings-btn {
   justify-content: flex-start;
+  opacity: 0.85;
 }
 
 .sidebar-foot-note {

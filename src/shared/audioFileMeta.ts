@@ -97,6 +97,19 @@ export function formatNativeTagValue(tagId: string, value: unknown): string | un
   return formatMetaValue(value)
 }
 
+/** 多值元数据字段在 IPC / 展示字符串中的分隔符 */
+export const META_MULTI_VALUE_SEP = '; '
+
+/** 将已序列化的多值字段拆成列表（用于 popover 等逐行展示） */
+export function splitMetaDisplayValues(value: string): string[] {
+  const trimmed = value.trim()
+  if (!trimmed) return []
+  return trimmed
+    .split(META_MULTI_VALUE_SEP)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
 function formatMetaValue(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined
   if (typeof value === 'string') {
@@ -115,7 +128,7 @@ function formatMetaValue(value: unknown): string | undefined {
     const parts = value
       .map((item) => formatMetaValue(item))
       .filter((s): s is string => Boolean(s))
-    return parts.length > 0 ? parts.join('; ') : undefined
+    return parts.length > 0 ? parts.join(META_MULTI_VALUE_SEP) : undefined
   }
   if (typeof value === 'object') {
     const embedded = formatEmbeddedPicture(value)

@@ -42,7 +42,7 @@ export const FILE_LIST_COLUMN_DEFS: FileListColumnDef[] = [
   { id: 'hasLrc', label: '歌词', category: 'basic', kinds: ['source'] },
   {
     id: 'inSearchTarget',
-    label: '目标已有',
+    label: '库中已有',
     category: 'basic',
     kinds: ['decode']
   },
