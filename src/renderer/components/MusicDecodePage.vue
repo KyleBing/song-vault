@@ -140,7 +140,40 @@ const tableColumns = useDirFileTableColumns(
 const decryptQueue = ref<string[]>([])
 const decrypting = ref(false)
 const decryptProgress = ref({ done: 0, total: 0 })
+const decryptTiming = ref({
+  lastFileMs: 0,
+  elapsedMs: 0
+})
 const lastResult = ref<MusicDecryptBatchResult | null>(null)
+
+const DECRYPT_ETA_MIN_SAMPLES = 5
+
+function formatElapsedMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  const sec = Math.max(1, Math.round(ms / 1000))
+  if (sec < 60) return `${sec} 秒`
+  const min = Math.floor(sec / 60)
+  const remSec = sec % 60
+  if (min < 60) {
+    return remSec > 0 ? `${min} 分 ${remSec} 秒` : `${min} 分`
+  }
+  const hour = Math.floor(min / 60)
+  const remMin = min % 60
+  if (remMin > 0) return `${hour} 小时 ${remMin} 分`
+  return `${hour} 小时`
+}
+
+function estimateDecryptRemainingMs(
+  done: number,
+  total: number,
+  elapsedMs: number
+): number | null {
+  if (done < DECRYPT_ETA_MIN_SAMPLES || done >= total || total <= 0) {
+    return null
+  }
+  const remaining = total - done
+  return (elapsedMs / done) * remaining
+}
 
 watch(
   () => [decryptQueue.value.length, decrypting.value, lastResult.value] as const,
@@ -477,15 +510,25 @@ async function startDecrypt(): Promise<void> {
   if (!canDecrypt.value) return
   decrypting.value = true
   lastResult.value = null
-  decryptProgress.value = { done: 0, total: decryptQueue.value.length }
+  const total = decryptQueue.value.length
+  decryptProgress.value = { done: 0, total }
+  decryptTiming.value = { lastFileMs: 0, elapsedMs: 0 }
+  const startedAt = performance.now()
+  let lastCheckpointAt = startedAt
   try {
     const config = await storage.getAll()
     const result = await decryptMusicBatch(
       [...decryptQueue.value],
       decodeOutputDir.value.trim(),
       config,
-      (done, total) => {
-        decryptProgress.value = { done, total }
+      (done, batchTotal) => {
+        const now = performance.now()
+        decryptTiming.value = {
+          lastFileMs: now - lastCheckpointAt,
+          elapsedMs: now - startedAt
+        }
+        lastCheckpointAt = now
+        decryptProgress.value = { done, total: batchTotal }
       }
     )
     lastResult.value = result
@@ -511,6 +554,25 @@ const progressPercent = computed(() => {
   const { done, total } = decryptProgress.value
   if (!total) return 0
   return Math.round((done / total) * 100)
+})
+
+const decryptProgressDetailText = computed(() => {
+  const { done, total } = decryptProgress.value
+  if (!decrypting.value || total === 0) return ''
+  const parts: string[] = [`${done} / ${total}`]
+  if (done > 0) {
+    parts.push(`本首约 ${formatElapsedMs(decryptTiming.value.lastFileMs)}`)
+    parts.push(`已用 ${formatElapsedMs(decryptTiming.value.elapsedMs)}`)
+    const remainingMs = estimateDecryptRemainingMs(
+      done,
+      total,
+      decryptTiming.value.elapsedMs
+    )
+    if (remainingMs != null) {
+      parts.push(`预计剩余 ${formatElapsedMs(remainingMs)}`)
+    }
+  }
+  return parts.join(' · ')
 })
 
 const selectedDirStats = computed(() => {
@@ -688,6 +750,12 @@ onMounted(() => {
               :show-indicator="true"
               style="margin-top: 8px"
             />
+            <p
+              v-if="decrypting && decryptProgressDetailText"
+              class="decrypt-progress-detail"
+            >
+              {{ decryptProgressDetailText }}
+            </p>
           </section>
 
           <section
@@ -1026,6 +1094,13 @@ onMounted(() => {
 
 .toolbar {
   padding-top: 4px;
+}
+
+.decrypt-progress-detail {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.65;
 }
 
 .queue-section {

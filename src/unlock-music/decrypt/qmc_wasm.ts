@@ -1,4 +1,6 @@
 import QMCCryptoModule from '@jixun/qmc2-crypto/QMC2-wasm-bundle'
+import type { QmcCrypto } from '@xhacker/qmcwasm/QmcWasmBundle'
+import QmcCryptoModule from '@xhacker/qmcwasm/QmcWasmBundle'
 import { MergeUint8Array } from '@unlock/utils/MergeUint8Array'
 import type { QMCCrypto } from '@jixun/qmc2-crypto/QMCCrypto'
 
@@ -8,21 +10,73 @@ const DETECTION_SIZE = 40
 // 每次处理 2M 的数据
 const DECRYPTION_BUF_SIZE = 2 * 1024 * 1024
 
-export interface QMC2DecryptionResult {
+export interface QMCDecryptionResult {
   success: boolean
   data: Uint8Array
   songId: string | number
   error: string
 }
 
+/** unlock-music 同款：@xhacker/qmcwasm，需传入扩展名 */
+export async function DecryptQmcWasm(
+  qmcBlob: ArrayBuffer,
+  ext: string
+): Promise<QMCDecryptionResult> {
+  const result: QMCDecryptionResult = { success: false, data: new Uint8Array(), songId: 0, error: '' }
+
+  let QmcCryptoObj: QmcCrypto
+
+  try {
+    QmcCryptoObj = await QmcCryptoModule()
+  } catch (err: unknown) {
+    result.error = err instanceof Error ? err.message : 'wasm 加载失败'
+    return result
+  }
+
+  const qmcBuf = new Uint8Array(qmcBlob)
+  const pQmcBuf = QmcCryptoObj._malloc(DECRYPTION_BUF_SIZE)
+  const preDecDataSize = Math.min(DECRYPTION_BUF_SIZE, qmcBlob.byteLength)
+  QmcCryptoObj.writeArrayToMemory(qmcBuf.slice(-preDecDataSize), pQmcBuf)
+
+  const extDot = '.' + ext
+  const tailSize = QmcCryptoObj.preDec(pQmcBuf, preDecDataSize, extDot)
+  if (tailSize === -1) {
+    result.error = QmcCryptoObj.getErr()
+    QmcCryptoObj._free(pQmcBuf)
+    return result
+  }
+
+  const songId = QmcCryptoObj.getSongId()
+  result.songId = songId === '0' ? 0 : songId
+
+  const decryptedParts: Uint8Array[] = []
+  let offset = 0
+  let bytesToDecrypt = qmcBuf.length - tailSize
+  while (bytesToDecrypt > 0) {
+    const blockSize = Math.min(bytesToDecrypt, DECRYPTION_BUF_SIZE)
+
+    const blockData = new Uint8Array(qmcBuf.slice(offset, offset + blockSize))
+    QmcCryptoObj.writeArrayToMemory(blockData, pQmcBuf)
+    decryptedParts.push(
+      QmcCryptoObj.HEAPU8.slice(pQmcBuf, pQmcBuf + QmcCryptoObj.decBlob(pQmcBuf, blockSize, offset))
+    )
+
+    offset += blockSize
+    bytesToDecrypt -= blockSize
+  }
+  QmcCryptoObj._free(pQmcBuf)
+
+  result.data = MergeUint8Array(decryptedParts)
+  result.success = true
+
+  return result
+}
+
 /**
- * 解密一个 QMC2 加密的文件。
- *
- * 如果检测并解密成功，返回解密后的 Uint8Array 数据。
- * @param  {ArrayBuffer} mggBlob 读入的文件 Blob
+ * QMC2 解密（@jixun/qmc2-crypto），作为 xhacker 失败后的回退。
  */
-export async function DecryptQMCWasm(mggBlob: ArrayBuffer): Promise<QMC2DecryptionResult> {
-  const result: QMC2DecryptionResult = { success: false, data: new Uint8Array(), songId: 0, error: '' }
+export async function DecryptQmc2Wasm(mggBlob: ArrayBuffer): Promise<QMCDecryptionResult> {
+  const result: QMCDecryptionResult = { success: false, data: new Uint8Array(), songId: 0, error: '' }
 
   let QMCCrypto: QMCCrypto
 

@@ -16,7 +16,7 @@ import {
   inspectQmcFooter,
   logQmcFooterDebug,
 } from '@unlock/decrypt/qmc_footer';
-import { DecryptQMCWasm } from '@unlock/decrypt/qmc_wasm';
+import { DecryptQmc2Wasm, DecryptQmcWasm } from '@unlock/decrypt/qmc_wasm';
 import { extractQQMusicMeta } from '@unlock/utils/qm_meta';
 
 interface Handler {
@@ -31,17 +31,26 @@ export const HandlerMap: { [key: string]: Handler } = {
   mgg1: { ext: 'ogg', version: 2 },
   mflac: { ext: 'flac', version: 2 },
   mflac0: { ext: 'flac', version: 2 },
+  mmp4: { ext: 'mp4', version: 2 },
 
   // qmcflac / qmcogg:
   // 有可能是 v2 加密但混用同一个后缀名。
   qmcflac: { ext: 'flac', version: 2 },
   qmcogg: { ext: 'ogg', version: 2 },
 
-  qmc0: { ext: 'mp3', version: 1 },
-  qmc2: { ext: 'ogg', version: 1 },
-  qmc3: { ext: 'mp3', version: 1 },
+  qmc0: { ext: 'mp3', version: 2 },
+  qmc2: { ext: 'ogg', version: 2 },
+  qmc3: { ext: 'mp3', version: 2 },
+  qmc4: { ext: 'ogg', version: 2 },
+  qmc6: { ext: 'ogg', version: 2 },
+  qmc8: { ext: 'ogg', version: 2 },
   bkcmp3: { ext: 'mp3', version: 1 },
+  bkcm4a: { ext: 'm4a', version: 1 },
   bkcflac: { ext: 'flac', version: 1 },
+  bkcwav: { ext: 'wav', version: 1 },
+  bkcape: { ext: 'ape', version: 1 },
+  bkcogg: { ext: 'ogg', version: 1 },
+  bkcwma: { ext: 'wma', version: 1 },
   tkm: { ext: 'm4a', version: 1 },
   '666c6163': { ext: 'flac', version: 1 },
   '6d7033': { ext: 'mp3', version: 1 },
@@ -76,16 +85,25 @@ export async function Decrypt(file: Blob, raw_filename: string, raw_ext: string)
   const footer = inspectQmcFooter(fileBytes);
 
   if (!musicDecoded && version === 2 && globalThis.WebAssembly) {
-    console.log('qmc: using wasm decoder');
-
-    const v2Decrypted = await DecryptQMCWasm(fileBuffer);
-    if (v2Decrypted.success) {
-      musicDecoded = v2Decrypted.data;
-      musicID = v2Decrypted.songId;
+    console.log('qmc: using xhacker wasm decoder');
+    const xhackerDecrypted = await DecryptQmcWasm(fileBuffer, raw_ext);
+    if (xhackerDecrypted.success) {
+      musicDecoded = xhackerDecrypted.data;
+      musicID = xhackerDecrypted.songId;
     } else {
-      wasmError = v2Decrypted.error || '(no error)';
-      console.warn('qmc2-wasm failed with error %s', wasmError);
-      logQmcFooterDebug(fileBytes, raw_filename);
+      wasmError = xhackerDecrypted.error || '(no error)';
+      console.warn('qmc wasm failed with error %s, trying qmc2-crypto', wasmError);
+
+      const qmc2Decrypted = await DecryptQmc2Wasm(fileBuffer);
+      if (qmc2Decrypted.success) {
+        musicDecoded = qmc2Decrypted.data;
+        musicID = qmc2Decrypted.songId;
+        wasmError = undefined;
+      } else {
+        wasmError = qmc2Decrypted.error || wasmError;
+        console.warn('qmc2-wasm failed with error %s', wasmError);
+        logQmcFooterDebug(fileBytes, raw_filename);
+      }
     }
   }
 

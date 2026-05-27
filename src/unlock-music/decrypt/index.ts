@@ -48,6 +48,9 @@ export async function Decrypt(file: FileInfo, config: Record<string, any>): Prom
     case 'qmc3': //QQ Music Android Mp3
     case 'qmc2': //QQ Music Android Ogg
     case 'qmc0': //QQ Music Android Mp3
+    case 'qmc4': //QQ Music Android Ogg
+    case 'qmc6': //QQ Music Android Ogg
+    case 'qmc8': //QQ Music Android Ogg
     case 'qmcflac': //QQ Music Android Flac
     case 'qmcogg': //QQ Music Android Ogg
     case 'tkm': //QQ Music Accompaniment M4a
@@ -66,6 +69,7 @@ export async function Decrypt(file: FileInfo, config: Record<string, any>): Prom
     case 'mgg': //QQ Music New Ogg
     case 'mgg1': //QQ Music New Ogg
     case 'mgg0':
+    case 'mmp4': // QMC MP4 Container w/ E-AC-3 JOC
     case '666c6163': //QQ Music Weiyun Flac
     case '6d7033': //QQ Music Weiyun Mp3
     case '6f6767': //QQ Music Weiyun Ogg

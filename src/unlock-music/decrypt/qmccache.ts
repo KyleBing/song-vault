@@ -8,34 +8,45 @@ import {
 } from '@unlock/decrypt/utils';
 
 import { Decrypt as QmcDecrypt, HandlerMap } from '@unlock/decrypt/qmc';
+import { DecryptQmcWasm } from '@unlock/decrypt/qmc_wasm';
 
 import { DecryptResult } from '@unlock/decrypt/entity';
 
 import { parseBlob as metaParseBlob } from 'music-metadata-browser';
 
-export async function Decrypt(file: Blob, raw_filename: string, _: string): Promise<DecryptResult> {
-  const buffer = new Uint8Array(await GetArrayBuffer(file));
-  let length = buffer.length;
-  for (let i = 0; i < length; i++) {
-    buffer[i] ^= 0xf4;
-    if (buffer[i] <= 0x3f) buffer[i] = buffer[i] * 4;
-    else if (buffer[i] <= 0x7f) buffer[i] = (buffer[i] - 0x40) * 4 + 1;
-    else if (buffer[i] <= 0xbf) buffer[i] = (buffer[i] - 0x80) * 4 + 2;
-    else buffer[i] = (buffer[i] - 0xc0) * 4 + 3;
+export async function Decrypt(file: Blob, raw_filename: string, raw_ext: string): Promise<DecryptResult> {
+  const buffer = await GetArrayBuffer(file);
+
+  let musicDecoded = new Uint8Array();
+  if (globalThis.WebAssembly) {
+    console.log('qmc cache: using wasm decoder');
+
+    const qmcDecrypted = await DecryptQmcWasm(buffer, raw_ext);
+    if (qmcDecrypted.success) {
+      musicDecoded = qmcDecrypted.data;
+      console.log('qmc cache wasm decoder succeeded');
+    } else {
+      throw new Error(qmcDecrypted.error || '(unknown error)');
+    }
   }
-  let ext = SniffAudioExt(buffer, '');
+
+  let ext = SniffAudioExt(musicDecoded, '');
   const newName = SplitFilename(raw_filename);
   let audioBlob: Blob;
   if (ext !== '' || newName.ext === 'mp3') {
-    audioBlob = new Blob([buffer], { type: AudioMimeType[ext] });
+    audioBlob = new Blob([musicDecoded], { type: AudioMimeType[ext] });
   } else if (newName.ext in HandlerMap) {
-    audioBlob = new Blob([buffer], { type: 'application/octet-stream' });
+    audioBlob = new Blob([musicDecoded], { type: 'application/octet-stream' });
     return QmcDecrypt(audioBlob, newName.name, newName.ext);
   } else {
     throw '不支持的QQ音乐缓存格式';
   }
   const tag = await metaParseBlob(audioBlob);
-  const { title, artist } = GetMetaFromFile(raw_filename, tag.common.title, tag.common.artist);
+  const { title, artist } = GetMetaFromFile(
+    raw_filename,
+    tag.common.title,
+    String(tag.common.artists || tag.common.artist || '')
+  );
 
   return {
     title,
