@@ -32,6 +32,7 @@ import {
   type ListSourceDirChildrenParams
 } from '../shared/sourceDirBrowse'
 import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
+import { readAudioFileMeta } from '../shared/readAudioFileMeta'
 import { toIpcPlain } from '../shared/serialize'
 import {
   getAppConfigPath,
@@ -62,7 +63,8 @@ const IPC_CHANNELS = [
   'load-app-config',
   'save-app-config',
   'reveal-app-config-in-folder',
-  'read-audio-metrics-batch'
+  'read-audio-metrics-batch',
+  'read-audio-meta'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -198,6 +200,11 @@ function registerIpcHandlers(): void {
       return toIpcPlain(await readAudioFileMetricsBatch(paths))
     }
   )
+
+  ipcMain.handle('read-audio-meta', async (_, filePath: unknown) => {
+    const p = typeof filePath === 'string' ? filePath : ''
+    return toIpcPlain(await readAudioFileMeta(p))
+  })
 
   ipcMain.handle('load-app-config', () => {
     return toIpcPlain({

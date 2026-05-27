@@ -48,6 +48,7 @@ import {
   type DirFileSortOrder
 } from '@renderer/composables/dirFileTable'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
+import { wrapAudioMetaHover } from '@renderer/utils/audioMetaHoverCell'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
   applySortableHeaders,
@@ -331,29 +332,17 @@ function fileNameOf(p: string): string {
   return p.split(/[/\\]/).pop() ?? p
 }
 
-function pathCell(full: string, short: string) {
-  return h(
-    NTooltip,
-    { placement: 'top-start', style: { maxWidth: '560px' } },
-    {
-      trigger: () => h('span', { class: 'path-cell' }, short),
-      default: () => full
-    }
-  )
-}
-
 function queueNameCell(fullPath: string) {
   const name = fileNameOf(fullPath)
-  return h(
-    NEllipsis,
-    {
-      style: { maxWidth: '100%' },
-      tooltip: { placement: 'top-start' }
-    },
-    {
-      default: () => name,
-      tooltip: () => fullPath
-    }
+  return wrapAudioMetaHover(fullPath, () =>
+    h(
+      NEllipsis,
+      {
+        style: { maxWidth: '100%' },
+        tooltip: false
+      },
+      () => name
+    )
   )
 }
 

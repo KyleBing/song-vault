@@ -28,6 +28,7 @@ import {
     type SourceSelection
 } from '@shared/sourcePick'
 import { dirnameOf } from '@shared/pathLite'
+import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
 import { joinPath, relativeToRoots } from '@renderer/utils/displayPath'
 import {
     applySortableHeaders,
@@ -214,17 +215,9 @@ function shortLrcSource(p: string): string {
   return relativeToRoots(p, props.lrcDirs)
 }
 
-/** 表格单元格：短路径 + 悬停完整路径 */
+/** 表格单元格：短路径；音频文件悬停显示完整标签 */
 function pathCell(full: string, short: string) {
-    return h(
-        NTooltip,
-        { placement: 'top-start', style: { maxWidth: '560px' } },
-        {
-            trigger: () =>
-                h('span', { class: 'path-cell' }, short),
-            default: () => full
-        }
-    )
+    return audioAwarePathCell(full, short)
 }
 
 /** 计划复制到目标目录的歌词完整路径 */
