@@ -2,7 +2,6 @@
 import {
     NButton,
     NCard,
-    NDataTable,
     NPopconfirm,
     NTabs,
     NTabPane,
@@ -39,6 +38,7 @@ import {
     type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const props = defineProps<{
     result: JobResult
@@ -676,7 +676,7 @@ function orphanAudioRowKey(row: { key: string }): string {
         <NTabs v-model:value="activeTab" type="line" class="result-tabs">
             <NTabPane name="all" :tab="`全部 (${stats.audioTotal})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`all-${pickRevision}`" :columns="audioColumns" :data="sortedPlainAudio"
+                    <VirtualDataTable :key="`all-${pickRevision}`" :columns="audioColumns" :data="sortedPlainAudio"
                         :max-height="maxHeightForTable" size="small" striped
                         @update:sorter="onAudioSorterUpdate" />
                 </div>
@@ -684,7 +684,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 
             <NTabPane name="matched" :tab="`已匹配 (${matchedAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`matched-${pickRevision}`" :columns="audioColumns" :data="sortedMatchedAudio"
+                    <VirtualDataTable :key="`matched-${pickRevision}`" :columns="audioColumns" :data="sortedMatchedAudio"
                         :max-height="maxHeightForTable" size="small" striped
                         @update:sorter="onAudioSorterUpdate" />
                 </div>
@@ -692,7 +692,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 
             <NTabPane name="copy" :tab="`待复制 (${canCopyAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`copy-${pickRevision}`" :columns="audioColumns" :data="sortedCanCopyAudio"
+                    <VirtualDataTable :key="`copy-${pickRevision}`" :columns="audioColumns" :data="sortedCanCopyAudio"
                         :max-height="maxHeightForTable" size="small" striped
                         @update:sorter="onAudioSorterUpdate" />
                 </div>
@@ -700,7 +700,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 
             <NTabPane name="pick" :tab="`待选源 (${pickSourceAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`pick-${pickRevision}`" :columns="audioColumns" :data="sortedPickSourceAudio"
+                    <VirtualDataTable :key="`pick-${pickRevision}`" :columns="audioColumns" :data="sortedPickSourceAudio"
                         :max-height="maxHeightForTable" size="small" striped
                         @update:sorter="onAudioSorterUpdate" />
                 </div>
@@ -708,7 +708,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 
             <NTabPane name="missing" :tab="`缺歌词 (${needLrcAudio.length})`">
                 <div class="tab-pane-body">
-                    <NDataTable :key="`missing-${pickRevision}`" :columns="audioColumns" :data="sortedNeedLrcAudio"
+                    <VirtualDataTable :key="`missing-${pickRevision}`" :columns="audioColumns" :data="sortedNeedLrcAudio"
                         :max-height="maxHeightForTable" size="small" striped
                         @update:sorter="onAudioSorterUpdate" />
                 </div>
@@ -722,7 +722,7 @@ function orphanAudioRowKey(row: { key: string }): string {
                                 class="orphan-table-wrap"
                                 @mousedown.capture="onOrphanLrcTableMouseDown"
                             >
-                                <NDataTable
+                                <VirtualDataTable
                                     :checked-row-keys="orphanLrcSelectedKeys"
                                     :columns="orphanColumns"
                                     :data="sortedPlainOrphan"
@@ -741,7 +741,7 @@ function orphanAudioRowKey(row: { key: string }): string {
                                 class="orphan-table-wrap"
                                 @mousedown.capture="onOrphanAudioTableMouseDown"
                             >
-                                <NDataTable
+                                <VirtualDataTable
                                     :checked-row-keys="orphanAudioSelectedKeys"
                                     :columns="orphanAudioColumns"
                                     :data="sortedPlainOrphanAudio"

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   NButton,
-  NDataTable,
   NEllipsis,
   NEmpty,
   NIcon,
@@ -61,6 +60,7 @@ import {
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import MusicDecryptHelpModal from '@renderer/components/MusicDecryptHelpModal.vue'
+import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import { storage } from '@unlock/utils/storage'
 
 const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
@@ -778,7 +778,7 @@ onMounted(() => {
               ref="queueTableWrapRef"
               class="queue-table-wrap"
             >
-              <NDataTable
+              <VirtualDataTable
                 :columns="queueColumns"
                 :data="queueRows"
                 :max-height="maxHeightForQueueTable"
@@ -955,7 +955,7 @@ onMounted(() => {
                 class="files-table-wrap"
                 @mousedown.capture="onTableMouseDown"
               >
-                <NDataTable
+                <VirtualDataTable
                   :columns="tableColumns"
                   :data="sortedDirFiles"
                   :row-key="fileRowKey"
@@ -1312,6 +1312,7 @@ onMounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .tree-empty {
