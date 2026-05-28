@@ -58,7 +58,7 @@ const props = defineProps<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 194)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 160)
 
 /** 元数据面板：多选时展示第一个选中文件 */
 const metaPanelFilePath = computed(() => selectedFileKeys.value[0] ?? null)
@@ -523,7 +523,7 @@ onMounted(() => {
     </NModal>
 
     <div class="browse-split">
-      <aside class="tree-pane">
+      <div class="tree-pane">
         <div class="pane-head">
           <span>目录</span>
           <div class="head-actions">
@@ -627,7 +627,7 @@ onMounted(() => {
           </NTooltip>
         </footer>
         <AudioMetaPanel :file-path="metaPanelFilePath" />
-      </aside>
+      </div>
 
       <section class="files-pane">
         <div class="files-toolbar">
@@ -742,13 +742,13 @@ onMounted(() => {
 }
 
 .tree-pane {
-  width: 320px;
+  width: $tree-width;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid $border-sidebar;
-  background: $surface-sidebar;
+  border-right: 1px solid $border-subtle;
+  background: $surface-tree;
 }
 
 .files-pane {

@@ -1124,9 +1124,10 @@ onMounted(() => {
 }
 
 .tree-pane {
-  width: 260px;
+  width: $tree-width;
   flex-shrink: 0;
   border-right: 1px solid $border-subtle;
+  background: $surface-tree;
   display: flex;
   flex-direction: column;
   min-height: 0;

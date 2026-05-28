@@ -9,6 +9,7 @@ html:not([data-theme]) {
   --app-border-hover: rgba(0, 0, 0, 0.16);
   --app-surface-panel: rgba(255, 255, 255, 0.85);
   --app-surface-sidebar: rgba(255, 255, 255, 0.72);
+  --app-surface-tree: #ffffff;
   --app-surface-raised: rgba(255, 255, 255, 0.95);
   --app-surface-active: rgba(110, 168, 254, 0.12);
   --app-glow-primary: rgba(110, 168, 254, 0.2);
@@ -27,6 +28,7 @@ html[data-theme='dark'] {
   --app-border-hover: rgba(255, 255, 255, 0.14);
   --app-surface-panel: rgba(255, 255, 255, 0.03);
   --app-surface-sidebar: rgba(0, 0, 0, 0.18);
+  --app-surface-tree: #1c1f28;
   --app-surface-raised: rgba(255, 255, 255, 0.02);
   --app-surface-active: rgba(110, 168, 254, 0.1);
   --app-glow-primary: rgba(110, 168, 254, 0.14);
