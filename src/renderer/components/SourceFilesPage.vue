@@ -81,6 +81,8 @@ const deletingFiles = ref(false)
 const movingFiles = ref(false)
 const moveModalVisible = ref(false)
 const moveModalInitialDir = ref<string | null>(null)
+/** 移动弹窗内是否新建过文件夹（需在移动完成后同步左侧目录树） */
+const movePickerStructureChanged = ref(false)
 
 const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
@@ -473,7 +475,24 @@ function openMoveModal(): void {
   const first = selectedFileKeys.value[0]!
   const parent = first.replace(/[/\\][^/\\]+$/, '') || selectedDir.value
   moveModalInitialDir.value = selectedDir.value ?? parent ?? null
+  movePickerStructureChanged.value = false
   moveModalVisible.value = true
+}
+
+/** 移动完成后同步主目录树（弹窗内新建的文件夹不会出现在主树实例中） */
+async function syncMainTreeAfterFileMove(
+  destDir: string,
+  sourceDirs: Set<string>
+): Promise<void> {
+  for (const dir of sourceDirs) {
+    await refreshNode(dir)
+  }
+  const parent = parentDirPath(destDir)
+  if (parent) {
+    await refreshNode(parent)
+    mergeExpanded(parent)
+  }
+  await ensurePathLoaded(destDir)
 }
 
 /** 将勾选的音频（及同级歌词）移动到目标目录 */
@@ -505,16 +524,23 @@ async function confirmMoveFiles(destDir: string): Promise<void> {
       )
     }
     clearFileSelection()
-    for (const dir of sourceDirs) {
-      if (dir !== destDir) void refreshNode(dir)
+    if (!movePickerStructureChanged.value) {
+      for (const dir of sourceDirs) {
+        if (dir !== destDir) void refreshNode(dir)
+      }
+      void refreshNode(destDir)
     }
-    void refreshNode(destDir)
     if (selectedDir.value) void loadAudioFiles(selectedDir.value)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     message.error(msg)
   } finally {
     movingFiles.value = false
+    if (movePickerStructureChanged.value) {
+      await syncMainTreeAfterFileMove(destDir, sourceDirs)
+      movePickerStructureChanged.value = false
+      if (selectedDir.value) void loadAudioFiles(selectedDir.value)
+    }
   }
 }
 
@@ -566,6 +592,7 @@ onMounted(() => {
       title="移动到文件夹"
       positive-text="移动"
       @confirm="confirmMoveFiles"
+      @structure-changed="movePickerStructureChanged = true"
     />
 
     <NModal

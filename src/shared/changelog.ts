@@ -19,6 +19,26 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.2.1',
+    date: '2026-05-28',
+    sections: [
+      {
+        title: '变更',
+        items: [
+          'LRC 预览匹配：一次扫描并缓存目录文件名，避免重复读取；目录未变时可复用缓存；复制或删除后自动失效',
+          '界面布局：各工作台布局调整；选中文件路径改在底部信息条展示',
+          '音频元数据：无封面时显示占位图'
+        ]
+      },
+      {
+        title: '修复',
+        items: [
+          '音频库：移动目标弹窗内新建子目录后，移动完成时同步左侧目录树'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.2.0',
     date: '2026-05-28',
     sections: [

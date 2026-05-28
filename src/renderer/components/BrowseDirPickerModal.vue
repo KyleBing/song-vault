@@ -31,6 +31,8 @@ const message = useMessage()
 const emit = defineEmits<{
     'update:show': [value: boolean]
     confirm: [destDir: string]
+    /** 在弹窗内新建/改动了目录结构（主页面目录树需在移动后同步） */
+    'structure-changed': []
 }>()
 
 const roots = computed(() => [...props.browseRoots])
@@ -138,6 +140,7 @@ async function createSubdir(): Promise<void> {
         mergeExpanded(selectedDir.value)
         selectedKeys.value = [created]
         await ensurePathLoaded(created)
+        emit('structure-changed')
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         message.error(msg)

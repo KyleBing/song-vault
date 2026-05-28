@@ -118,7 +118,7 @@ const showResults = computed(
 )
 
 /** 调用主进程 runJob：execute 为 false 时仅预览，为 true 时执行复制 */
-async function run(execute: boolean): Promise<void> {
+async function run(execute: boolean, refreshScan = false): Promise<void> {
   if (!canPreview.value) return
   loading.value = true
   try {
@@ -126,6 +126,7 @@ async function run(execute: boolean): Promise<void> {
       lrcDirs: [...toRaw(lrcDirs.value)],
       searchRoots: [...toRaw(searchRoots.value)],
       execute,
+      refreshScan: refreshScan || execute,
       sourceOverrides: { ...sourceSelection.value.sourceOverrides },
       preferredSourceDir: sourceSelection.value.preferredSourceDir,
       pathFilterRules: pathFilterRulesForSave(pathFilterRules.value)
@@ -142,12 +143,12 @@ async function run(execute: boolean): Promise<void> {
   }
 }
 
-/** 重置源歌词选择并运行预览扫描 */
+/** 重置源歌词选择并运行预览扫描（refreshScan 强制刷新目录缓存） */
 function preview(): void {
   sourceSelection.value = { sourceOverrides: {} }
   selectedOrphanKeys.value = []
   selectedOrphanAudioKeys.value = []
-  void run(false)
+  void run(false, true)
 }
 
 /** 执行批量歌词复制 */
