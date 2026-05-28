@@ -6,7 +6,7 @@ import {
   type DataTableColumns
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import { PLATFORM_LABELS } from '@shared/musicFormats'
 import type {
@@ -22,7 +22,9 @@ import {
   sortRows,
   type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
-import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
+import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
+import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const props = defineProps<{
@@ -36,9 +38,40 @@ const encryptedSortOrder = ref<TableSortOrder>('asc')
 const plainSortKey = ref('filePath')
 const plainSortOrder = ref<TableSortOrder>('asc')
 
+const {
+  selectedKeys: encryptedSelectedKeys,
+  clearSelection: clearEncryptedSelection,
+  onUpdateCheckedRowKeys: onEncryptedCheckedRowKeysUpdate,
+  onTableMouseDown: onEncryptedTableMouseDown,
+  rowProps: encryptedRowPropsFn
+} = useShiftRowSelection((row) => (row as EncryptedMusicItem).filePath)
+
+const {
+  selectedKeys: plainSelectedKeys,
+  clearSelection: clearPlainSelection,
+  onUpdateCheckedRowKeys: onPlainCheckedRowKeysUpdate,
+  onTableMouseDown: onPlainTableMouseDown,
+  rowProps: plainRowPropsFn
+} = useShiftRowSelection((row) => (row as PlainMp3Item).filePath)
+
+watch(activeTab, () => {
+  clearEncryptedSelection()
+  clearPlainSelection()
+})
+
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 110)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 410)
+
+const metaPanelFilePath = computed(() => {
+  if (activeTab.value === 'encrypted') {
+    return encryptedSelectedKeys.value[0] ?? null
+  }
+  if (activeTab.value === 'plainMp3') {
+    return plainSelectedKeys.value[0] ?? null
+  }
+  return null
+})
 
 const stats = computed(() => props.result.stats)
 
@@ -115,6 +148,7 @@ function onPlainSorterUpdate(
 const encryptedColumns = computed<DataTableColumns<EncryptedMusicItem>>(() =>
   applySortableHeaders(
     [
+      { type: 'selection' },
       {
         title: '文件',
         key: 'filePath',
@@ -177,6 +211,7 @@ const encryptedColumns = computed<DataTableColumns<EncryptedMusicItem>>(() =>
 const plainMp3Columns = computed<DataTableColumns<PlainMp3Item>>(() =>
   applySortableHeaders(
     [
+      { type: 'selection' },
       {
         title: '文件',
         key: 'filePath',
@@ -221,6 +256,51 @@ const plainMp3Rows = computed(() =>
     comparePlainMp3
   )
 )
+
+const orderedEncryptedKeys = computed(() =>
+  encryptedRows.value.map((row) => row.filePath)
+)
+const orderedPlainKeys = computed(() =>
+  plainMp3Rows.value.map((row) => row.filePath)
+)
+
+function onEncryptedCheckedRowKeys(
+  keys: Array<string | number>,
+  _rows: object[],
+  meta: {
+    row: object | undefined
+    action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
+  }
+): void {
+  onEncryptedCheckedRowKeysUpdate(keys.map(String), orderedEncryptedKeys, meta)
+}
+
+function onPlainCheckedRowKeys(
+  keys: Array<string | number>,
+  _rows: object[],
+  meta: {
+    row: object | undefined
+    action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
+  }
+): void {
+  onPlainCheckedRowKeysUpdate(keys.map(String), orderedPlainKeys, meta)
+}
+
+function encryptedRowKey(row: EncryptedMusicItem): string {
+  return row.filePath
+}
+
+function plainRowKey(row: PlainMp3Item): string {
+  return row.filePath
+}
+
+function encryptedTableRowProps(row: EncryptedMusicItem) {
+  return encryptedRowPropsFn(row, orderedEncryptedKeys)
+}
+
+function plainTableRowProps(row: PlainMp3Item) {
+  return plainRowPropsFn(row, orderedPlainKeys)
+}
 </script>
 
 <template>
@@ -234,31 +314,47 @@ const plainMp3Rows = computed(() =>
           <p v-if="stats.encryptedTotal" class="tab-hint">
             网易云 {{ stats.neteaseCount }} · QQ音乐 {{ stats.qqCount }}
           </p>
-          <VirtualDataTable
-            :columns="encryptedColumns"
-            :data="encryptedRows"
-            :max-height="maxHeightForTable"
-            size="small"
-            striped
-            @update:sorter="onEncryptedSorterUpdate"
-          />
+          <div
+            class="tab-table-wrap"
+            @mousedown.capture="onEncryptedTableMouseDown"
+          >
+            <VirtualDataTable
+              :columns="encryptedColumns"
+              :data="encryptedRows"
+              :row-key="encryptedRowKey"
+              :checked-row-keys="encryptedSelectedKeys"
+              :row-props="encryptedTableRowProps"
+              :max-height="maxHeightForTable"
+              size="small"
+              striped
+              @update:checked-row-keys="onEncryptedCheckedRowKeys"
+              @update:sorter="onEncryptedSorterUpdate"
+            />
+          </div>
         </div>
       </NTabPane>
 
       <NTabPane name="plainMp3" :tab="`明文 MP3 (${stats.plainMp3Total})`">
         <div class="tab-pane-body">
           <p class="tab-hint">无需解码的 MP3 文件</p>
-          <VirtualDataTable
-            :columns="plainMp3Columns"
-            :data="plainMp3Rows"
-            :max-height="maxHeightForTable"
-            size="small"
-            striped
-            @update:sorter="onPlainSorterUpdate"
-          />
+          <div class="tab-table-wrap" @mousedown.capture="onPlainTableMouseDown">
+            <VirtualDataTable
+              :columns="plainMp3Columns"
+              :data="plainMp3Rows"
+              :row-key="plainRowKey"
+              :checked-row-keys="plainSelectedKeys"
+              :row-props="plainTableRowProps"
+              :max-height="maxHeightForTable"
+              size="small"
+              striped
+              @update:checked-row-keys="onPlainCheckedRowKeys"
+              @update:sorter="onPlainSorterUpdate"
+            />
+          </div>
         </div>
       </NTabPane>
     </NTabs>
+    <AudioMetaPanel :file-path="metaPanelFilePath" />
   </div>
 </template>
 
@@ -270,7 +366,7 @@ const plainMp3Rows = computed(() =>
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px 20px;
+  padding: 16px 20px 0;
   overflow: hidden;
 }
 
@@ -299,6 +395,12 @@ const plainMp3Rows = computed(() =>
   flex-direction: column;
   gap: 8px;
   padding-top: 8px;
+}
+
+.tab-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .tab-hint {

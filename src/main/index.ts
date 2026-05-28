@@ -44,6 +44,7 @@ import {
   saveAppConfig
 } from './appConfigStore'
 import type { AppConfig } from '../shared/appConfig'
+import { registerAppNavShortcuts, setupApplicationMenu } from './appMenu'
 
 /** 是否为开发模式（未打包） */
 const isDev = !app.isPackaged
@@ -310,6 +311,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  setupApplicationMenu()
+  registerAppNavShortcuts()
   registerDevToolsShortcut()
   createWindow()
 

@@ -2,6 +2,8 @@
 
 本文件记录 [Electron 桌面版](README.md) 的变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+> 关于页展示的更新日志来自 `src/shared/changelog.ts`，发布新版本时请同步维护两处。
+
 ## [Unreleased]
 
 ### 计划中

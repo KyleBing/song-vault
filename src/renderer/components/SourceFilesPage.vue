@@ -13,7 +13,6 @@ import {
 } from 'naive-ui'
 import {
   Add,
-  ArrowBack,
   CreateOutline,
   FolderOpen,
   Refresh,
@@ -45,6 +44,7 @@ import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
+import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const searchRoots = defineModel<string[]>('searchRoots', { required: true })
@@ -54,14 +54,13 @@ const props = defineProps<{
   fileListColumns: FileListColumnsSettings
 }>()
 
-const emit = defineEmits<{
-  close: []
-}>()
-
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 178)
+
+/** 元数据面板：多选时展示第一个选中文件 */
+const metaPanelFilePath = computed(() => selectedFileKeys.value[0] ?? null)
 
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)
@@ -522,29 +521,21 @@ onMounted(() => {
       />
     </NModal>
 
-    <header class="page-header">
-      <NButton quaternary circle @click="emit('close')">
-        <template #icon>
-          <NIcon :size="20"><ArrowBack /></NIcon>
-        </template>
-      </NButton>
-      <div class="header-text">
-        <h1>音频库</h1>
-        <p>浏览与管理音频搜索目标中的文件</p>
-      </div>
-      <NButton quaternary size="small" @click="refreshAll">
-        <template #icon>
-          <NIcon><Refresh /></NIcon>
-        </template>
-        刷新
-      </NButton>
-    </header>
-
     <div class="browse-split">
       <aside class="tree-pane">
         <div class="pane-head">
           <span>目录</span>
           <div class="head-actions">
+            <NTooltip>
+              <template #trigger>
+                <NButton quaternary size="tiny" @click="refreshAll">
+                  <template #icon>
+                    <NIcon :size="16"><Refresh /></NIcon>
+                  </template>
+                </NButton>
+              </template>
+              刷新目录树与当前列表
+            </NTooltip>
             <NTooltip>
               <template #trigger>
                 <NButton
@@ -634,6 +625,7 @@ onMounted(() => {
             {{ selectedDirStats.lrcCount }} 个有同级歌词
           </NTooltip>
         </footer>
+        <AudioMetaPanel :file-path="metaPanelFilePath" />
       </aside>
 
       <section class="files-pane">
@@ -738,32 +730,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  flex-shrink: 0;
-  border-bottom: 1px solid $border-subtle;
-}
-
-.header-text {
-  flex: 1;
-  min-width: 0;
-
-  h1 {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 700;
-  }
-
-  p {
-    margin: 2px 0 0;
-    font-size: 12px;
-    opacity: 0.55;
-  }
 }
 
 .browse-split {

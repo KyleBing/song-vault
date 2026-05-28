@@ -28,7 +28,7 @@ import {
 } from '@shared/sourcePick'
 import { dirnameOf } from '@shared/pathLite'
 import { formatFileSize } from '@shared/formatAudioDisplay'
-import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
+import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
 import { lrcPresenceCell } from '@renderer/utils/lrcPresenceCell'
 import { joinPath, relativeToRoots } from '@renderer/utils/displayPath'
 import {
@@ -63,6 +63,10 @@ const selectedOrphanAudioKeys = defineModel<string[]>('selectedOrphanAudioKeys',
     default: () => []
 })
 
+const metaPanelFilePath = defineModel<string | null>('metaPanelFilePath', {
+    default: null
+})
+
 const {
     selectedKeys: orphanLrcSelectedKeys,
     onUpdateCheckedRowKeys: onOrphanLrcCheckedRowKeysUpdate,
@@ -76,6 +80,14 @@ const {
     onTableMouseDown: onOrphanAudioTableMouseDown,
     rowProps: orphanAudioRowPropsFn
 } = useShiftRowSelection((row) => (row as { key: string }).key)
+
+const {
+    selectedKeys: audioSelectedKeys,
+    clearSelection: clearAudioSelection,
+    onUpdateCheckedRowKeys: onAudioCheckedRowKeysUpdate,
+    onTableMouseDown: onAudioTableMouseDown,
+    rowProps: audioRowPropsFn
+} = useShiftRowSelection((row) => (row as AudioJobItem).audioPath)
 
 function syncShiftSelection(model: Ref<string[]>, shiftKeys: Ref<string[]>): void {
     watch(model, (v) => {
@@ -107,6 +119,24 @@ const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 /** 结果表格最大高度（随窗口高度变化） */
 const maxHeightForTable = computed(() => insets.value.windowHeight - 110)
+
+const resolvedMetaPanelFilePath = computed(() => {
+    if (activeTab.value === 'orphan' && orphanSubTab.value === 'audio') {
+        return orphanAudioSelectedKeys.value[0] ?? null
+    }
+    if (activeTab.value !== 'orphan') {
+        return audioSelectedKeys.value[0] ?? null
+    }
+    return null
+})
+
+watch(
+    resolvedMetaPanelFilePath,
+    (path) => {
+        metaPanelFilePath.value = path
+    },
+    { immediate: true }
+)
 
 const audioSortKey = ref('audioPath')
 const audioSortOrder = ref<TableSortOrder>('asc')
@@ -277,6 +307,10 @@ watch(
     }
 )
 
+watch(activeTab, () => {
+    clearAudioSelection()
+})
+
 /** 相对音频搜索目标的显示路径 */
 function shortAudio(p: string): string {
   return relativeToRoots(p, props.searchRoots)
@@ -360,6 +394,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
     void sourceSelection.value
 
     const baseColumns: DataTableColumns<AudioJobItem> = [
+        { type: 'selection' },
         {
             title: '音频',
             key: 'audioPath',
@@ -618,6 +653,46 @@ const orderedOrphanAudioKeys = computed(() =>
     sortedPlainOrphanAudio.value.map((row) => row.key)
 )
 
+const currentSortedAudio = computed(() => {
+    switch (activeTab.value) {
+        case 'all':
+            return sortedPlainAudio.value
+        case 'matched':
+            return sortedMatchedAudio.value
+        case 'copy':
+            return sortedCanCopyAudio.value
+        case 'pick':
+            return sortedPickSourceAudio.value
+        case 'missing':
+            return sortedNeedLrcAudio.value
+        default:
+            return []
+    }
+})
+
+const orderedAudioKeys = computed(() =>
+    currentSortedAudio.value.map((row) => row.audioPath)
+)
+
+function onAudioCheckedRowKeys(
+    keys: Array<string | number>,
+    _rows: object[],
+    meta: {
+        row: object | undefined
+        action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
+    }
+): void {
+    onAudioCheckedRowKeysUpdate(keys.map(String), orderedAudioKeys, meta)
+}
+
+function audioTableRowProps(row: AudioJobItem) {
+    return audioRowPropsFn(row, orderedAudioKeys)
+}
+
+function audioRowKey(row: AudioJobItem): string {
+    return row.audioPath
+}
+
 function onOrphanLrcCheckedRowKeys(
     keys: Array<string | number>,
     _rows: object[],
@@ -675,42 +750,107 @@ function orphanAudioRowKey(row: { key: string }): string {
     <div class="table-container">
         <NTabs v-model:value="activeTab" type="line" class="result-tabs">
             <NTabPane name="all" :tab="`全部 (${stats.audioTotal})`">
-                <div class="tab-pane-body">
-                    <VirtualDataTable :key="`all-${pickRevision}`" :columns="audioColumns" :data="sortedPlainAudio"
-                        :max-height="maxHeightForTable" size="small" striped
-                        @update:sorter="onAudioSorterUpdate" />
+                <div
+                    class="tab-pane-body"
+                    @mousedown.capture="onAudioTableMouseDown"
+                >
+                    <VirtualDataTable
+                        :key="`all-${pickRevision}`"
+                        :columns="audioColumns"
+                        :data="sortedPlainAudio"
+                        :row-key="audioRowKey"
+                        :checked-row-keys="audioSelectedKeys"
+                        :row-props="audioTableRowProps"
+                        :max-height="maxHeightForTable"
+                        size="small"
+                        striped
+                        @update:checked-row-keys="onAudioCheckedRowKeys"
+                        @update:sorter="onAudioSorterUpdate"
+                    />
                 </div>
             </NTabPane>
 
             <NTabPane name="matched" :tab="`已匹配 (${matchedAudio.length})`">
-                <div class="tab-pane-body">
-                    <VirtualDataTable :key="`matched-${pickRevision}`" :columns="audioColumns" :data="sortedMatchedAudio"
-                        :max-height="maxHeightForTable" size="small" striped
-                        @update:sorter="onAudioSorterUpdate" />
+                <div
+                    class="tab-pane-body"
+                    @mousedown.capture="onAudioTableMouseDown"
+                >
+                    <VirtualDataTable
+                        :key="`matched-${pickRevision}`"
+                        :columns="audioColumns"
+                        :data="sortedMatchedAudio"
+                        :row-key="audioRowKey"
+                        :checked-row-keys="audioSelectedKeys"
+                        :row-props="audioTableRowProps"
+                        :max-height="maxHeightForTable"
+                        size="small"
+                        striped
+                        @update:checked-row-keys="onAudioCheckedRowKeys"
+                        @update:sorter="onAudioSorterUpdate"
+                    />
                 </div>
             </NTabPane>
 
             <NTabPane name="copy" :tab="`待复制 (${canCopyAudio.length})`">
-                <div class="tab-pane-body">
-                    <VirtualDataTable :key="`copy-${pickRevision}`" :columns="audioColumns" :data="sortedCanCopyAudio"
-                        :max-height="maxHeightForTable" size="small" striped
-                        @update:sorter="onAudioSorterUpdate" />
+                <div
+                    class="tab-pane-body"
+                    @mousedown.capture="onAudioTableMouseDown"
+                >
+                    <VirtualDataTable
+                        :key="`copy-${pickRevision}`"
+                        :columns="audioColumns"
+                        :data="sortedCanCopyAudio"
+                        :row-key="audioRowKey"
+                        :checked-row-keys="audioSelectedKeys"
+                        :row-props="audioTableRowProps"
+                        :max-height="maxHeightForTable"
+                        size="small"
+                        striped
+                        @update:checked-row-keys="onAudioCheckedRowKeys"
+                        @update:sorter="onAudioSorterUpdate"
+                    />
                 </div>
             </NTabPane>
 
             <NTabPane name="pick" :tab="`待选源 (${pickSourceAudio.length})`">
-                <div class="tab-pane-body">
-                    <VirtualDataTable :key="`pick-${pickRevision}`" :columns="audioColumns" :data="sortedPickSourceAudio"
-                        :max-height="maxHeightForTable" size="small" striped
-                        @update:sorter="onAudioSorterUpdate" />
+                <div
+                    class="tab-pane-body"
+                    @mousedown.capture="onAudioTableMouseDown"
+                >
+                    <VirtualDataTable
+                        :key="`pick-${pickRevision}`"
+                        :columns="audioColumns"
+                        :data="sortedPickSourceAudio"
+                        :row-key="audioRowKey"
+                        :checked-row-keys="audioSelectedKeys"
+                        :row-props="audioTableRowProps"
+                        :max-height="maxHeightForTable"
+                        size="small"
+                        striped
+                        @update:checked-row-keys="onAudioCheckedRowKeys"
+                        @update:sorter="onAudioSorterUpdate"
+                    />
                 </div>
             </NTabPane>
 
             <NTabPane name="missing" :tab="`缺歌词 (${needLrcAudio.length})`">
-                <div class="tab-pane-body">
-                    <VirtualDataTable :key="`missing-${pickRevision}`" :columns="audioColumns" :data="sortedNeedLrcAudio"
-                        :max-height="maxHeightForTable" size="small" striped
-                        @update:sorter="onAudioSorterUpdate" />
+                <div
+                    class="tab-pane-body"
+                    @mousedown.capture="onAudioTableMouseDown"
+                >
+                    <VirtualDataTable
+                        :key="`missing-${pickRevision}`"
+                        :columns="audioColumns"
+                        :data="sortedNeedLrcAudio"
+                        :row-key="audioRowKey"
+                        :checked-row-keys="audioSelectedKeys"
+                        :row-props="audioTableRowProps"
+                        :max-height="maxHeightForTable"
+                        size="small"
+                        striped
+                        @update:checked-row-keys="onAudioCheckedRowKeys"
+                        @update:sorter="onAudioSorterUpdate"
+                    />
                 </div>
             </NTabPane>
 
@@ -767,7 +907,12 @@ function orphanAudioRowKey(row: { key: string }): string {
 
 
 .table-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     padding: 0 10px;
+    overflow: hidden;
 }
 
 

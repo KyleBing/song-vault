@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** electron-vite 从 package.json 注入 */
+declare const __APP_VERSION__: string
+
 import type { Buffer as BufferPolyfill } from 'buffer'
 
 declare global {

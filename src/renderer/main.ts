@@ -1,10 +1,7 @@
 import './polyfills'
-import FloatingVue from 'floating-vue'
-import 'floating-vue/dist/style.css'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
-import AudioMetaHover from './components/AudioMetaHover.vue'
 import './styles/global.scss'
 import { loadAppConfigOnce, readThemeCache } from './lib/appConfigClient'
 import { useThemeStore } from './stores/theme'
@@ -27,17 +24,6 @@ async function bootstrap(): Promise<void> {
 
   const app = createApp(App)
   app.use(pinia)
-  app.use(FloatingVue, {
-    themes: {
-      'audio-meta': {
-        $extend: 'tooltip',
-        distance: 2,
-        triggers: ['hover'],
-        popperTriggers: ['hover']
-      }
-    }
-  })
-  app.component('AudioMetaHover', AudioMetaHover)
   app.mount('#app')
 }
 

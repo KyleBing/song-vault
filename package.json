@@ -24,7 +24,6 @@
     "browser-id3-writer": "^4.4.0",
     "buffer": "^6.0.3",
     "crypto-js": "^4.1.1",
-    "floating-vue": "^5.2.2",
     "iconv-lite": "^0.6.3",
     "metaflac-js": "^1.0.5",
     "music-metadata": "7.9.0",

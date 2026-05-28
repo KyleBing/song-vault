@@ -1,8 +1,14 @@
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
 const unlockMusicRoot = resolve(__dirname, 'src/unlock-music')
+const appVersion = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, 'package.json'), 'utf8')
+  ) as { version: string }
+).version
 
 export default defineConfig({
   main: {
@@ -12,6 +18,9 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion)
+    },
     publicDir: resolve(__dirname, 'build'),
     resolve: {
       alias: {

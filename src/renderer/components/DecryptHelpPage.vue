@@ -1,38 +1,14 @@
 <script setup lang="ts">
-import { HelpCircleOutline } from '@vicons/ionicons5'
-import { NButton, NIcon, NModal, NScrollbar } from 'naive-ui'
-import { ref } from 'vue'
-
-const show = ref(false)
-
-function open(): void {
-  show.value = true
-}
-
-defineExpose({ open })
+import { NScrollbar } from 'naive-ui'
 </script>
 
 <template>
-  <NButton class="help-trigger" text type="primary" size="small" @click="open">
-    <template #icon>
-      <NIcon :size="16"><HelpCircleOutline /></NIcon>
-    </template>
-    下载与解密说明
-  </NButton>
-
-  <NModal
-    v-model:show="show"
-    preset="card"
-    title="音乐下载与解密说明"
-    class="decrypt-help-modal"
-    :style="{ width: 'min(520px, 92vw)' }"
-    :bordered="false"
-    :segmented="{ content: true, footer: false }"
-  >
-    <NScrollbar style="max-height: min(70vh, 560px)">
+  <div class="decrypt-help-page">
+    <NScrollbar class="decrypt-help-scroll">
       <div class="help-body">
         <p class="help-lead">
-          请先在客户端把歌曲<strong>下载到本地</strong>，再在「设置 → 音乐解码浏览目录」添加对应文件夹，于本页目录树中选择文件解密。
+          请先在客户端把歌曲<strong>下载到本地</strong>，再在「设置 → 路径 →
+          音乐解码浏览目录」添加对应文件夹，于「音乐解码」页目录树中选择文件解密。
         </p>
 
         <section class="help-platform help-platform--qq">
@@ -101,50 +77,64 @@ defineExpose({ open })
         </p>
       </div>
     </NScrollbar>
-  </NModal>
+  </div>
 </template>
 
 <style lang="scss" scoped>
 @use '../styles/variables' as *;
 
-.help-trigger {
-  font-size: 12px;
-  padding: 0 4px;
+$help-content-max: 720px;
+
+.decrypt-help-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: $color-bg;
+}
+
+.decrypt-help-scroll {
+  flex: 1;
+  min-height: 0;
 }
 
 .help-body {
+  max-width: $help-content-max;
+  margin: 0 auto;
+  padding: 28px 28px 40px;
   font-size: 13px;
   line-height: 1.6;
-  padding-right: 4px;
+  box-sizing: border-box;
 }
 
 .help-lead {
-  margin: 0 0 16px;
-  padding: 10px 12px;
+  margin: 0 0 20px;
+  padding: 12px 14px;
   border-radius: $radius-icon;
   background: var(--app-surface-active);
   font-size: 13px;
 }
 
 .help-platform {
-  margin-bottom: 18px;
-  padding-bottom: 16px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
   border-bottom: 1px solid $border-subtle;
 
   &:last-of-type {
     border-bottom: none;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
     padding-bottom: 0;
   }
 
   h2 {
     margin: 0 0 10px;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 700;
   }
 
   h3 {
-    margin: 12px 0 6px;
+    margin: 14px 0 6px;
     font-size: 13px;
     font-weight: 600;
     opacity: 0.92;
