@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AppNavigateTarget } from '@shared/appNavigate'
+import { APP_VERSION } from '@shared/appInfo'
 
 defineProps<{
   activeView: AppNavigateTarget
@@ -13,7 +14,6 @@ const navItems: { id: AppNavigateTarget; label: string }[] = [
   { id: 'lrc', label: 'LRC 歌词归位' },
   { id: 'decode', label: '音乐解码' },
   { id: 'library', label: '音频库' },
-  { id: 'help', label: '解密说明' },
   { id: 'settings', label: '设置' },
   { id: 'about', label: '关于' }
 ]
@@ -29,7 +29,11 @@ const navItems: { id: AppNavigateTarget; label: string }[] = [
       :class="{ 'app-top-nav__item--active': activeView === item.id }"
       @click="emit('navigate', item.id)"
     >
-      {{ item.label }}
+      <template v-if="item.id === 'about'">
+        关于
+        <span class="app-top-nav__version">v{{ APP_VERSION }}</span>
+      </template>
+      <template v-else>{{ item.label }}</template>
     </button>
   </nav>
 </template>
@@ -77,6 +81,22 @@ const navItems: { id: AppNavigateTarget; label: string }[] = [
     font-weight: 600;
     border-bottom-color: $color-primary;
     background: $surface-active;
+  }
+}
+
+.app-top-nav__version {
+  margin-left: 5px;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.5;
+  letter-spacing: 0.02em;
+
+  .app-top-nav__item--active & {
+    opacity: 0.65;
+  }
+
+  .app-top-nav__item:hover & {
+    opacity: 0.6;
   }
 }
 </style>

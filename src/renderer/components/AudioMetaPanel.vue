@@ -83,10 +83,6 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
 
 <template>
   <div class="audio-meta-panel">
-    <p v-if="filePath" class="audio-meta-panel__path" :title="filePath">
-      {{ filePath }}
-    </p>
-
     <p v-if="!filePath" class="audio-meta-panel__empty-hint">
       选中歌曲以查看元数据
     </p>
@@ -234,18 +230,6 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
   overflow: hidden;
 }
 
-.audio-meta-panel__path {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 4px 10px 0;
-  font-size: 10px;
-  line-height: 1.35;
-  opacity: 0.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .audio-meta-panel__empty-hint {
   flex: 1;
   margin: 0;
@@ -275,6 +259,11 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
 
   :deep(.n-tabs-nav) {
     flex-shrink: 0;
+  }
+
+  :deep(.n-tabs-tab) {
+    font-size: 13px;
+    padding: 6px !important;
   }
 
   :deep(.n-tab-pane) {

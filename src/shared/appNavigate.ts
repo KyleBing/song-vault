@@ -3,7 +3,6 @@ export type AppNavigateTarget =
   | 'lrc'
   | 'decode'
   | 'library'
-  | 'help'
   | 'settings'
   | 'about'
 

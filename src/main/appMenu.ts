@@ -18,25 +18,6 @@ function navigateTo(view: AppNavigateTarget): void {
   focusedWebContents()?.send(APP_NAVIGATE_CHANNEL, view)
 }
 
-function helpSubmenu(isMac: boolean): MenuItemConstructorOptions[] {
-  const items: MenuItemConstructorOptions[] = [
-    {
-      label: '解密说明',
-      click: () => navigateTo('help')
-    }
-  ]
-  if (!isMac) {
-    items.push(
-      { type: 'separator' },
-      {
-        label: '关于',
-        click: () => navigateTo('about')
-      }
-    )
-  }
-  return items
-}
-
 /** 全局快捷键切换页面（顶部导航栏亦可点击） */
 export function registerAppNavShortcuts(): void {
   for (const [accelerator, view] of NAV_SHORTCUTS) {
@@ -59,7 +40,7 @@ export function setupApplicationMenu(): void {
       label: app.name,
       submenu: [
         {
-          label: `关于 ${app.name}`,
+          label: `关于 v${app.getVersion()}`,
           click: () => navigateTo('about')
         },
         { type: 'separator' },
@@ -88,14 +69,6 @@ export function setupApplicationMenu(): void {
       { role: 'togglefullscreen' }
     ]
   })
-
-  const helpMenu = helpSubmenu(isMac)
-  if (helpMenu.length > 0) {
-    template.push({
-      label: '帮助',
-      submenu: helpMenu
-    })
-  }
 
   if (!isMac) {
     template.push({

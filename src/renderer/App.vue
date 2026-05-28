@@ -41,7 +41,6 @@ import AudioCoverLightbox from './components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
 import AppTopNav from './components/AppTopNav.vue'
 import AboutPage from './components/AboutPage.vue'
-import DecryptHelpPage from './components/DecryptHelpPage.vue'
 import styleTokens from './styles/variables.module.scss'
 
 const layoutStore = useLayoutStore()
@@ -247,7 +246,6 @@ watch(
           v-model:decode-source-dirs="decodeSourceDirs"
           v-model:file-list-columns="fileListColumns"
           class="settings-layer"
-          @open-view="openView"
         />
         <SourceFilesPage
           v-else-if="activeView === 'library'"
@@ -263,10 +261,6 @@ watch(
           :search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
-          class="settings-layer"
-        />
-        <DecryptHelpPage
-          v-else-if="activeView === 'help'"
           class="settings-layer"
         />
         <AboutPage
@@ -285,10 +279,11 @@ watch(
                 </NButton>
               </section>
 
-              <section class="toolbar toolbar--row">
+              <section class="toolbar">
                 <NButton
-                  class="toolbar-btn"
+                  block
                   size="large"
+                  type="success"
                   :disabled="!canPreview || loading"
                   @click="preview"
                 >
@@ -298,7 +293,7 @@ watch(
                   预览匹配
                 </NButton>
                 <NButton
-                  class="toolbar-btn"
+                  block
                   type="primary"
                   size="large"
                   :disabled="!canExecute || loading"
@@ -366,10 +361,7 @@ watch(
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse 70% 45% at 12% -8%, $glow-primary, transparent),
-    radial-gradient(ellipse 50% 40% at 95% 100%, $glow-accent, transparent),
-    $color-bg;
+  background: $color-bg;
 }
 
 .workspace {
@@ -421,18 +413,10 @@ watch(
 }
 
 .toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding-top: 4px;
-
-  &--row {
-    display: flex;
-    flex-direction: row;
-    gap: 10px;
-  }
-}
-
-.toolbar-btn {
-  flex: 1;
-  min-width: 0;
 }
 
 .app-main {

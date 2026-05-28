@@ -3,9 +3,8 @@ import { NScrollbar } from 'naive-ui'
 </script>
 
 <template>
-  <div class="decrypt-help-page">
-    <NScrollbar class="decrypt-help-scroll">
-      <div class="help-body">
+  <NScrollbar class="decrypt-help-scroll">
+    <div class="help-body">
         <p class="help-lead">
           请先在客户端把歌曲<strong>下载到本地</strong>，再在「设置 → 路径 →
           音乐解码浏览目录」添加对应文件夹，于「音乐解码」页目录树中选择文件解密。
@@ -75,24 +74,12 @@ import { NScrollbar } from 'naive-ui'
         <p class="help-foot">
           解密基于 unlock-music 离线算法，不保证覆盖各平台后续全部新加密；仅供个人已下载文件的格式转换与学习研究。
         </p>
-      </div>
-    </NScrollbar>
-  </div>
+    </div>
+  </NScrollbar>
 </template>
 
 <style lang="scss" scoped>
 @use '../styles/variables' as *;
-
-$help-content-max: 720px;
-
-.decrypt-help-page {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: $color-bg;
-}
 
 .decrypt-help-scroll {
   flex: 1;
@@ -100,9 +87,8 @@ $help-content-max: 720px;
 }
 
 .help-body {
-  max-width: $help-content-max;
-  margin: 0 auto;
-  padding: 28px 28px 40px;
+  max-width: 720px;
+  padding: 8px 28px 40px;
   font-size: 13px;
   line-height: 1.6;
   box-sizing: border-box;

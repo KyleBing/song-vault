@@ -25,6 +25,7 @@ import {
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const props = defineProps<{
@@ -61,7 +62,7 @@ watch(activeTab, () => {
 
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 410)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 426)
 
 const metaPanelFilePath = computed(() => {
   if (activeTab.value === 'encrypted') {
@@ -305,6 +306,7 @@ function plainTableRowProps(row: PlainMp3Item) {
 
 <template>
   <div class="decode-results">
+    <div class="decode-results-lists">
     <NTabs v-model:value="activeTab" type="line" class="result-tabs">
       <NTabPane
         name="encrypted"
@@ -354,6 +356,8 @@ function plainTableRowProps(row: PlainMp3Item) {
         </div>
       </NTabPane>
     </NTabs>
+    <SelectionPathFooter :path="metaPanelFilePath" />
+    </div>
     <AudioMetaPanel :file-path="metaPanelFilePath" />
   </div>
 </template>
@@ -367,6 +371,14 @@ function plainTableRowProps(row: PlainMp3Item) {
   display: flex;
   flex-direction: column;
   padding: 16px 20px 0;
+  overflow: hidden;
+}
+
+.decode-results-lists {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 

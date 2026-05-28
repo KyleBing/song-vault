@@ -45,6 +45,7 @@ import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const searchRoots = defineModel<string[]>('searchRoots', { required: true })
@@ -57,7 +58,7 @@ const props = defineProps<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 178)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 194)
 
 /** 元数据面板：多选时展示第一个选中文件 */
 const metaPanelFilePath = computed(() => selectedFileKeys.value[0] ?? null)
@@ -716,6 +717,7 @@ onMounted(() => {
             该目录下没有音频文件
           </p>
         </NSpin>
+        <SelectionPathFooter :path="metaPanelFilePath" />
       </section>
     </div>
   </div>

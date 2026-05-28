@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import {
-  NButton,
-  NDivider,
   NIcon,
   NRadio,
   NRadioGroup,
@@ -48,10 +46,6 @@ const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
 const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', {
   required: true
 })
-
-const emit = defineEmits<{
-  'open-view': [view: 'lrc' | 'decode' | 'library']
-}>()
 
 const themeStore = useThemeStore()
 const { appearance } = storeToRefs(themeStore)
@@ -190,84 +184,46 @@ async function revealConfigFile(): Promise<void> {
             </span>
           </template>
 
-          <div class="settings-pane">
-            <div class="settings-pane-body">
-              <section class="settings-group">
-                <div class="settings-group-head">
-                  <div class="settings-group-head-text">
-                    <h3 class="settings-group-title">音频搜索目标</h3>
-                    <p class="settings-group-desc">
-                      递归子目录；扫描时会跳过下方 LRC 源目录
-                    </p>
-                  </div>
-                  <NButton
-                    text
-                    size="tiny"
-                    class="settings-group-link"
-                    @click="emit('open-view', 'library')"
-                  >
-                    打开音频库
-                  </NButton>
-                </div>
-                <FolderPanel
-                  v-model="searchRoots"
-                  class="settings-folder-panel"
-                  hide-header
-                  empty-text="添加搜索目标"
-                />
-              </section>
+          <div class="settings-pane settings-pane--paths">
+            <div class="settings-pane-body settings-pane-body--paths">
+              <div class="settings-paths-row">
+                <section class="settings-group settings-path-column">
+                  <h3 class="settings-group-title">音频搜索目标</h3>
+                  <p class="settings-group-desc">
+                    递归子目录；扫描时会跳过 LRC 源目录
+                  </p>
+                  <FolderPanel
+                    v-model="searchRoots"
+                    class="settings-folder-panel"
+                    hide-header
+                    empty-text="添加搜索目标"
+                  />
+                </section>
 
-              <NDivider class="settings-divider" />
+                <section class="settings-group settings-path-column">
+                  <h3 class="settings-group-title">LRC 源文件夹</h3>
+                  <p class="settings-group-desc">递归扫描 .lrc 歌词文件</p>
+                  <FolderPanel
+                    v-model="lrcDirs"
+                    class="settings-folder-panel"
+                    hide-header
+                    empty-text="添加 LRC 源"
+                  />
+                </section>
 
-              <section class="settings-group">
-                <div class="settings-group-head">
-                  <div class="settings-group-head-text">
-                    <h3 class="settings-group-title">LRC 源文件夹</h3>
-                    <p class="settings-group-desc">递归扫描 .lrc 歌词文件</p>
-                  </div>
-                  <NButton
-                    text
-                    size="tiny"
-                    class="settings-group-link"
-                    @click="emit('open-view', 'lrc')"
-                  >
-                    去歌词归位
-                  </NButton>
-                </div>
-                <FolderPanel
-                  v-model="lrcDirs"
-                  class="settings-folder-panel"
-                  hide-header
-                  empty-text="添加 LRC 源"
-                />
-              </section>
-
-              <NDivider class="settings-divider" />
-
-              <section class="settings-group">
-                <div class="settings-group-head">
-                  <div class="settings-group-head-text">
-                    <h3 class="settings-group-title">音乐解码浏览目录</h3>
-                    <p class="settings-group-desc">
-                      如 QQ 音乐、网易云等客户端的下载目录，用于浏览加密音乐
-                    </p>
-                  </div>
-                  <NButton
-                    text
-                    size="tiny"
-                    class="settings-group-link"
-                    @click="emit('open-view', 'decode')"
-                  >
-                    打开音乐解码
-                  </NButton>
-                </div>
-                <FolderPanel
-                  v-model="decodeSourceDirs"
-                  class="settings-folder-panel"
-                  hide-header
-                  empty-text="添加用于浏览加密音乐的文件夹"
-                />
-              </section>
+                <section class="settings-group settings-path-column">
+                  <h3 class="settings-group-title">音乐解码浏览目录</h3>
+                  <p class="settings-group-desc">
+                    如 QQ 音乐、网易云等客户端的下载目录，用于浏览加密音乐
+                  </p>
+                  <FolderPanel
+                    v-model="decodeSourceDirs"
+                    class="settings-folder-panel"
+                    hide-header
+                    empty-text="添加用于浏览加密音乐的文件夹"
+                  />
+                </section>
+              </div>
             </div>
           </div>
         </NTabPane>
@@ -294,7 +250,7 @@ async function revealConfigFile(): Promise<void> {
       </NTabs>
 
       <footer class="settings-footer">
-        <NText depth="3" class="config-file-line">
+        <span class="config-file-line">
           配置文件
           <button
             type="button"
@@ -305,8 +261,8 @@ async function revealConfigFile(): Promise<void> {
             {{ APP_CONFIG_FILE_NAME }}
           </button>
           <span class="config-file-sep">·</span>
-          点击在资源管理器中打开并选中；修改后请重启应用以加载
-        </NText>
+          点击打开 · 修改后需重启
+        </span>
       </footer>
     </div>
   </div>
@@ -401,6 +357,13 @@ $settings-content-max: 720px;
   overflow-y: auto;
   padding: 24px 28px 32px;
   box-sizing: border-box;
+
+  &--paths {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
 }
 
 .settings-pane-body {
@@ -408,6 +371,13 @@ $settings-content-max: 720px;
   display: flex;
   flex-direction: column;
   gap: 0;
+
+  &--paths {
+    flex: 1;
+    min-height: 0;
+    max-width: none;
+    width: 100%;
+  }
 }
 
 .settings-group {
@@ -415,26 +385,6 @@ $settings-content-max: 720px;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-}
-
-.settings-group-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.settings-group-head-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.settings-group-link {
-  flex-shrink: 0;
-  margin-top: 1px;
 }
 
 .settings-group-title {
@@ -481,11 +431,6 @@ $settings-content-max: 720px;
   }
 }
 
-.settings-divider {
-  margin: 20px 0 !important;
-  opacity: 0.55;
-}
-
 .settings-columns-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -497,13 +442,40 @@ $settings-content-max: 720px;
   }
 }
 
+.settings-paths-row {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+
+  @media (max-width: 960px) {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
+
+.settings-path-column {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .settings-folder-panel {
+  flex: 1;
   margin-top: 4px;
   min-height: 160px;
-  max-height: 240px;
   background: $surface-panel;
   border: 1px solid $border-subtle;
   border-radius: $radius-panel;
+
+  .settings-path-column & {
+    min-height: 0;
+    max-height: none;
+  }
 }
 
 .appearance-group {
@@ -571,36 +543,41 @@ $settings-content-max: 720px;
 
 .settings-footer {
   flex-shrink: 0;
-  padding: 10px $settings-inline-pad 12px;
+  padding: 5px 12px 8px;
   border-top: 1px solid $border-subtle;
-  background: $surface-panel;
+  background: transparent;
 }
 
 .config-file-line {
-  font-size: 11px;
-  line-height: 1.5;
-  opacity: 0.65;
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .config-file-link {
-  margin: 0 4px;
+  margin: 0 2px;
   padding: 0;
   border: none;
   background: none;
   font: inherit;
   font-size: inherit;
   color: $color-primary;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   cursor: pointer;
 
   &:hover {
+    text-decoration: underline;
+    text-underline-offset: 1px;
     opacity: 0.85;
   }
 }
 
 .config-file-sep {
-  margin: 0 4px;
-  opacity: 0.5;
+  margin: 0 3px;
+  opacity: 0.45;
 }
 </style>

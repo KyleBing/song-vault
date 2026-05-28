@@ -668,126 +668,7 @@ onMounted(() => {
     </NModal>
 
     <div class="workspace">
-      <aside class="sidebar">
-        <div
-          class="sidebar-scroll"
-          :class="{
-            'sidebar-scroll--has-queue':
-              decryptQueue.length > 0 || lastResult
-          }"
-        >
-          <p v-if="!decodeSourceDirs.length" class="decode-hint">
-            请先在「设置」中添加加密音乐浏览目录，再在左侧目录树中选择文件。
-          </p>
 
-          <section class="output-section">
-            <label class="field-label">保存到</label>
-            <div class="output-row">
-              <NInput
-                v-model:value="decodeOutputDir"
-                placeholder="选择解密后文件的保存文件夹"
-                size="small"
-                readonly
-              />
-              <NButton size="small" @click="pickOutputDir">
-                <template #icon>
-                  <NIcon><FolderOpen /></NIcon>
-                </template>
-                浏览
-              </NButton>
-            </div>
-          </section>
-
-          <section class="toolbar">
-            <NButton
-              block
-              type="primary"
-              size="medium"
-              :disabled="!canDecrypt"
-              :loading="decrypting"
-              @click="startDecrypt"
-            >
-              <template #icon>
-                <NIcon><Play /></NIcon>
-              </template>
-              开始解密 ({{ decryptQueue.length }})
-            </NButton>
-            <NProgress
-              v-if="decrypting"
-              type="line"
-              :percentage="progressPercent"
-              :show-indicator="true"
-              style="margin-top: 8px"
-            />
-            <p
-              v-if="decrypting && decryptProgressDetailText"
-              class="decrypt-progress-detail"
-            >
-              {{ decryptProgressDetailText }}
-            </p>
-          </section>
-
-          <section
-            v-if="decryptQueue.length || lastResult"
-            class="queue-section"
-          >
-            <div v-if="decryptQueue.length" class="queue-head">
-              <span class="queue-title">待解密队列</span>
-              <NButton
-                quaternary
-                size="tiny"
-                :disabled="decrypting"
-                @click="clearQueue"
-              >
-                <template #icon>
-                  <NIcon :size="14"><TrashOutline /></NIcon>
-                </template>
-                清空
-              </NButton>
-            </div>
-            <div
-              v-if="decryptQueue.length"
-              ref="queueTableWrapRef"
-              class="queue-table-wrap"
-            >
-              <VirtualDataTable
-                :columns="queueColumns"
-                :data="queueRows"
-                :max-height="maxHeightForQueueTable"
-                size="small"
-                striped
-                @update:sorter="onQueueSorterUpdate"
-              />
-            </div>
-            <p v-if="lastResult" class="decrypt-result-stats">
-              <span class="decrypt-result-label">解密完成</span>
-              <NTag
-                type="success"
-                size="small"
-                round
-                :bordered="false"
-              >
-                成功 {{ lastResult.succeeded }}
-              </NTag>
-              <NTag
-                v-if="lastResult.failed > 0"
-                type="error"
-                size="small"
-                round
-                :bordered="false"
-              >
-                失败 {{ lastResult.failed }}
-              </NTag>
-              <span
-                v-if="lastResult.failed > 0"
-                class="decrypt-result-hint"
-              >
-                失败项可点队列「失败」查看原因
-              </span>
-            </p>
-          </section>
-        </div>
-      </aside>
 
       <section class="browser-pane">
         <div class="browser-split">
@@ -964,6 +845,127 @@ onMounted(() => {
           </div>
         </div>
       </section>
+
+      <aside class="sidebar">
+        <div
+          class="sidebar-scroll"
+          :class="{
+            'sidebar-scroll--has-queue':
+              decryptQueue.length > 0 || lastResult
+          }"
+        >
+          <p v-if="!decodeSourceDirs.length" class="decode-hint">
+            请先在「设置」中添加加密音乐浏览目录，再在左侧目录树中选择文件。
+          </p>
+
+          <section class="output-section">
+            <label class="field-label">保存到</label>
+            <div class="output-row">
+              <NInput
+                v-model:value="decodeOutputDir"
+                placeholder="选择解密后文件的保存文件夹"
+                size="small"
+                readonly
+              />
+              <NButton size="small" @click="pickOutputDir">
+                <template #icon>
+                  <NIcon><FolderOpen /></NIcon>
+                </template>
+                浏览
+              </NButton>
+            </div>
+          </section>
+
+          <section class="toolbar">
+            <NButton
+              block
+              type="primary"
+              size="medium"
+              :disabled="!canDecrypt"
+              :loading="decrypting"
+              @click="startDecrypt"
+            >
+              <template #icon>
+                <NIcon><Play /></NIcon>
+              </template>
+              开始解密 ({{ decryptQueue.length }})
+            </NButton>
+            <NProgress
+              v-if="decrypting"
+              type="line"
+              :percentage="progressPercent"
+              :show-indicator="true"
+              style="margin-top: 8px"
+            />
+            <p
+              v-if="decrypting && decryptProgressDetailText"
+              class="decrypt-progress-detail"
+            >
+              {{ decryptProgressDetailText }}
+            </p>
+          </section>
+
+          <section
+            v-if="decryptQueue.length || lastResult"
+            class="queue-section"
+          >
+            <div v-if="decryptQueue.length" class="queue-head">
+              <span class="queue-title">待解密队列</span>
+              <NButton
+                quaternary
+                size="tiny"
+                :disabled="decrypting"
+                @click="clearQueue"
+              >
+                <template #icon>
+                  <NIcon :size="14"><TrashOutline /></NIcon>
+                </template>
+                清空
+              </NButton>
+            </div>
+            <div
+              v-if="decryptQueue.length"
+              ref="queueTableWrapRef"
+              class="queue-table-wrap"
+            >
+              <VirtualDataTable
+                :columns="queueColumns"
+                :data="queueRows"
+                :max-height="maxHeightForQueueTable"
+                size="small"
+                striped
+                @update:sorter="onQueueSorterUpdate"
+              />
+            </div>
+            <p v-if="lastResult" class="decrypt-result-stats">
+              <span class="decrypt-result-label">解密完成</span>
+              <NTag
+                type="success"
+                size="small"
+                round
+                :bordered="false"
+              >
+                成功 {{ lastResult.succeeded }}
+              </NTag>
+              <NTag
+                v-if="lastResult.failed > 0"
+                type="error"
+                size="small"
+                round
+                :bordered="false"
+              >
+                失败 {{ lastResult.failed }}
+              </NTag>
+              <span
+                v-if="lastResult.failed > 0"
+                class="decrypt-result-hint"
+              >
+                失败项可点队列「失败」查看原因
+              </span>
+            </p>
+          </section>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
