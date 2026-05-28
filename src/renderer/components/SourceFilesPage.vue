@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   NButton,
-  NDataTable,
   NEmpty,
   NIcon,
   NInput,
@@ -46,6 +45,7 @@ import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
+import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const searchRoots = defineModel<string[]>('searchRoots', { required: true })
 
@@ -690,7 +690,7 @@ onMounted(() => {
             class="files-table-wrap"
             @mousedown.capture="onTableMouseDown"
           >
-            <NDataTable
+            <VirtualDataTable
               :columns="tableColumns"
               :data="sortedAudioFiles"
               :row-key="fileRowKey"
@@ -851,20 +851,34 @@ onMounted(() => {
 }
 
 .files-table-wrap {
+  flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .tree-spin,
 .files-spin {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   padding: 8px 10px;
 
   :deep(.n-spin-container),
   :deep(.n-spin-content) {
+    flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
+}
+
+.tree-spin {
+  overflow: auto;
+}
+
+.files-spin {
+  overflow: hidden;
 }
 
 .tree-spin {

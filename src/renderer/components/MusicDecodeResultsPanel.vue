@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  NDataTable,
   NTabPane,
   NTabs,
   NTag,
@@ -24,6 +23,7 @@ import {
   type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaHoverCell'
+import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
 const props = defineProps<{
   result: MusicScanResult
@@ -234,7 +234,7 @@ const plainMp3Rows = computed(() =>
           <p v-if="stats.encryptedTotal" class="tab-hint">
             网易云 {{ stats.neteaseCount }} · QQ音乐 {{ stats.qqCount }}
           </p>
-          <NDataTable
+          <VirtualDataTable
             :columns="encryptedColumns"
             :data="encryptedRows"
             :max-height="maxHeightForTable"
@@ -248,7 +248,7 @@ const plainMp3Rows = computed(() =>
       <NTabPane name="plainMp3" :tab="`明文 MP3 (${stats.plainMp3Total})`">
         <div class="tab-pane-body">
           <p class="tab-hint">无需解码的 MP3 文件</p>
-          <NDataTable
+          <VirtualDataTable
             :columns="plainMp3Columns"
             :data="plainMp3Rows"
             :max-height="maxHeightForTable"
