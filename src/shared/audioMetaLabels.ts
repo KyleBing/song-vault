@@ -413,3 +413,47 @@ export function labelForNativeTag(fullId: string): string {
     formatId
   return `${formatLabel} · ${tagLabel}`
 }
+
+export function nativeTagFormatId(fullId: string): string {
+  return nativeTagParts(fullId).formatId.toLowerCase()
+}
+
+export function isVorbisNativeTag(fullId: string): boolean {
+  return nativeTagFormatId(fullId) === 'vorbis'
+}
+
+/** Vorbis 专用 Tab：仅展示键名（不含「Vorbis ·」前缀） */
+export function labelForVorbisNativeTag(fullId: string): string {
+  return labelForNativeTagId(nativeTagParts(fullId).tagId)
+}
+
+function normalizedMetaToken(key: string): string {
+  return key.replace(/[^a-z0-9]/gi, '').toLowerCase()
+}
+
+/** common 键名或原生 tagId 是否属于 MusicBrainz */
+export function isMusicBrainzMetaKey(key: string): boolean {
+  return normalizedMetaToken(key).includes('musicbrainz')
+}
+
+export function isMusicBrainzNativeTag(fullId: string): boolean {
+  return isMusicBrainzMetaKey(nativeTagParts(fullId).tagId)
+}
+
+const MUSICBRAINZ_LABEL_PREFIX = /^MusicBrainz\s+/i
+
+function musicBrainzPanelLabel(label: string): string {
+  return label.replace(MUSICBRAINZ_LABEL_PREFIX, '')
+}
+
+/** MusicBrainz Tab：common 字段中文名（不含 MusicBrainz 前缀） */
+export function labelForMusicBrainzCommonKey(key: string): string {
+  return musicBrainzPanelLabel(labelForCommonKey(key))
+}
+
+/** MusicBrainz Tab：原生标签键名（不含 MusicBrainz 前缀） */
+export function labelForMusicBrainzNativeTag(fullId: string): string {
+  return musicBrainzPanelLabel(
+    labelForNativeTagId(nativeTagParts(fullId).tagId)
+  )
+}

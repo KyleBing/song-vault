@@ -11,7 +11,6 @@ import {
   useMessage
 } from 'naive-ui'
 import {
-  ArrowBack,
   ColorPaletteOutline,
   FilterOutline,
   FolderOutline,
@@ -22,12 +21,10 @@ import { onMounted, ref } from 'vue'
 import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
 import { APP_CONFIG_FILE_NAME } from '@shared/appConfig'
 import { useThemeStore } from '@renderer/stores/theme'
-import { useAudioMetaHoverSettingsStore } from '@renderer/stores/audioMetaHoverSettings'
 import FolderPanel from './FolderPanel.vue'
 import type { FileListColumnsSettings } from '@shared/appConfig'
 import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
 import FileListColumnsEditor from './FileListColumnsEditor.vue'
-import AudioMetaHoverSettingsEditor from './AudioMetaHoverSettingsEditor.vue'
 
 const message = useMessage()
 const configFilePath = ref('')
@@ -53,14 +50,11 @@ const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', 
 })
 
 const emit = defineEmits<{
-  close: []
   'open-view': [view: 'lrc' | 'decode' | 'library']
 }>()
 
 const themeStore = useThemeStore()
 const { appearance } = storeToRefs(themeStore)
-const audioMetaHoverStore = useAudioMetaHoverSettingsStore()
-const { settings: audioMetaHover } = storeToRefs(audioMetaHoverStore)
 
 type SettingsTab = 'general' | 'display' | 'paths' | 'filter'
 
@@ -100,17 +94,6 @@ async function revealConfigFile(): Promise<void> {
 
 <template>
   <div class="settings-page">
-    <header class="page-header">
-      <NButton quaternary circle @click="emit('close')">
-        <template #icon>
-          <NIcon :size="20"><ArrowBack /></NIcon>
-        </template>
-      </NButton>
-      <div class="header-text">
-        <h1>设置</h1>
-      </div>
-    </header>
-
     <div class="settings-body">
       <NTabs
         v-model:value="activeTab"
@@ -128,11 +111,6 @@ async function revealConfigFile(): Promise<void> {
           </template>
 
           <div class="settings-pane">
-            <header class="settings-pane-header">
-              <h2>常规</h2>
-              <p class="settings-pane-desc">界面主题与整体外观</p>
-            </header>
-
             <div class="settings-pane-body">
               <section class="settings-group">
                 <h3 class="settings-group-title">界面主题</h3>
@@ -175,27 +153,10 @@ async function revealConfigFile(): Promise<void> {
           </template>
 
           <div class="settings-pane">
-            <header class="settings-pane-header">
-              <h2>显示</h2>
-              <p class="settings-pane-desc">文件列表列与悬停时展示的音频信息</p>
-            </header>
-
             <div class="settings-pane-body">
               <section class="settings-group">
-                <h3 class="settings-group-title">悬停信息</h3>
-                <p class="settings-group-desc">
-                  在音频文件上悬停时弹出元数据卡片；关闭后仅显示路径提示
-                </p>
-                <div class="settings-group-panel settings-group-panel--flush">
-                  <AudioMetaHoverSettingsEditor v-model:settings="audioMetaHover" />
-                </div>
-              </section>
-
-              <NDivider class="settings-divider" />
-
-              <section class="settings-group">
                 <h3 class="settings-group-title">文件列表列</h3>
-                <p class="settings-group-desc">
+                <p class="settings-group-desc settings-group-desc--block">
                   分别配置「音频搜索」与「音乐解码」结果表中显示的列
                 </p>
                 <div class="settings-columns-row">
@@ -230,11 +191,6 @@ async function revealConfigFile(): Promise<void> {
           </template>
 
           <div class="settings-pane">
-            <header class="settings-pane-header">
-              <h2>路径</h2>
-              <p class="settings-pane-desc">搜索、歌词与加密音乐浏览所用目录</p>
-            </header>
-
             <div class="settings-pane-body">
               <section class="settings-group">
                 <div class="settings-group-head">
@@ -325,11 +281,6 @@ async function revealConfigFile(): Promise<void> {
           </template>
 
           <div class="settings-pane">
-            <header class="settings-pane-header">
-              <h2>过滤</h2>
-              <p class="settings-pane-desc">按文件名或路径排除不需要参与扫描的文件</p>
-            </header>
-
             <div class="settings-pane-body">
               <section class="settings-group">
                 <h3 class="settings-group-title">名称过滤规则</h3>
@@ -375,27 +326,6 @@ $settings-content-max: 720px;
   flex-direction: column;
   overflow: hidden;
   background: $color-bg;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px $settings-inline-pad;
-  flex-shrink: 0;
-  border-bottom: 1px solid $border-subtle;
-  background: $surface-panel;
-}
-
-.header-text {
-  flex: 1;
-  min-width: 0;
-
-  h1 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-  }
 }
 
 .settings-body {
@@ -473,26 +403,6 @@ $settings-content-max: 720px;
   box-sizing: border-box;
 }
 
-.settings-pane-header {
-  max-width: $settings-content-max;
-  margin-bottom: 24px;
-
-  h2 {
-    margin: 0 0 6px;
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.25;
-    letter-spacing: -0.02em;
-  }
-}
-
-.settings-pane-desc {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  opacity: 0.65;
-}
-
 .settings-pane-body {
   max-width: $settings-content-max;
   display: flex;
@@ -539,6 +449,19 @@ $settings-content-max: 720px;
   font-size: 12px;
   line-height: 1.45;
   opacity: 0.6;
+
+  &--block {
+    margin-top: -4px;
+    margin-bottom: 4px;
+  }
+}
+
+.settings-sub-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
 }
 
 .settings-group-panel {
@@ -556,14 +479,6 @@ $settings-content-max: 720px;
     padding: 12px 14px 14px;
     min-height: 0;
   }
-}
-
-.settings-sub-label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.75;
 }
 
 .settings-divider {

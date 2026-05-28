@@ -30,6 +30,10 @@ import type {
   SourceDirChild
 } from '../shared/sourceDirBrowse'
 import { toIpcPlain } from '../shared/serialize'
+import {
+  APP_NAVIGATE_CHANNEL,
+  type AppNavigateTarget
+} from '../shared/appNavigate'
 
 /** 暴露给渲染进程的安全 API（通过 contextBridge） */
 const api = {
@@ -187,6 +191,17 @@ const api = {
   readAudioMeta: async (filePath: string): Promise<AudioFileMetaInfo> => {
     const result = await ipcRenderer.invoke('read-audio-meta', filePath)
     return toIpcPlain(result)
+  },
+
+  /** 订阅主进程菜单栏导航；返回取消订阅函数 */
+  onAppNavigate: (callback: (view: AppNavigateTarget) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, view: AppNavigateTarget) => {
+      callback(view)
+    }
+    ipcRenderer.on(APP_NAVIGATE_CHANNEL, handler)
+    return () => {
+      ipcRenderer.removeListener(APP_NAVIGATE_CHANNEL, handler)
+    }
   }
 }
 

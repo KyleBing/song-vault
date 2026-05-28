@@ -8,14 +8,7 @@ import {
   darkTheme,
   type GlobalThemeOverrides
 } from 'naive-ui'
-import {
-  FolderOpen,
-  Key,
-  MusicalNotes,
-  Play,
-  Search,
-  SettingsOutline
-} from '@vicons/ionicons5'
+import { Play, Search } from '@vicons/ionicons5'
 import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLayoutStore } from '@renderer/stores/layout'
@@ -24,7 +17,6 @@ import {
   saveAppConfig
 } from '@renderer/lib/appConfigClient'
 import { useThemeStore } from '@renderer/stores/theme'
-import { useAudioMetaHoverSettingsStore } from '@renderer/stores/audioMetaHoverSettings'
 import SettingsPanel from './components/SettingsPanel.vue'
 import MusicDecodePage from './components/MusicDecodePage.vue'
 import SourceFilesPage from './components/SourceFilesPage.vue'
@@ -37,41 +29,41 @@ import {
 } from '@shared/appConfig'
 import { normalizeFileListColumns } from '@shared/fileListColumns'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
+import type { AppNavigateTarget } from '@shared/appNavigate'
 import type { JobResult } from '@shared/lrcJob'
 import {
   countReadyToCopy,
   type SourceSelection
 } from '@shared/sourcePick'
 import ResultsPanel from './components/ResultsPanel.vue'
+import AudioMetaPanel from './components/AudioMetaPanel.vue'
 import AudioCoverLightbox from './components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
+import AppTopNav from './components/AppTopNav.vue'
+import AboutPage from './components/AboutPage.vue'
+import DecryptHelpPage from './components/DecryptHelpPage.vue'
 import styleTokens from './styles/variables.module.scss'
 
 const layoutStore = useLayoutStore()
 const themeStore = useThemeStore()
-const audioMetaHoverStore = useAudioMetaHoverSettingsStore()
 const { appearance } = storeToRefs(themeStore)
-const { settings: audioMetaHoverSettings } = storeToRefs(audioMetaHoverStore)
 
 const naiveTheme = computed(() =>
   appearance.value === 'dark' ? darkTheme : null
 )
 
-type AppView = 'lrc' | 'decode' | 'library' | 'settings'
+type AppView = AppNavigateTarget
 
 const activeView = ref<AppView>('lrc')
 
-/** 从主界面或设置页进入指定工作台 */
-function openView(view: Exclude<AppView, 'settings'>): void {
+/** 从设置页等跳转到工作台 */
+function openView(view: 'lrc' | 'decode' | 'library'): void {
   activeView.value = view
 }
 
-function openSettings(): void {
-  activeView.value = 'settings'
-}
-
-function closeOverlay(): void {
-  activeView.value = 'lrc'
+/** 顶栏 / 快捷键导航 */
+function handleAppNavigate(view: AppNavigateTarget): void {
+  activeView.value = view
 }
 
 /** 窗口尺寸变化时更新布局 store */
@@ -109,6 +101,7 @@ const lastPreview = ref<JobResult | null>(null)
 const sourceSelection = ref<SourceSelection>({ sourceOverrides: {} })
 const selectedOrphanKeys = ref<string[]>([])
 const selectedOrphanAudioKeys = ref<string[]>([])
+const metaPanelFilePath = ref<string | null>(null)
 
 const canPreview = computed(
   () => lrcDirs.value.length > 0 && searchRoots.value.length > 0
@@ -177,8 +170,7 @@ function buildAppConfig(): AppConfig {
     fileListColumns: {
       source: [...columns.source],
       decode: [...columns.decode]
-    },
-    audioMetaHover: { ...toRaw(audioMetaHoverSettings.value) }
+    }
   }
 }
 
@@ -192,9 +184,12 @@ async function persistFolderConfig(): Promise<void> {
   }
 }
 
+let unsubscribeAppNavigate: (() => void) | undefined
+
 onMounted(async () => {
   layoutStore.updateInsets()
   window.addEventListener('resize', onWindowResize)
+  unsubscribeAppNavigate = window.electronAPI.onAppNavigate(handleAppNavigate)
 
   try {
     const config = await loadAppConfigOnce()
@@ -204,7 +199,6 @@ onMounted(async () => {
     decodeOutputDir.value = config.decodeOutputDir
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
-    audioMetaHoverStore.apply(config.audioMetaHover)
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -214,6 +208,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)
+  unsubscribeAppNavigate?.()
 })
 
 watch(
@@ -224,8 +219,7 @@ watch(
     decodeOutputDir,
     pathFilterRules,
     fileListColumns,
-    appearance,
-    audioMetaHoverSettings
+    appearance
   ],
   () => void persistFolderConfig(),
   { deep: true }
@@ -240,6 +234,11 @@ watch(
     <NMessageProvider>
       <AudioCoverLightbox />
       <div class="app-shell">
+        <AppTopNav
+          :active-view="activeView"
+          @navigate="handleAppNavigate"
+        />
+        <div class="app-main">
         <SettingsPanel
           v-if="activeView === 'settings'"
           v-model:path-filter-rules="pathFilterRules"
@@ -249,7 +248,6 @@ watch(
           v-model:file-list-columns="fileListColumns"
           class="settings-layer"
           @open-view="openView"
-          @close="closeOverlay"
         />
         <SourceFilesPage
           v-else-if="activeView === 'library'"
@@ -257,7 +255,6 @@ watch(
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
           class="settings-layer"
-          @close="closeOverlay"
         />
         <MusicDecodePage
           v-else-if="activeView === 'decode'"
@@ -267,34 +264,31 @@ watch(
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
           class="settings-layer"
-          @close="closeOverlay"
         />
-        <div v-else class="workspace">
+        <DecryptHelpPage
+          v-else-if="activeView === 'help'"
+          class="settings-layer"
+        />
+        <AboutPage
+          v-else-if="activeView === 'about'"
+          class="settings-layer"
+        />
+        <div v-else-if="activeView === 'lrc'" class="workspace">
           <aside class="sidebar">
-            <div class="brand">
-              <div class="brand-icon">
-                <NIcon :size="22"><MusicalNotes /></NIcon>
-              </div>
-              <div class="brand-text">
-                <h1>LRC 歌词归位</h1>
-                <p>匹配并复制歌词到音频旁</p>
-              </div>
-            </div>
-
             <div class="sidebar-scroll">
               <section v-if="!canPreview" class="config-hint">
                 <p class="config-hint-text">
                   请在「设置」中配置音频搜索目标与 LRC 源文件夹
                 </p>
-                <NButton size="small" @click="openSettings">
+                <NButton size="small" @click="handleAppNavigate('settings')">
                   打开设置
                 </NButton>
               </section>
 
-              <section class="toolbar">
+              <section class="toolbar toolbar--row">
                 <NButton
-                  block
-                  size="medium"
+                  class="toolbar-btn"
+                  size="large"
                   :disabled="!canPreview || loading"
                   @click="preview"
                 >
@@ -304,9 +298,9 @@ watch(
                   预览匹配
                 </NButton>
                 <NButton
-                  block
+                  class="toolbar-btn"
                   type="primary"
-                  size="medium"
+                  size="large"
                   :disabled="!canExecute || loading"
                   @click="executeCopy"
                 >
@@ -326,51 +320,7 @@ watch(
               />
             </div>
 
-            <nav class="sidebar-nav" aria-label="其他工作台">
-              <p class="sidebar-nav-label">其他工作台</p>
-              <NButton
-                block
-                tertiary
-                size="small"
-                class="nav-item"
-                @click="openView('decode')"
-              >
-                <template #icon>
-                  <NIcon><Key /></NIcon>
-                </template>
-                音乐解码
-              </NButton>
-              <NButton
-                block
-                tertiary
-                size="small"
-                class="nav-item"
-                @click="openView('library')"
-              >
-                <template #icon>
-                  <NIcon><FolderOpen /></NIcon>
-                </template>
-                音频库
-              </NButton>
-            </nav>
-
-            <div class="sidebar-foot">
-              <NButton
-                quaternary
-                block
-                size="small"
-                class="settings-btn"
-                @click="openSettings"
-              >
-                <template #icon>
-                  <NIcon><SettingsOutline /></NIcon>
-                </template>
-                设置
-              </NButton>
-              <p class="sidebar-foot-note">
-                建议流程：解码 → 音频库 → 歌词归位
-              </p>
-            </div>
+            <AudioMetaPanel :file-path="metaPanelFilePath" />
           </aside>
 
           <section class="results-pane">
@@ -380,6 +330,7 @@ watch(
                 v-model:source-selection="sourceSelection"
                 v-model:selected-orphan-keys="selectedOrphanKeys"
                 v-model:selected-orphan-audio-keys="selectedOrphanAudioKeys"
+                v-model:meta-panel-file-path="metaPanelFilePath"
                 :result="result!"
                 :search-roots="searchRoots"
                 :lrc-dirs="lrcDirs"
@@ -398,6 +349,7 @@ watch(
               </div>
             </NSpin>
           </section>
+        </div>
         </div>
       </div>
     </NMessageProvider>
@@ -429,7 +381,7 @@ watch(
 }
 
 .sidebar {
-  width: 340px;
+  width: $sidebar-width;
   height: 100%;
   flex-shrink: 0;
   display: flex;
@@ -440,45 +392,11 @@ watch(
   background: $surface-sidebar;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 20px 16px;
-  flex-shrink: 0;
-}
-
-.brand-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: $radius-icon;
-  background: linear-gradient(135deg, $color-primary 0%, $color-accent 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.brand-text {
-  h1 {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 700;
-  }
-
-  p {
-    margin: 2px 0 0;
-    font-size: 12px;
-    opacity: 0.55;
-  }
-}
-
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 16px 12px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -503,10 +421,26 @@ watch(
 }
 
 .toolbar {
+  padding-top: 4px;
+
+  &--row {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+  }
+}
+
+.toolbar-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 4px;
+  overflow: hidden;
 }
 
 .settings-layer {
@@ -514,51 +448,6 @@ watch(
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.sidebar-nav {
-  flex-shrink: 0;
-  padding: 4px 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border-top: 1px solid $border-subtle;
-}
-
-.sidebar-nav-label {
-  margin: 0;
-  padding: 6px 8px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.42;
-}
-
-.nav-item {
-  justify-content: flex-start;
-}
-
-.sidebar-foot {
-  flex-shrink: 0;
-  padding: 10px 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border-top: 1px solid $border-subtle;
-}
-
-.settings-btn {
-  justify-content: flex-start;
-  opacity: 0.85;
-}
-
-.sidebar-foot-note {
-  margin: 0;
-  padding: 0 8px;
-  font-size: 11px;
-  opacity: 0.38;
-  line-height: 1.4;
 }
 
 .results-pane {

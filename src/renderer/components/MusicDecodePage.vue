@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   NButton,
-  NEllipsis,
   NEmpty,
   NIcon,
   NInput,
@@ -17,7 +16,6 @@ import {
   type DataTableColumns
 } from 'naive-ui'
 import {
-  ArrowBack,
   FolderOpen,
   Key,
   Play,
@@ -49,7 +47,7 @@ import {
 } from '@renderer/composables/dirFileTable'
 import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
-import { wrapAudioMetaHover } from '@renderer/utils/audioMetaHoverCell'
+import DecodeFileInfoPanel from '@renderer/components/DecodeFileInfoPanel.vue'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
   applySortableHeaders,
@@ -59,7 +57,6 @@ import {
 } from '@renderer/composables/useTableHeaderSort'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
-import MusicDecryptHelpModal from '@renderer/components/MusicDecryptHelpModal.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import { storage } from '@unlock/utils/storage'
 
@@ -78,14 +75,16 @@ const props = defineProps<{
   fileListColumns: FileListColumnsSettings
 }>()
 
-const emit = defineEmits<{
-  close: []
-}>()
-
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 105)
+
+const selectedDecodeFile = computed(() => {
+  const key = selectedFileKeys.value[0]
+  if (!key) return null
+  return dirFiles.value.find((f) => f.filePath === key) ?? null
+})
 
 const queueTableWrapRef = ref<HTMLElement | null>(null)
 const maxHeightForQueueTable = ref(120)
@@ -338,16 +337,7 @@ function fileNameOf(p: string): string {
 
 function queueNameCell(fullPath: string) {
   const name = fileNameOf(fullPath)
-  return wrapAudioMetaHover(fullPath, () =>
-    h(
-      NEllipsis,
-      {
-        style: { maxWidth: '100%' },
-        tooltip: false
-      },
-      () => name
-    )
-  )
+  return h('span', { class: 'path-cell' }, name)
 }
 
 function fileRowKey(row: DirAudioFileItem): string {
@@ -679,24 +669,6 @@ onMounted(() => {
 
     <div class="workspace">
       <aside class="sidebar">
-        <header class="decode-header">
-          <NButton quaternary circle @click="emit('close')">
-            <template #icon>
-              <NIcon :size="20"><ArrowBack /></NIcon>
-            </template>
-          </NButton>
-          <div class="decode-brand">
-            <div class="brand-icon">
-              <NIcon :size="22"><Key /></NIcon>
-            </div>
-            <div class="brand-text">
-              <h1>音乐解码</h1>
-              <p>音乐文件解密</p>
-            </div>
-            <MusicDecryptHelpModal />
-          </div>
-        </header>
-
         <div
           class="sidebar-scroll"
           :class="{
@@ -892,6 +864,10 @@ onMounted(() => {
                 </template>
               </NTooltip>
             </footer>
+            <DecodeFileInfoPanel
+              :file-path="selectedDecodeFile?.filePath ?? null"
+              :size-bytes="selectedDecodeFile?.sizeBytes"
+            />
           </div>
 
           <div class="files-pane">
@@ -1012,7 +988,7 @@ onMounted(() => {
 }
 
 .sidebar {
-  width: 340px;
+  width: $sidebar-width;
   height: 100%;
   flex-shrink: 0;
   display: flex;
@@ -1023,58 +999,11 @@ onMounted(() => {
   background: $surface-sidebar;
 }
 
-.decode-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 16px 12px 8px;
-  flex-shrink: 0;
-}
-
-.decode-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-
-  :deep(.help-trigger) {
-    margin-left: auto;
-    flex-shrink: 0;
-  }
-}
-
-.brand-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: $radius-icon;
-  background: linear-gradient(135deg, #e8a87c 0%, #c38d9e 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.brand-text {
-  h1 {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 700;
-  }
-
-  p {
-    margin: 2px 0 0;
-    font-size: 12px;
-    opacity: 0.55;
-  }
-}
-
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 16px 12px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
