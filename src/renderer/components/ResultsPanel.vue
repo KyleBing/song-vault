@@ -39,6 +39,7 @@ import {
 } from '@renderer/composables/useTableHeaderSort'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
+import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 
 const props = defineProps<{
     result: JobResult
@@ -118,7 +119,18 @@ const pickRevision = ref(0)
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 /** 结果表格最大高度（随窗口高度变化） */
-const maxHeightForTable = computed(() => insets.value.windowHeight - 110)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 160)
+
+/** 列表容器底栏：随当前 Tab / 子 Tab 显示选中项路径 */
+const listSelectionPath = computed(() => {
+    if (activeTab.value === 'orphan') {
+        if (orphanSubTab.value === 'audio') {
+            return orphanAudioSelectedKeys.value[0] ?? null
+        }
+        return orphanLrcSelectedKeys.value[0] ?? null
+    }
+    return audioSelectedKeys.value[0] ?? null
+})
 
 const resolvedMetaPanelFilePath = computed(() => {
     if (activeTab.value === 'orphan' && orphanSubTab.value === 'audio') {
@@ -748,25 +760,27 @@ function orphanAudioRowKey(row: { key: string }): string {
 
 <template>
     <div class="table-container">
-        <NTabs v-model:value="activeTab" type="line" class="result-tabs">
+        <NTabs v-model:value="activeTab" type="line" class="result-tabs result-tabs--fill">
             <NTabPane name="all" :tab="`全部 (${stats.audioTotal})`">
                 <div
                     class="tab-pane-body"
                     @mousedown.capture="onAudioTableMouseDown"
                 >
-                    <VirtualDataTable
-                        :key="`all-${pickRevision}`"
-                        :columns="audioColumns"
-                        :data="sortedPlainAudio"
-                        :row-key="audioRowKey"
-                        :checked-row-keys="audioSelectedKeys"
-                        :row-props="audioTableRowProps"
-                        :max-height="maxHeightForTable"
-                        size="small"
-                        striped
-                        @update:checked-row-keys="onAudioCheckedRowKeys"
-                        @update:sorter="onAudioSorterUpdate"
-                    />
+                    <div class="tab-table-wrap">
+                        <VirtualDataTable
+                            :key="`all-${pickRevision}`"
+                            :columns="audioColumns"
+                            :data="sortedPlainAudio"
+                            :row-key="audioRowKey"
+                            :checked-row-keys="audioSelectedKeys"
+                            :row-props="audioTableRowProps"
+                            :max-height="maxHeightForTable"
+                            size="small"
+                            striped
+                            @update:checked-row-keys="onAudioCheckedRowKeys"
+                            @update:sorter="onAudioSorterUpdate"
+                        />
+                    </div>
                 </div>
             </NTabPane>
 
@@ -775,19 +789,21 @@ function orphanAudioRowKey(row: { key: string }): string {
                     class="tab-pane-body"
                     @mousedown.capture="onAudioTableMouseDown"
                 >
-                    <VirtualDataTable
-                        :key="`matched-${pickRevision}`"
-                        :columns="audioColumns"
-                        :data="sortedMatchedAudio"
-                        :row-key="audioRowKey"
-                        :checked-row-keys="audioSelectedKeys"
-                        :row-props="audioTableRowProps"
-                        :max-height="maxHeightForTable"
-                        size="small"
-                        striped
-                        @update:checked-row-keys="onAudioCheckedRowKeys"
-                        @update:sorter="onAudioSorterUpdate"
-                    />
+                    <div class="tab-table-wrap">
+                        <VirtualDataTable
+                            :key="`matched-${pickRevision}`"
+                            :columns="audioColumns"
+                            :data="sortedMatchedAudio"
+                            :row-key="audioRowKey"
+                            :checked-row-keys="audioSelectedKeys"
+                            :row-props="audioTableRowProps"
+                            :max-height="maxHeightForTable"
+                            size="small"
+                            striped
+                            @update:checked-row-keys="onAudioCheckedRowKeys"
+                            @update:sorter="onAudioSorterUpdate"
+                        />
+                    </div>
                 </div>
             </NTabPane>
 
@@ -796,19 +812,21 @@ function orphanAudioRowKey(row: { key: string }): string {
                     class="tab-pane-body"
                     @mousedown.capture="onAudioTableMouseDown"
                 >
-                    <VirtualDataTable
-                        :key="`copy-${pickRevision}`"
-                        :columns="audioColumns"
-                        :data="sortedCanCopyAudio"
-                        :row-key="audioRowKey"
-                        :checked-row-keys="audioSelectedKeys"
-                        :row-props="audioTableRowProps"
-                        :max-height="maxHeightForTable"
-                        size="small"
-                        striped
-                        @update:checked-row-keys="onAudioCheckedRowKeys"
-                        @update:sorter="onAudioSorterUpdate"
-                    />
+                    <div class="tab-table-wrap">
+                        <VirtualDataTable
+                            :key="`copy-${pickRevision}`"
+                            :columns="audioColumns"
+                            :data="sortedCanCopyAudio"
+                            :row-key="audioRowKey"
+                            :checked-row-keys="audioSelectedKeys"
+                            :row-props="audioTableRowProps"
+                            :max-height="maxHeightForTable"
+                            size="small"
+                            striped
+                            @update:checked-row-keys="onAudioCheckedRowKeys"
+                            @update:sorter="onAudioSorterUpdate"
+                        />
+                    </div>
                 </div>
             </NTabPane>
 
@@ -817,19 +835,21 @@ function orphanAudioRowKey(row: { key: string }): string {
                     class="tab-pane-body"
                     @mousedown.capture="onAudioTableMouseDown"
                 >
-                    <VirtualDataTable
-                        :key="`pick-${pickRevision}`"
-                        :columns="audioColumns"
-                        :data="sortedPickSourceAudio"
-                        :row-key="audioRowKey"
-                        :checked-row-keys="audioSelectedKeys"
-                        :row-props="audioTableRowProps"
-                        :max-height="maxHeightForTable"
-                        size="small"
-                        striped
-                        @update:checked-row-keys="onAudioCheckedRowKeys"
-                        @update:sorter="onAudioSorterUpdate"
-                    />
+                    <div class="tab-table-wrap">
+                        <VirtualDataTable
+                            :key="`pick-${pickRevision}`"
+                            :columns="audioColumns"
+                            :data="sortedPickSourceAudio"
+                            :row-key="audioRowKey"
+                            :checked-row-keys="audioSelectedKeys"
+                            :row-props="audioTableRowProps"
+                            :max-height="maxHeightForTable"
+                            size="small"
+                            striped
+                            @update:checked-row-keys="onAudioCheckedRowKeys"
+                            @update:sorter="onAudioSorterUpdate"
+                        />
+                    </div>
                 </div>
             </NTabPane>
 
@@ -838,19 +858,21 @@ function orphanAudioRowKey(row: { key: string }): string {
                     class="tab-pane-body"
                     @mousedown.capture="onAudioTableMouseDown"
                 >
-                    <VirtualDataTable
-                        :key="`missing-${pickRevision}`"
-                        :columns="audioColumns"
-                        :data="sortedNeedLrcAudio"
-                        :row-key="audioRowKey"
-                        :checked-row-keys="audioSelectedKeys"
-                        :row-props="audioTableRowProps"
-                        :max-height="maxHeightForTable"
-                        size="small"
-                        striped
-                        @update:checked-row-keys="onAudioCheckedRowKeys"
-                        @update:sorter="onAudioSorterUpdate"
-                    />
+                    <div class="tab-table-wrap">
+                        <VirtualDataTable
+                            :key="`missing-${pickRevision}`"
+                            :columns="audioColumns"
+                            :data="sortedNeedLrcAudio"
+                            :row-key="audioRowKey"
+                            :checked-row-keys="audioSelectedKeys"
+                            :row-props="audioTableRowProps"
+                            :max-height="maxHeightForTable"
+                            size="small"
+                            striped
+                            @update:checked-row-keys="onAudioCheckedRowKeys"
+                            @update:sorter="onAudioSorterUpdate"
+                        />
+                    </div>
                 </div>
             </NTabPane>
 
@@ -899,6 +921,7 @@ function orphanAudioRowKey(row: { key: string }): string {
                 </div>
             </NTabPane>
         </NTabs>
+        <SelectionPathFooter :path="listSelectionPath" />
     </div>
 </template>
 
@@ -943,6 +966,8 @@ function orphanAudioRowKey(row: { key: string }): string {
 }
 
 .result-tabs {
+    flex: 1;
+    min-height: 0;
     margin-top: 2px;
 
     &--fill {
@@ -981,14 +1006,46 @@ function orphanAudioRowKey(row: { key: string }): string {
 .tab-pane-body {
     height: 100%;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .orphan-sub-tabs {
     margin-top: 4px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    :deep(.n-tabs) {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    :deep(.n-tabs-pane-wrapper) {
+        flex: 1;
+        min-height: 0;
+    }
 
     :deep(.n-tab-pane) {
         padding-top: 8px !important;
+        height: 100%;
+        box-sizing: border-box;
     }
+}
+
+.orphan-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .path-cell {

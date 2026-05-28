@@ -59,7 +59,11 @@ function onPatternInput(index: number, value: string): void {
 <template>
   <div class="filter-rules">
     <NText depth="3" class="filter-hint">
-      纯文本匹配。扫描、浏览时跳过命中的文件或文件夹（不进入被过滤的文件夹）。每条规则可单独设置是否区分大小写，默认区分。
+      纯文本匹配。
+      <br>
+      扫描、浏览时跳过命中的文件或文件夹。
+      <br>
+      每条规则可单独设置是否区分大小写，默认区分。
     </NText>
 
     <ul v-if="rules.length" class="rule-list">

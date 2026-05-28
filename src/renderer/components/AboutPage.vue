@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { NScrollbar, NTag } from 'naive-ui'
-import { computed } from 'vue'
+import { NScrollbar, NTabPane, NTabs, NTag } from 'naive-ui'
+import { computed, ref } from 'vue'
 import {
   APP_DISPLAY_NAME,
   APP_TAGLINE,
   APP_VERSION
 } from '@shared/appInfo'
 import { CHANGELOG_RELEASES } from '@shared/changelog'
+import DecryptHelpPage from './DecryptHelpPage.vue'
+
+type AboutTab = 'changelog' | 'decrypt'
+
+const activeTab = ref<AboutTab>('changelog')
 
 const sectionTone: Record<string, 'add' | 'change' | 'fix' | 'default'> = {
   新增: 'add',
@@ -58,62 +63,73 @@ const latestVersion = computed(() => CHANGELOG_RELEASES[0]?.version ?? APP_VERSI
         </div>
       </aside>
 
-      <section class="about-main" aria-label="更新日志">
-        <NScrollbar class="about-main-scroll">
-          <div class="about-main-inner">
-            <h2 class="changelog__heading">更新日志</h2>
-
-            <article
-              v-for="release in CHANGELOG_RELEASES"
-              :key="release.version"
-              class="changelog-release"
-              :class="{
-                'changelog-release--current': isCurrentRelease(release.version)
-              }"
-            >
-              <header class="changelog-release__head">
-                <h3 class="changelog-release__title">
-                  <span class="changelog-release__version">v{{ release.version }}</span>
-                  <span class="changelog-release__sep" aria-hidden="true">·</span>
-                  <time
-                    class="changelog-release__date"
-                    :datetime="release.date"
-                  >
-                    {{ formatReleaseDate(release.date) }}
-                  </time>
-                </h3>
-                <NTag
-                  v-if="isCurrentRelease(release.version)"
-                  size="small"
-                  :bordered="false"
-                  type="success"
-                  round
+      <section class="about-main" aria-label="关于">
+        <NTabs
+          v-model:value="activeTab"
+          type="line"
+          class="about-tabs"
+          animated
+        >
+          <NTabPane name="changelog" tab="更新日志">
+            <NScrollbar class="about-main-scroll">
+              <div class="about-main-inner">
+                <article
+                  v-for="release in CHANGELOG_RELEASES"
+                  :key="release.version"
+                  class="changelog-release"
+                  :class="{
+                    'changelog-release--current': isCurrentRelease(release.version)
+                  }"
                 >
-                  当前版本
-                </NTag>
-              </header>
-
-              <div class="changelog-release__body">
-                <div
-                  v-for="(section, index) in release.sections"
-                  :key="`${release.version}-${index}`"
-                  class="changelog-section"
-                  :class="sectionClass(section.title)"
-                >
-                  <h4 class="changelog-section__title">{{ section.title }}</h4>
-                  <ul class="changelog-section__list">
-                    <li
-                      v-for="(item, itemIndex) in section.items"
-                      :key="itemIndex"
+                  <header class="changelog-release__head">
+                    <h3 class="changelog-release__title">
+                      <span class="changelog-release__version">v{{ release.version }}</span>
+                      <span class="changelog-release__sep" aria-hidden="true">·</span>
+                      <time
+                        class="changelog-release__date"
+                        :datetime="release.date"
+                      >
+                        {{ formatReleaseDate(release.date) }}
+                      </time>
+                    </h3>
+                    <NTag
+                      v-if="isCurrentRelease(release.version)"
+                      size="small"
+                      :bordered="false"
+                      type="success"
+                      round
                     >
-                      {{ item }}
-                    </li>
-                  </ul>
-                </div>
+                      当前版本
+                    </NTag>
+                  </header>
+
+                  <div class="changelog-release__body">
+                    <div
+                      v-for="(section, index) in release.sections"
+                      :key="`${release.version}-${index}`"
+                      class="changelog-section"
+                      :class="sectionClass(section.title)"
+                    >
+                      <h4 class="changelog-section__title">{{ section.title }}</h4>
+                      <ul class="changelog-section__list">
+                        <li
+                          v-for="(item, itemIndex) in section.items"
+                          :key="itemIndex"
+                        >
+                          {{ item }}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </article>
               </div>
-            </article>
-          </div>
-        </NScrollbar>
+            </NScrollbar>
+          </NTabPane>
+
+          <NTabPane name="decrypt" tab="解密说明">
+            <DecryptHelpPage class="about-decrypt-pane" />
+          </NTabPane>
+        </NTabs>
       </section>
     </div>
   </div>
@@ -216,6 +232,46 @@ $about-aside-width: 300px;
   background: $color-bg;
 }
 
+.about-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  :deep(.n-tabs-nav) {
+    flex-shrink: 0;
+    padding: 0 24px;
+    border-bottom: 1px solid $border-subtle;
+    background: $surface-panel;
+  }
+
+  :deep(.n-tabs-tab) {
+    padding: 12px 4px !important;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  :deep(.n-tabs-pane-wrapper) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  :deep(.n-tab-pane) {
+    height: 100%;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+}
+
+.about-decrypt-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .about-main-scroll {
   flex: 1;
   min-height: 0;
@@ -223,22 +279,13 @@ $about-aside-width: 300px;
 
 .about-main-inner {
   max-width: 720px;
-  padding: 24px 28px 40px;
+  padding: 20px 28px 40px;
   box-sizing: border-box;
 
   @media (max-width: 720px) {
     max-width: none;
-    padding: 20px 16px 32px;
+    padding: 16px 16px 32px;
   }
-}
-
-.changelog__heading {
-  margin: 0 0 16px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.45;
 }
 
 .changelog-release {
