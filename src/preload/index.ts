@@ -31,6 +31,14 @@ import type {
   ListSourceDirChildrenParams,
   SourceDirChild
 } from '../shared/sourceDirBrowse'
+import type {
+  CompareLibrarySyncParams,
+  CompareLibrarySyncResult,
+  CopySyncFileParams,
+  CopySyncFileResult,
+  MoveSyncFileParams,
+  MoveSyncFileResult
+} from '../shared/librarySyncJob'
 import { toIpcPlain } from '../shared/serialize'
 import {
   APP_NAVIGATE_CHANNEL,
@@ -202,6 +210,30 @@ const api = {
 
   readAudioMeta: async (filePath: string): Promise<AudioFileMetaInfo> => {
     const result = await ipcRenderer.invoke('read-audio-meta', filePath)
+    return toIpcPlain(result)
+  },
+
+  compareLibrarySync: async (
+    params: CompareLibrarySyncParams
+  ): Promise<CompareLibrarySyncResult> => {
+    const result = await ipcRenderer.invoke(
+      'compare-library-sync',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  copySyncFile: async (
+    params: CopySyncFileParams
+  ): Promise<CopySyncFileResult> => {
+    const result = await ipcRenderer.invoke('copy-sync-file', toIpcPlain(params))
+    return toIpcPlain(result)
+  },
+
+  moveSyncFile: async (
+    params: MoveSyncFileParams
+  ): Promise<MoveSyncFileResult> => {
+    const result = await ipcRenderer.invoke('move-sync-file', toIpcPlain(params))
     return toIpcPlain(result)
   },
 

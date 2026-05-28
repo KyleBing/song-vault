@@ -5,6 +5,7 @@ export type CheckedRowAction = 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
 export interface CheckedRowKeysMeta<TRow> {
   row: TRow | undefined
   action: CheckedRowAction
+  shiftKey?: boolean
 }
 
 /** 表格多选：Shift 连选范围，Ctrl/Cmd 追加/切换 */
@@ -74,8 +75,9 @@ export function useShiftRowSelection(getRowKey: (row: unknown) => string) {
     }
 
     const key = getRowKey(row)
+    const shift = meta.shiftKey ?? shiftKeyDown.value
 
-    if (shiftKeyDown.value && anchorKey.value != null) {
+    if (shift && anchorKey.value != null) {
       const range = rangeBetween(ordered, anchorKey.value, key)
       if (range.length) {
         if (meta.action === 'uncheck') {
@@ -142,6 +144,7 @@ export function useShiftRowSelection(getRowKey: (row: unknown) => string) {
     clearSelection,
     onUpdateCheckedRowKeys,
     onTableMouseDown,
+    onRowClick,
     rowProps
   }
 }

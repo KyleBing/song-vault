@@ -39,6 +39,14 @@ export interface AppConfig {
   decodeSourceDirs: string[]
   /** 音乐解密输出目录 */
   decodeOutputDir: string
+  /** 曲库同步：左侧目录（如本机曲库） */
+  syncLeftDir: string
+  /** 曲库同步：左侧目录别名 */
+  syncLeftAlias: string
+  /** 曲库同步：右侧目录（如存储卡曲库） */
+  syncRightDir: string
+  /** 曲库同步：右侧目录别名 */
+  syncRightAlias: string
   /** 界面外观：深色 / 浅色 */
   appearance: AppAppearance
   /** 扫描与浏览时跳过的文件/文件夹名称规则 */
@@ -54,6 +62,10 @@ export function createDefaultAppConfig(): AppConfig {
     lrcDirs: [],
     decodeSourceDirs: [],
     decodeOutputDir: '',
+    syncLeftDir: '',
+    syncLeftAlias: '',
+    syncRightDir: '',
+    syncRightAlias: '',
     appearance: 'light',
     pathFilterRules: createDefaultPathFilterRules(),
     fileListColumns: createDefaultFileListColumns()
@@ -90,6 +102,10 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
     lrcDirs: uniqueStrings(obj.lrcDirs),
     decodeSourceDirs: uniqueStrings(obj.decodeSourceDirs),
     decodeOutputDir: optionalTrimmedString(obj.decodeOutputDir),
+    syncLeftDir: optionalTrimmedString(obj.syncLeftDir),
+    syncLeftAlias: optionalTrimmedString(obj.syncLeftAlias),
+    syncRightDir: optionalTrimmedString(obj.syncRightDir),
+    syncRightAlias: optionalTrimmedString(obj.syncRightAlias),
     appearance: isAppAppearance(obj.appearance)
       ? obj.appearance
       : createDefaultAppConfig().appearance,

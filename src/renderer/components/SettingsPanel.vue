@@ -12,10 +12,11 @@ import {
   ColorPaletteOutline,
   FilterOutline,
   FolderOutline,
-  OptionsOutline
+  OptionsOutline,
+  SyncOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
 import { APP_CONFIG_FILE_NAME } from '@shared/appConfig'
 import { useThemeStore } from '@renderer/stores/theme'
@@ -23,6 +24,7 @@ import FolderPanel from './FolderPanel.vue'
 import type { FileListColumnsSettings } from '@shared/appConfig'
 import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
 import FileListColumnsEditor from './FileListColumnsEditor.vue'
+import SyncFolderField from './SyncFolderField.vue'
 
 const message = useMessage()
 const configFilePath = ref('')
@@ -43,6 +45,22 @@ const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
   required: true
 })
 
+const syncLeftDir = defineModel<string>('syncLeftDir', {
+  required: true
+})
+
+const syncLeftAlias = defineModel<string>('syncLeftAlias', {
+  default: ''
+})
+
+const syncRightDir = defineModel<string>('syncRightDir', {
+  required: true
+})
+
+const syncRightAlias = defineModel<string>('syncRightAlias', {
+  default: ''
+})
+
 const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', {
   required: true
 })
@@ -50,9 +68,20 @@ const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', 
 const themeStore = useThemeStore()
 const { appearance } = storeToRefs(themeStore)
 
-type SettingsTab = 'general' | 'display' | 'paths' | 'filter'
+type SettingsTab = 'general' | 'display' | 'paths' | 'sync' | 'filter'
 
-const activeTab = ref<SettingsTab>('general')
+const props = defineProps<{
+  initialTab?: SettingsTab
+}>()
+
+const activeTab = ref<SettingsTab>(props.initialTab ?? 'general')
+
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab) activeTab.value = tab
+  }
+)
 
 const appearanceOptions: { value: AppAppearance; label: string; desc: string }[] =
   [
@@ -224,6 +253,44 @@ async function revealConfigFile(): Promise<void> {
                   />
                 </section>
               </div>
+            </div>
+          </div>
+        </NTabPane>
+
+        <NTabPane name="sync">
+          <template #tab>
+            <span class="settings-tab-label">
+              <NIcon :size="18"><SyncOutline /></NIcon>
+              同步设置
+            </span>
+          </template>
+
+          <div class="settings-pane">
+            <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">曲库同步目录</h3>
+                <p class="settings-group-desc settings-group-desc--block">
+                  指定需要对比与同步的两个曲库根目录，例如本机文件夹与存储卡中的曲库
+                </p>
+                <div class="settings-sync-row">
+                  <div class="settings-group-panel settings-sync-column">
+                    <SyncFolderField
+                      v-model="syncLeftDir"
+                      v-model:alias="syncLeftAlias"
+                      alias-placeholder="例如：本机曲库"
+                      path-placeholder="选择左侧曲库目录"
+                    />
+                  </div>
+                  <div class="settings-group-panel settings-sync-column">
+                    <SyncFolderField
+                      v-model="syncRightDir"
+                      v-model:alias="syncRightAlias"
+                      alias-placeholder="例如：存储卡曲库"
+                      path-placeholder="选择右侧曲库目录"
+                    />
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
         </NTabPane>
@@ -440,6 +507,24 @@ $settings-content-max: 720px;
   @media (max-width: 640px) {
     grid-template-columns: 1fr;
   }
+}
+
+.settings-sync-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 4px;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-sync-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
 .settings-paths-row {

@@ -20,6 +20,7 @@ import { useThemeStore } from '@renderer/stores/theme'
 import SettingsPanel from './components/SettingsPanel.vue'
 import MusicDecodePage from './components/MusicDecodePage.vue'
 import SourceFilesPage from './components/SourceFilesPage.vue'
+import LibrarySyncPage from './components/LibrarySyncPage.vue'
 import {
   APP_CONFIG_VERSION,
   createDefaultAppConfig,
@@ -62,6 +63,9 @@ function openView(view: 'lrc' | 'decode' | 'library'): void {
 
 /** 顶栏 / 快捷键导航 */
 function handleAppNavigate(view: AppNavigateTarget): void {
+  if (view !== 'settings') {
+    settingsInitialTab.value = 'general'
+  }
   activeView.value = view
 }
 
@@ -88,6 +92,10 @@ const lrcDirs = ref<string[]>([])
 const searchRoots = ref<string[]>([])
 const decodeSourceDirs = ref<string[]>([])
 const decodeOutputDir = ref('')
+const syncLeftDir = ref('')
+const syncLeftAlias = ref('')
+const syncRightDir = ref('')
+const syncRightAlias = ref('')
 const pathFilterRules = ref<PathFilterRule[]>([])
 const fileListColumns = ref<FileListColumnsSettings>(
   createDefaultAppConfig().fileListColumns
@@ -101,6 +109,15 @@ const sourceSelection = ref<SourceSelection>({ sourceOverrides: {} })
 const selectedOrphanKeys = ref<string[]>([])
 const selectedOrphanAudioKeys = ref<string[]>([])
 const metaPanelFilePath = ref<string | null>(null)
+const settingsInitialTab = ref<'general' | 'display' | 'paths' | 'sync' | 'filter'>(
+  'general'
+)
+
+/** 打开设置页并定位到同步设置 */
+function openSyncSettings(): void {
+  settingsInitialTab.value = 'sync'
+  activeView.value = 'settings'
+}
 
 const canPreview = computed(
   () => lrcDirs.value.length > 0 && searchRoots.value.length > 0
@@ -165,6 +182,10 @@ function buildAppConfig(): AppConfig {
     lrcDirs: [...toRaw(lrcDirs.value)],
     decodeSourceDirs: [...toRaw(decodeSourceDirs.value)],
     decodeOutputDir: decodeOutputDir.value.trim(),
+    syncLeftDir: syncLeftDir.value.trim(),
+    syncLeftAlias: (syncLeftAlias.value ?? '').trim(),
+    syncRightDir: syncRightDir.value.trim(),
+    syncRightAlias: (syncRightAlias.value ?? '').trim(),
     appearance: appearance.value,
     pathFilterRules: pathFilterRulesForSave(toRaw(pathFilterRules.value)),
     fileListColumns: {
@@ -197,6 +218,10 @@ onMounted(async () => {
     lrcDirs.value = [...config.lrcDirs]
     decodeSourceDirs.value = [...config.decodeSourceDirs]
     decodeOutputDir.value = config.decodeOutputDir
+    syncLeftDir.value = config.syncLeftDir
+    syncLeftAlias.value = config.syncLeftAlias
+    syncRightDir.value = config.syncRightDir
+    syncRightAlias.value = config.syncRightAlias
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
   } catch (err) {
@@ -217,6 +242,10 @@ watch(
     lrcDirs,
     decodeSourceDirs,
     decodeOutputDir,
+    syncLeftDir,
+    syncLeftAlias,
+    syncRightDir,
+    syncRightAlias,
     pathFilterRules,
     fileListColumns,
     appearance
@@ -245,8 +274,23 @@ watch(
           v-model:search-roots="searchRoots"
           v-model:lrc-dirs="lrcDirs"
           v-model:decode-source-dirs="decodeSourceDirs"
+          v-model:sync-left-dir="syncLeftDir"
+          v-model:sync-left-alias="syncLeftAlias"
+          v-model:sync-right-dir="syncRightDir"
+          v-model:sync-right-alias="syncRightAlias"
           v-model:file-list-columns="fileListColumns"
+          :initial-tab="settingsInitialTab"
           class="settings-layer"
+        />
+        <LibrarySyncPage
+          v-else-if="activeView === 'sync'"
+          v-model:sync-left-dir="syncLeftDir"
+          v-model:sync-left-alias="syncLeftAlias"
+          v-model:sync-right-dir="syncRightDir"
+          v-model:sync-right-alias="syncRightAlias"
+          :path-filter-rules="pathFilterRules"
+          class="settings-layer"
+          @open-settings="openSyncSettings"
         />
         <SourceFilesPage
           v-else-if="activeView === 'library'"

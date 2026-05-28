@@ -1,0 +1,1312 @@
+<script setup lang="ts">
+import {
+    NButton,
+    NIcon,
+    NSpin,
+    useMessage
+} from 'naive-ui'
+import {
+    ArrowBack,
+    ArrowForward,
+    Refresh
+} from '@vicons/ionicons5'
+import { computed, onMounted, ref, watch } from 'vue'
+import type { PathFilterRule } from '@shared/appConfig'
+import type {
+    CompareLibrarySyncResult,
+    SyncDiffItem
+} from '@shared/librarySyncJob'
+import { pathFilterRulesForSave } from '@shared/pathFilters'
+import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import {
+    buildSyncDiffTree,
+    collectSyncDiffFolderKeys,
+    flattenSyncDiffFileKeys,
+    resolveSyncDiffItemsByKeys,
+    type SyncDiffTreeRow
+} from '@renderer/utils/syncDiffTree'
+import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
+
+const syncLeftDir = defineModel<string>('syncLeftDir', { required: true })
+const syncLeftAlias = defineModel<string>('syncLeftAlias', { default: '' })
+const syncRightDir = defineModel<string>('syncRightDir', { required: true })
+const syncRightAlias = defineModel<string>('syncRightAlias', { default: '' })
+
+const props = defineProps<{
+    pathFilterRules: PathFilterRule[]
+}>()
+
+const emit = defineEmits<{
+    openSettings: []
+}>()
+
+const message = useMessage()
+const loading = ref(false)
+const batchCopying = ref(false)
+const compareResult = ref<CompareLibrarySyncResult | null>(null)
+const copyingKeys = ref<Set<string>>(new Set())
+const expandedRowKeys = ref<string[]>([])
+
+const {
+    selectedKeys: selectedRowKeys,
+    clearSelection,
+    onUpdateCheckedRowKeys,
+    onTableMouseDown,
+    onRowClick
+} = useShiftRowSelection((row) => (row as SyncDiffTreeRow).key)
+
+const canCompare = computed(
+    () => !!syncLeftDir.value.trim() && !!syncRightDir.value.trim()
+)
+
+const syncLeftLabel = computed(
+    () => (syncLeftAlias.value ?? '').trim() || '左侧'
+)
+
+const syncRightLabel = computed(
+    () => (syncRightAlias.value ?? '').trim() || '右侧'
+)
+
+const treeData = computed(() => {
+    if (!compareResult.value?.items.length) return []
+    return buildSyncDiffTree(compareResult.value.items)
+})
+
+const orderedFileKeys = computed(() => flattenSyncDiffFileKeys(treeData.value))
+
+const expandedKeySet = computed(() => new Set(expandedRowKeys.value))
+
+const selectedKeySet = computed(() => new Set(selectedRowKeys.value))
+
+const selectedItems = computed(() => {
+    if (!compareResult.value) return []
+    return resolveSyncDiffItemsByKeys(
+        compareResult.value.items,
+        selectedRowKeys.value
+    )
+})
+
+const batchCopyRightCount = computed(
+    () => selectedItems.value.filter((item) => item.left).length
+)
+
+const batchCopyLeftCount = computed(
+    () => selectedItems.value.filter((item) => item.right).length
+)
+
+interface SyncSideStats {
+    total: number
+    same: number
+    extra: number
+    missing: number
+    modified: number
+    moved: number
+}
+
+const syncStats = computed(() => {
+    const result = compareResult.value
+    if (!result) return null
+
+    let leftOnly = 0
+    let rightOnly = 0
+    let modified = 0
+    let moved = 0
+    for (const item of result.items) {
+        if (item.kind === 'left_only') leftOnly += 1
+        else if (item.kind === 'right_only') rightOnly += 1
+        else if (item.kind === 'moved') moved += 1
+        else modified += 1
+    }
+
+    const left: SyncSideStats = {
+        total: result.leftFileCount,
+        same: result.sameCount,
+        extra: leftOnly,
+        missing: rightOnly,
+        modified,
+        moved
+    }
+    const right: SyncSideStats = {
+        total: result.rightFileCount,
+        same: result.sameCount,
+        extra: rightOnly,
+        missing: leftOnly,
+        modified,
+        moved
+    }
+
+    return {
+        left,
+        right,
+        maxTotal: Math.max(left.total, right.total, 1),
+        diffCount: result.diffCount
+    }
+})
+
+function statBarPct(value: number, max: number): string {
+    if (max <= 0 || value <= 0) return '0%'
+    return `${Math.round((value / max) * 100)}%`
+}
+
+function stackFlex(value: number): string {
+    return value > 0 ? String(value) : '0'
+}
+
+watch(
+    () => compareResult.value?.items,
+    (items) => {
+        clearSelection()
+        if (!items?.length) {
+            expandedRowKeys.value = []
+            return
+        }
+        expandedRowKeys.value = collectSyncDiffFolderKeys(buildSyncDiffTree(items))
+    }
+)
+
+function rowCopyKey(item: SyncDiffItem, direction: 'left' | 'right'): string {
+    return `${item.relativePath}:${direction}`
+}
+
+function isCopying(item: SyncDiffItem, direction: 'left' | 'right'): boolean {
+    return copyingKeys.value.has(rowCopyKey(item, direction))
+}
+
+function toggleExpand(key: string): void {
+    const idx = expandedRowKeys.value.indexOf(key)
+    if (idx >= 0) {
+        expandedRowKeys.value = expandedRowKeys.value.filter((k) => k !== key)
+        return
+    }
+    expandedRowKeys.value = [...expandedRowKeys.value, key]
+}
+
+function toggleSelect(key: string, checked: boolean, shiftKey = false): void {
+    const nextKeys = checked
+        ? [...new Set([...selectedRowKeys.value, key])]
+        : selectedRowKeys.value.filter((k) => k !== key)
+    onUpdateCheckedRowKeys(nextKeys, orderedFileKeys, {
+        row: { key } as SyncDiffTreeRow,
+        action: checked ? 'check' : 'uncheck',
+        shiftKey
+    })
+}
+
+function onFileRowClick(key: string, event: MouseEvent): void {
+    onRowClick({ key }, event, orderedFileKeys)
+}
+
+async function runCompare(): Promise<void> {
+    if (!canCompare.value) return
+    loading.value = true
+    try {
+        compareResult.value = await window.electronAPI.compareLibrarySync({
+            leftRoot: syncLeftDir.value.trim(),
+            rightRoot: syncRightDir.value.trim(),
+            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules)
+        })
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        message.error(msg)
+    } finally {
+        loading.value = false
+    }
+}
+
+function tryAutoCompare(): void {
+    if (!canCompare.value || loading.value || batchCopying.value) return
+    void runCompare()
+}
+
+onMounted(() => {
+    tryAutoCompare()
+})
+
+watch([syncLeftDir, syncRightDir], () => {
+    tryAutoCompare()
+})
+
+async function copyOne(
+    item: SyncDiffItem,
+    direction: 'toRight' | 'toLeft'
+): Promise<void> {
+    const leftRoot = compareResult.value?.leftRoot ?? syncLeftDir.value.trim()
+    const rightRoot = compareResult.value?.rightRoot ?? syncRightDir.value.trim()
+    const copyDir = direction === 'toRight' ? 'left' : 'right'
+    const key = rowCopyKey(item, copyDir)
+
+    if (copyingKeys.value.has(key)) return
+    copyingKeys.value = new Set([...copyingKeys.value, key])
+
+    try {
+        if (item.kind === 'moved') {
+            if (!item.left?.relativePath || !item.right?.relativePath) {
+                throw new Error('路径信息不完整')
+            }
+            if (direction === 'toRight') {
+                await window.electronAPI.moveSyncFile({
+                    root: rightRoot,
+                    fromRelativePath: item.right.relativePath,
+                    toRelativePath: item.left.relativePath
+                })
+            } else {
+                await window.electronAPI.moveSyncFile({
+                    root: leftRoot,
+                    fromRelativePath: item.left.relativePath,
+                    toRelativePath: item.right.relativePath
+                })
+            }
+        } else {
+            const sourceRoot = direction === 'toRight' ? leftRoot : rightRoot
+            const destRoot = direction === 'toRight' ? rightRoot : leftRoot
+            const relativePath =
+                direction === 'toRight'
+                    ? (item.left?.relativePath ?? item.relativePath)
+                    : (item.right?.relativePath ?? item.relativePath)
+            await window.electronAPI.copySyncFile({
+                sourceRoot,
+                destRoot,
+                relativePath
+            })
+        }
+    } finally {
+        const next = new Set(copyingKeys.value)
+        next.delete(key)
+        copyingKeys.value = next
+    }
+}
+
+function syncSuccessMessage(
+    item: SyncDiffItem,
+    direction: 'toRight' | 'toLeft'
+): string {
+    if (item.kind === 'moved' && item.left && item.right) {
+        if (direction === 'toRight') {
+            return `已在${syncRightLabel.value}内移动: ${item.right.relativePath} → ${item.left.relativePath}`
+        }
+        return `已在${syncLeftLabel.value}内移动: ${item.left.relativePath} → ${item.right.relativePath}`
+    }
+    const copiedPath =
+        direction === 'toRight'
+            ? (item.left?.relativePath ?? item.relativePath)
+            : (item.right?.relativePath ?? item.relativePath)
+    return `已复制: ${copiedPath}`
+}
+
+async function copyItem(
+    item: SyncDiffItem,
+    direction: 'toRight' | 'toLeft'
+): Promise<void> {
+    try {
+        await copyOne(item, direction)
+        message.success(syncSuccessMessage(item, direction))
+        await runCompare()
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        message.error(msg)
+    }
+}
+
+async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
+    const items = selectedItems.value.filter((item) =>
+        direction === 'toRight' ? item.left : item.right
+    )
+    if (!items.length || batchCopying.value) return
+
+    batchCopying.value = true
+    let ok = 0
+    let fail = 0
+
+    try {
+        for (const item of items) {
+            try {
+                await copyOne(item, direction)
+                ok += 1
+            } catch {
+                fail += 1
+            }
+        }
+        await runCompare()
+        if (fail > 0) {
+            message.warning(`批量同步完成：成功 ${ok}，失败 ${fail}`)
+        } else {
+            message.success(`已同步 ${ok} 项`)
+        }
+    } finally {
+        batchCopying.value = false
+    }
+}
+</script>
+
+<template>
+    <div class="library-sync-page">
+        <section v-if="!canCompare" class="library-sync-hint">
+            <p>请先在「设置 → 同步设置」中指定左右两个曲库目录。</p>
+            <NButton size="small" @click="emit('openSettings')">打开同步设置</NButton>
+        </section>
+
+        <div v-else class="workspace">
+            <aside class="sidebar">
+                <div class="sidebar-scroll">
+                    <section v-if="compareResult && syncStats" class="sync-stats-panel">
+                        <h3 class="sync-stats-panel__title">对比统计</h3>
+
+                        <div class="sync-stats-compare">
+                            <div class="sync-stats-compare__head">
+                                <div class="sync-stats-compare__side sync-stats-compare__side--left">
+                                    <span class="sync-stats-compare__side-label">
+                                        {{ syncLeftLabel }}
+                                    </span>
+                                    <span class="sync-stats-compare__path">
+                                        {{ compareResult.leftRoot }}
+                                    </span>
+                                </div>
+                                <span class="sync-stats-compare__vs">⇄</span>
+                                <div class="sync-stats-compare__side sync-stats-compare__side--right">
+                                    <span class="sync-stats-compare__side-label">
+                                        {{ syncRightLabel }}
+                                    </span>
+                                    <span class="sync-stats-compare__path">
+                                        {{ compareResult.rightRoot }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="sync-stats-total">
+                                <div class="sync-stats-total__col sync-stats-total__col--left">
+                                    <span class="sync-stats-total__value">
+                                        {{ syncStats.left.total }}
+                                    </span>
+                                    <div class="sync-stats-bar sync-stats-bar--left">
+                                        <div
+                                            class="sync-stats-bar__fill sync-stats-bar__fill--total"
+                                            :style="{
+                                                width: statBarPct(
+                                                    syncStats.left.total,
+                                                    syncStats.maxTotal
+                                                )
+                                            }"
+                                        />
+                                    </div>
+                                </div>
+                                <div class="sync-stats-total__col sync-stats-total__col--right">
+                                    <span class="sync-stats-total__value">
+                                        {{ syncStats.right.total }}
+                                    </span>
+                                    <div class="sync-stats-bar sync-stats-bar--right">
+                                        <div
+                                            class="sync-stats-bar__fill sync-stats-bar__fill--total"
+                                            :style="{
+                                                width: statBarPct(
+                                                    syncStats.right.total,
+                                                    syncStats.maxTotal
+                                                )
+                                            }"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="sync-stats-stack-row">
+                                <div class="sync-stats-stack sync-stats-stack--left">
+                                    <div
+                                        v-if="syncStats.left.same > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--same"
+                                        :style="{ flex: stackFlex(syncStats.left.same) }"
+                                    />
+                                    <div
+                                        v-if="syncStats.left.extra > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--extra"
+                                        :style="{ flex: stackFlex(syncStats.left.extra) }"
+                                    />
+                                    <div
+                                        v-if="syncStats.left.modified > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--diff"
+                                        :style="{ flex: stackFlex(syncStats.left.modified) }"
+                                    />
+                                    <div
+                                        v-if="syncStats.left.moved > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--moved"
+                                        :style="{ flex: stackFlex(syncStats.left.moved) }"
+                                    />
+                                </div>
+                                <div class="sync-stats-stack sync-stats-stack--right">
+                                    <div
+                                        v-if="syncStats.right.same > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--same"
+                                        :style="{ flex: stackFlex(syncStats.right.same) }"
+                                    />
+                                    <div
+                                        v-if="syncStats.right.extra > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--extra"
+                                        :style="{ flex: stackFlex(syncStats.right.extra) }"
+                                    />
+                                    <div
+                                        v-if="syncStats.right.modified > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--diff"
+                                        :style="{ flex: stackFlex(syncStats.right.modified) }"
+                                    />
+                                    <div
+                                        v-if="syncStats.right.moved > 0"
+                                        class="sync-stats-stack__seg sync-stats-stack__seg--moved"
+                                        :style="{ flex: stackFlex(syncStats.right.moved) }"
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="sync-stats-detail">
+                                <div class="sync-stats-detail__row">
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--left">
+                                        <span class="sync-stats-detail__num">
+                                            {{ syncStats.left.same }}
+                                        </span>
+                                        <div class="sync-stats-bar sync-stats-bar--left sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--same"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.left.same,
+                                                        Math.max(
+                                                            syncStats.left.same,
+                                                            syncStats.right.same,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                    </div>
+                                    <span class="sync-stats-detail__label">相同</span>
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--right">
+                                        <div class="sync-stats-bar sync-stats-bar--right sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--same"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.right.same,
+                                                        Math.max(
+                                                            syncStats.left.same,
+                                                            syncStats.right.same,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                        <span class="sync-stats-detail__num">
+                                            {{ syncStats.right.same }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="sync-stats-detail__row">
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--left">
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--extra">
+                                            {{ syncStats.left.extra }}
+                                        </span>
+                                        <div class="sync-stats-bar sync-stats-bar--left sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--extra"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.left.extra,
+                                                        Math.max(
+                                                            syncStats.left.extra,
+                                                            syncStats.right.extra,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                    </div>
+                                    <span class="sync-stats-detail__label sync-stats-detail__label--extra">
+                                        多出
+                                    </span>
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--right">
+                                        <div class="sync-stats-bar sync-stats-bar--right sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--extra"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.right.extra,
+                                                        Math.max(
+                                                            syncStats.left.extra,
+                                                            syncStats.right.extra,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--extra">
+                                            {{ syncStats.right.extra }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="sync-stats-detail__row">
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--left">
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--missing">
+                                            {{ syncStats.left.missing }}
+                                        </span>
+                                        <div class="sync-stats-bar sync-stats-bar--left sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--missing"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.left.missing,
+                                                        Math.max(
+                                                            syncStats.left.missing,
+                                                            syncStats.right.missing,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                    </div>
+                                    <span class="sync-stats-detail__label sync-stats-detail__label--missing">
+                                        缺失
+                                    </span>
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--right">
+                                        <div class="sync-stats-bar sync-stats-bar--right sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--missing"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.right.missing,
+                                                        Math.max(
+                                                            syncStats.left.missing,
+                                                            syncStats.right.missing,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--missing">
+                                            {{ syncStats.right.missing }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    v-if="syncStats.left.moved > 0 || syncStats.right.moved > 0"
+                                    class="sync-stats-detail__row"
+                                >
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--left">
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--moved">
+                                            {{ syncStats.left.moved }}
+                                        </span>
+                                        <div class="sync-stats-bar sync-stats-bar--left sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--moved"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.left.moved,
+                                                        Math.max(
+                                                            syncStats.left.moved,
+                                                            syncStats.right.moved,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                    </div>
+                                    <span class="sync-stats-detail__label sync-stats-detail__label--moved">
+                                        已移动
+                                    </span>
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--right">
+                                        <div class="sync-stats-bar sync-stats-bar--right sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--moved"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.right.moved,
+                                                        Math.max(
+                                                            syncStats.left.moved,
+                                                            syncStats.right.moved,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--moved">
+                                            {{ syncStats.right.moved }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="sync-stats-detail__row">
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--left">
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--diff">
+                                            {{ syncStats.left.modified }}
+                                        </span>
+                                        <div class="sync-stats-bar sync-stats-bar--left sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--diff"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.left.modified,
+                                                        Math.max(
+                                                            syncStats.left.modified,
+                                                            syncStats.right.modified,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                    </div>
+                                    <span class="sync-stats-detail__label sync-stats-detail__label--diff">
+                                        大小不同
+                                    </span>
+                                    <div class="sync-stats-detail__cell sync-stats-detail__cell--right">
+                                        <div class="sync-stats-bar sync-stats-bar--right sync-stats-bar--thin">
+                                            <div
+                                                class="sync-stats-bar__fill sync-stats-bar__fill--diff"
+                                                :style="{
+                                                    width: statBarPct(
+                                                        syncStats.right.modified,
+                                                        Math.max(
+                                                            syncStats.left.modified,
+                                                            syncStats.right.modified,
+                                                            1
+                                                        )
+                                                    )
+                                                }"
+                                            />
+                                        </div>
+                                        <span class="sync-stats-detail__num sync-stats-detail__num--diff">
+                                            {{ syncStats.right.modified }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p class="sync-stats-summary">
+                                共 {{ syncStats.diffCount }} 处差异待同步
+                            </p>
+                        </div>
+                    </section>
+
+                    <section class="toolbar">
+                        <NButton
+                            block
+                            type="primary"
+                            :disabled="batchCopying"
+                            :loading="loading"
+                            @click="runCompare"
+                        >
+                            <template #icon>
+                                <NIcon><Refresh /></NIcon>
+                            </template>
+                            扫描对比
+                        </NButton>
+                        <p
+                            v-if="compareResult"
+                            class="sync-selected-count"
+                        >
+                            已选 {{ selectedItems.length }} 项
+                        </p>
+                        <NButton
+                            v-if="compareResult && compareResult.items.length > 0"
+                            block
+                            secondary
+                            type="primary"
+                            :disabled="batchCopyRightCount === 0 || batchCopying || loading"
+                            :loading="batchCopying"
+                            @click="batchCopy('toRight')"
+                        >
+                            <template #icon>
+                                <NIcon><ArrowForward /></NIcon>
+                            </template>
+                            复制到{{ syncRightLabel }}
+                            <span v-if="batchCopyRightCount > 0">({{ batchCopyRightCount }})</span>
+                        </NButton>
+                        <NButton
+                            v-if="compareResult && compareResult.items.length > 0"
+                            block
+                            secondary
+                            :disabled="batchCopyLeftCount === 0 || batchCopying || loading"
+                            :loading="batchCopying"
+                            @click="batchCopy('toLeft')"
+                        >
+                            <template #icon>
+                                <NIcon><ArrowBack /></NIcon>
+                            </template>
+                            复制到{{ syncLeftLabel }}
+                            <span v-if="batchCopyLeftCount > 0">({{ batchCopyLeftCount }})</span>
+                        </NButton>
+                        <NButton
+                            v-if="compareResult && compareResult.items.length > 0"
+                            block
+                            quaternary
+                            :disabled="selectedItems.length === 0"
+                            @click="clearSelection"
+                        >
+                            取消选择
+                        </NButton>
+                    </section>
+                </div>
+            </aside>
+
+            <section class="sync-main-pane">
+                <NSpin :show="loading || batchCopying" class="sync-main-spin">
+                    <div
+                        v-if="compareResult && compareResult.items.length === 0"
+                        class="library-sync-empty"
+                    >
+                        <p class="library-sync-empty__title">两侧文件一致</p>
+                        <p class="library-sync-empty__desc">文件名与大小均相同，无需同步</p>
+                    </div>
+
+                    <div
+                        v-else-if="compareResult && compareResult.items.length > 0"
+                        class="sync-tree-list"
+                    >
+                        <div class="sync-tree-list__head">
+                            <div class="sync-tree-list__head-check" />
+                            <div class="sync-tree-head">
+                                <div class="sync-tree-head__side sync-tree-head__side--left">
+                                    <span class="sync-tree-head__label">{{ syncLeftLabel }}</span>
+                                    <span class="sync-tree-head__path">{{ syncLeftDir }}</span>
+                                </div>
+                                <span class="sync-tree-head__center" />
+                                <div class="sync-tree-head__side sync-tree-head__side--right">
+                                    <span class="sync-tree-head__label">{{ syncRightLabel }}</span>
+                                    <span class="sync-tree-head__path">{{ syncRightDir }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div
+                            class="sync-tree-list__body"
+                            @mousedown.capture="onTableMouseDown"
+                        >
+                            <SyncDiffTreeNode
+                                :nodes="treeData"
+                                :depth="0"
+                                :expanded-keys="expandedKeySet"
+                                :selected-keys="selectedKeySet"
+                                :loading="loading"
+                                :batch-copying="batchCopying"
+                                :is-copying="isCopying"
+                                @toggle-expand="toggleExpand"
+                                @toggle-select="toggleSelect"
+                                @row-click="onFileRowClick"
+                                @copy-to-right="(item) => copyItem(item, 'toRight')"
+                                @copy-to-left="(item) => copyItem(item, 'toLeft')"
+                            />
+                        </div>
+                    </div>
+
+                    <div v-else-if="!loading" class="library-sync-empty">
+                        <p class="library-sync-empty__title">等待扫描</p>
+                        <p class="library-sync-empty__desc">正在加载或请点击「扫描对比」</p>
+                    </div>
+                </NSpin>
+            </section>
+        </div>
+    </div>
+</template>
+
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
+.library-sync-page {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: $color-bg;
+    box-sizing: border-box;
+}
+
+.library-sync-hint {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 20px 24px;
+    padding: 14px 16px;
+    border-radius: $radius-panel;
+    border: 1px dashed $border-subtle;
+    background: $surface-panel;
+    font-size: 13px;
+    opacity: 0.75;
+}
+
+.workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: $sidebar-width;
+    height: 100%;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border-right: 1px solid $border-sidebar;
+    background: $surface-sidebar;
+}
+
+.sidebar-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.sync-stats-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: $radius-panel;
+    border: 1px solid $border-subtle;
+    background: $surface-panel;
+}
+
+.sync-stats-panel__title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.7;
+}
+
+.sync-stats-compare {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sync-stats-compare__head {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+    gap: 6px;
+}
+
+.sync-stats-compare__side {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sync-stats-compare__side--left {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.sync-stats-compare__side--right {
+    align-items: flex-start;
+    text-align: left;
+}
+
+.sync-stats-compare__side-label {
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+.sync-stats-compare__path {
+    font-size: 9px;
+    font-family: $font-mono;
+    line-height: 1.35;
+    opacity: 0.5;
+    word-break: break-all;
+}
+
+.sync-stats-compare__vs {
+    align-self: center;
+    font-size: 12px;
+    opacity: 0.45;
+    line-height: 1;
+}
+
+.sync-stats-total {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.sync-stats-total__col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sync-stats-total__col--left {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.sync-stats-total__col--right {
+    align-items: flex-start;
+    text-align: left;
+}
+
+.sync-stats-total__value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.sync-stats-bar {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--app-surface-raised);
+    overflow: hidden;
+}
+
+.sync-stats-bar--thin {
+    height: 4px;
+}
+
+.sync-stats-bar--left {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.sync-stats-bar--right {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.sync-stats-bar__fill {
+    height: 100%;
+    border-radius: 3px;
+    min-width: 2px;
+    transition: width 0.25s ease;
+}
+
+.sync-stats-bar__fill--total {
+    background: linear-gradient(
+        90deg,
+        rgba(148, 163, 184, 0.35),
+        rgba(148, 163, 184, 0.65)
+    );
+}
+
+.sync-stats-bar__fill--same {
+    background: rgba(148, 163, 184, 0.55);
+}
+
+.sync-stats-bar__fill--extra {
+    background: rgba(34, 197, 94, 0.65);
+}
+
+.sync-stats-bar__fill--missing {
+    background: rgba(239, 68, 68, 0.65);
+}
+
+.sync-stats-bar__fill--diff {
+    background: rgba(59, 130, 246, 0.65);
+}
+
+.sync-stats-bar__fill--moved {
+    background: rgba(168, 85, 247, 0.65);
+}
+
+.sync-stats-stack-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.sync-stats-stack {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--app-surface-raised);
+}
+
+.sync-stats-stack--left {
+    flex-direction: row-reverse;
+}
+
+.sync-stats-stack__seg {
+    min-width: 2px;
+}
+
+.sync-stats-stack__seg--same {
+    background: rgba(148, 163, 184, 0.55);
+}
+
+.sync-stats-stack__seg--extra {
+    background: rgba(34, 197, 94, 0.65);
+}
+
+.sync-stats-stack__seg--diff {
+    background: rgba(59, 130, 246, 0.65);
+}
+
+.sync-stats-stack__seg--moved {
+    background: rgba(168, 85, 247, 0.65);
+}
+
+.sync-stats-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 2px;
+    border-top: 1px solid $border-subtle;
+}
+
+.sync-stats-detail__row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+}
+
+.sync-stats-detail__cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.sync-stats-detail__cell--left {
+    justify-content: flex-end;
+}
+
+.sync-stats-detail__cell--right {
+    justify-content: flex-start;
+}
+
+.sync-stats-detail__num {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    min-width: 1.5em;
+    flex-shrink: 0;
+}
+
+.sync-stats-detail__cell--left .sync-stats-detail__num {
+    text-align: right;
+}
+
+.sync-stats-detail__cell--right .sync-stats-detail__num {
+    text-align: left;
+}
+
+.sync-stats-detail__num--extra {
+    color: rgb(34, 197, 94);
+}
+
+.sync-stats-detail__num--missing {
+    color: rgb(239, 68, 68);
+}
+
+.sync-stats-detail__num--diff {
+    color: rgb(59, 130, 246);
+}
+
+.sync-stats-detail__num--moved {
+    color: rgb(168, 85, 247);
+}
+
+.sync-stats-detail__label {
+    font-size: 10px;
+    opacity: 0.55;
+    white-space: nowrap;
+}
+
+.sync-stats-detail__label--extra {
+    color: rgb(34, 197, 94);
+    opacity: 0.85;
+}
+
+.sync-stats-detail__label--missing {
+    color: rgb(239, 68, 68);
+    opacity: 0.85;
+}
+
+.sync-stats-detail__label--diff {
+    color: rgb(59, 130, 246);
+    opacity: 0.85;
+}
+
+.sync-stats-detail__label--moved {
+    color: rgb(168, 85, 247);
+    opacity: 0.85;
+}
+
+.sync-stats-detail__cell .sync-stats-bar {
+    flex: 1;
+    max-width: 72px;
+}
+
+.sync-stats-summary {
+    margin: 0;
+    font-size: 11px;
+    text-align: center;
+    opacity: 0.55;
+    padding-top: 2px;
+}
+
+.toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sync-selected-count {
+    margin: 0;
+    font-size: 12px;
+    text-align: center;
+    opacity: 0.55;
+}
+
+.sync-main-pane {
+    flex: 1;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.sync-main-spin {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    :deep(.n-spin-container),
+    :deep(.n-spin-content) {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+.library-sync-empty {
+    flex: 1;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--app-placeholder-bg);
+    border-radius: $radius-panel;
+}
+
+.library-sync-empty__title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    opacity: 0.7;
+}
+
+.library-sync-empty__desc {
+    margin: 0;
+    font-size: 13px;
+    opacity: 0.45;
+}
+
+.sync-tree-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 12px;
+    border: 1px solid $border-subtle;
+    border-radius: $radius-panel;
+    overflow: hidden;
+    background: $surface-panel;
+}
+
+.sync-tree-list__head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+    min-height: 36px;
+    padding: 4px 0;
+    border-bottom: 1px solid $border-subtle;
+    background: var(--app-surface-raised);
+}
+
+.sync-tree-list__head-check {
+    width: 32px;
+    flex-shrink: 0;
+}
+
+.sync-tree-list__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.sync-tree-head {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+    align-items: center;
+    padding: 0 8px;
+    box-sizing: border-box;
+    font-size: 11px;
+}
+
+.sync-tree-head__side {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.sync-tree-head__label {
+    font-weight: 600;
+    opacity: 0.8;
+    line-height: 1.2;
+}
+
+.sync-tree-head__path {
+    font-weight: 400;
+    font-family: $font-mono;
+    font-size: 10px;
+    line-height: 1.2;
+    opacity: 0.55;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sync-tree-head__side--left {
+    align-items: flex-end;
+    text-align: right;
+    padding-right: 8px;
+}
+
+.sync-tree-head__side--right {
+    align-items: flex-start;
+    text-align: left;
+    padding-left: 8px;
+}
+</style>

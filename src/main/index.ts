@@ -11,6 +11,14 @@ import {
   type DeleteOrphanParams,
   type RunJobParams
 } from '../shared/lrcJob'
+import {
+  compareLibrarySync,
+  copySyncFile,
+  moveSyncFile,
+  type CompareLibrarySyncParams,
+  type CopySyncFileParams,
+  type MoveSyncFileParams
+} from '../shared/librarySyncJob'
 import { isDecryptableExtension } from '../shared/musicFormats'
 import {
   readMusicFile,
@@ -72,7 +80,10 @@ const IPC_CHANNELS = [
   'save-app-config',
   'reveal-app-config-in-folder',
   'read-audio-metrics-batch',
-  'read-audio-meta'
+  'read-audio-meta',
+  'compare-library-sync',
+  'copy-sync-file',
+  'move-sync-file'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -226,6 +237,21 @@ function registerIpcHandlers(): void {
   ipcMain.handle('read-audio-meta', async (_, filePath: unknown) => {
     const p = typeof filePath === 'string' ? filePath : ''
     return toIpcPlain(await readAudioFileMeta(p))
+  })
+
+  ipcMain.handle(
+    'compare-library-sync',
+    async (_, params: CompareLibrarySyncParams) => {
+      return toIpcPlain(compareLibrarySync(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle('copy-sync-file', async (_, params: CopySyncFileParams) => {
+    return toIpcPlain(copySyncFile(toIpcPlain(params)))
+  })
+
+  ipcMain.handle('move-sync-file', async (_, params: MoveSyncFileParams) => {
+    return toIpcPlain(moveSyncFile(toIpcPlain(params)))
   })
 
   ipcMain.handle('load-app-config', () => {
