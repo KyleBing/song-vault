@@ -101,6 +101,11 @@ export interface BrowseDeleteFilesParams extends BrowseRootsParams {
   filePaths: string[]
 }
 
+export interface BrowseMoveFilesParams extends BrowseRootsParams {
+  filePaths: string[]
+  destDir: string
+}
+
 export interface FindAudioInSearchRootsParams {
   searchRoots: string[]
   /** 文件名（含扩展名），按不含扩展名的歌名匹配 */
@@ -115,6 +120,11 @@ export interface BrowseRenameResult {
 
 export interface BrowseDeleteFilesResult {
   deleted: number
+  errors: Array<{ path: string; message: string }>
+}
+
+export interface BrowseMoveFilesResult {
+  moved: number
   errors: Array<{ path: string; message: string }>
 }
 
@@ -442,6 +452,117 @@ export function browseDeletePath(params: BrowseDeletePathParams): void {
   }
 
   fs.rmSync(target, { recursive: true, force: true })
+}
+
+function findSiblingLrc(audioPath: string): string | null {
+  const dir = path.dirname(audioPath)
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  const baseKey = normName(path.parse(audioPath).name)
+  for (const ent of entries) {
+    if (!ent.isFile()) continue
+    const parsed = path.parse(ent.name)
+    if (parsed.ext.slice(1).toLowerCase() !== 'lrc') continue
+    if (normName(parsed.name) === baseKey) {
+      return path.join(dir, ent.name)
+    }
+  }
+  return null
+}
+
+function safeRenameFile(src: string, dest: string): void {
+  try {
+    fs.renameSync(src, dest)
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as NodeJS.ErrnoException).code)
+        : ''
+    if (code === 'EXDEV') {
+      fs.copyFileSync(src, dest)
+      fs.unlinkSync(src)
+      return
+    }
+    throw err
+  }
+}
+
+export function browseMoveFiles(
+  params: BrowseMoveFilesParams
+): BrowseMoveFilesResult {
+  const roots = normalizeRoots(params.browseRoots)
+  const destDir = path.resolve(params.destDir)
+  assertUnderBrowseRoots(destDir, roots)
+
+  if (!fs.existsSync(destDir)) {
+    throw new Error('目标文件夹不存在')
+  }
+  const destStat = fs.statSync(destDir)
+  if (!destStat.isDirectory()) {
+    throw new Error('目标必须是文件夹')
+  }
+
+  const errors: BrowseMoveFilesResult['errors'] = []
+  let moved = 0
+
+  for (const filePath of params.filePaths) {
+    const resolved = path.resolve(filePath)
+    try {
+      assertUnderBrowseRoots(resolved, roots)
+      if (!fs.existsSync(resolved)) {
+        errors.push({ path: resolved, message: '文件不存在' })
+        continue
+      }
+      const stat = fs.statSync(resolved)
+      if (!stat.isFile()) {
+        errors.push({ path: resolved, message: '不是文件' })
+        continue
+      }
+
+      const srcDir = path.resolve(path.dirname(resolved))
+      if (srcDir === destDir) continue
+
+      const fileName = path.basename(resolved)
+      const destAudio = path.join(destDir, fileName)
+      if (fs.existsSync(destAudio)) {
+        errors.push({ path: resolved, message: '目标目录已有同名文件' })
+        continue
+      }
+
+      const srcLrc = findSiblingLrc(resolved)
+      let destLrc: string | null = null
+      if (srcLrc) {
+        destLrc = path.join(destDir, path.basename(srcLrc))
+        if (fs.existsSync(destLrc)) {
+          errors.push({
+            path: resolved,
+            message: '目标目录已有同名歌词文件'
+          })
+          continue
+        }
+      }
+
+      safeRenameFile(resolved, destAudio)
+      if (srcLrc && destLrc) {
+        try {
+          safeRenameFile(srcLrc, destLrc)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          errors.push({ path: srcLrc, message: `歌词移动失败: ${msg}` })
+        }
+      }
+      moved++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push({ path: resolved, message: msg })
+    }
+  }
+
+  return { moved, errors }
 }
 
 export function browseDeleteFiles(

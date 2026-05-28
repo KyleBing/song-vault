@@ -13,6 +13,7 @@ import {
 } from 'naive-ui'
 import {
   Add,
+  ArrowForwardOutline,
   CreateOutline,
   FolderOpen,
   Refresh,
@@ -45,6 +46,7 @@ import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import BrowseDirPickerModal from '@renderer/components/BrowseDirPickerModal.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
@@ -76,6 +78,9 @@ const {
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
 const deletingFiles = ref(false)
+const movingFiles = ref(false)
+const moveModalVisible = ref(false)
+const moveModalInitialDir = ref<string | null>(null)
 
 const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
@@ -463,6 +468,56 @@ async function deleteDir(): Promise<void> {
   }
 }
 
+function openMoveModal(): void {
+  if (!selectedFileKeys.value.length) return
+  const first = selectedFileKeys.value[0]!
+  const parent = first.replace(/[/\\][^/\\]+$/, '') || selectedDir.value
+  moveModalInitialDir.value = selectedDir.value ?? parent ?? null
+  moveModalVisible.value = true
+}
+
+/** 将勾选的音频（及同级歌词）移动到目标目录 */
+async function confirmMoveFiles(destDir: string): Promise<void> {
+  if (!selectedFileKeys.value.length) return
+  const paths = [...selectedFileKeys.value]
+  const sourceDirs = new Set(
+    paths.map((p) => {
+      const sep = p.includes('\\') ? '\\' : '/'
+      return p.replace(/[/\\][^/\\]+$/, '')
+    })
+  )
+
+  movingFiles.value = true
+  try {
+    const res = await window.electronAPI.browseMoveFiles({
+      filePaths: paths,
+      destDir,
+      browseRoots: browseRoots.value
+    })
+    if (res.moved > 0) {
+      message.success(`已移动 ${res.moved} 个文件`)
+    } else if (!res.errors.length) {
+      message.info('文件已在目标目录中')
+    }
+    if (res.errors.length) {
+      message.warning(
+        `${res.errors.length} 个文件移动失败：${res.errors[0]?.message ?? ''}`
+      )
+    }
+    clearFileSelection()
+    for (const dir of sourceDirs) {
+      if (dir !== destDir) void refreshNode(dir)
+    }
+    void refreshNode(destDir)
+    if (selectedDir.value) void loadAudioFiles(selectedDir.value)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    message.error(msg)
+  } finally {
+    movingFiles.value = false
+  }
+}
+
 /** 删除文件列表中勾选的音频文件 */
 async function deleteSelectedFiles(): Promise<void> {
   if (!selectedFileKeys.value.length) return
@@ -503,6 +558,16 @@ onMounted(() => {
 
 <template>
   <div class="source-files-page">
+    <BrowseDirPickerModal
+      v-model:show="moveModalVisible"
+      :browse-roots="browseRoots"
+      :path-filter-rules="pathFilterRules"
+      :initial-dir="moveModalInitialDir"
+      title="移动到文件夹"
+      positive-text="移动"
+      @confirm="confirmMoveFiles"
+    />
+
     <NModal
       v-model:show="namePromptVisible"
       preset="dialog"
@@ -654,6 +719,18 @@ onMounted(() => {
             </NInput>
           </div>
           <div class="files-toolbar-actions">
+            <NButton
+              size="small"
+              secondary
+              :disabled="!selectedFileKeys.length"
+              :loading="movingFiles"
+              @click="openMoveModal"
+            >
+              <template #icon>
+                <NIcon><ArrowForwardOutline /></NIcon>
+              </template>
+              移动到… ({{ selectedFileKeys.length }})
+            </NButton>
             <NPopconfirm
               :disabled="!selectedFileKeys.length"
               @positive-click="deleteSelectedFiles"

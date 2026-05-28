@@ -21,6 +21,7 @@ import {
   browseCreateDir,
   browseDeleteFiles,
   browseDeletePath,
+  browseMoveFiles,
   browseRenamePath,
   findAudioInSearchRootsByNames,
   listDirAudioFiles,
@@ -29,6 +30,7 @@ import {
   type BrowseCreateDirParams,
   type BrowseDeleteFilesParams,
   type BrowseDeletePathParams,
+  type BrowseMoveFilesParams,
   type BrowseRenamePathParams,
   type FindAudioInSearchRootsParams,
   type ListDirAudioFilesParams,
@@ -62,6 +64,7 @@ const IPC_CHANNELS = [
   'browse-rename-path',
   'browse-delete-path',
   'browse-delete-files',
+  'browse-move-files',
   'delete-orphan-lrc',
   'delete-orphan-audio',
   'copy-lrc-to-audio',
@@ -185,6 +188,13 @@ function registerIpcHandlers(): void {
     'browse-delete-files',
     async (_, params: BrowseDeleteFilesParams) => {
       return toIpcPlain(browseDeleteFiles(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle(
+    'browse-move-files',
+    async (_, params: BrowseMoveFilesParams) => {
+      return toIpcPlain(browseMoveFiles(toIpcPlain(params)))
     }
   )
 

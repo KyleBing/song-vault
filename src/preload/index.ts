@@ -21,6 +21,8 @@ import type {
   BrowseDeleteFilesParams,
   BrowseDeleteFilesResult,
   BrowseDeletePathParams,
+  BrowseMoveFilesParams,
+  BrowseMoveFilesResult,
   BrowseRenamePathParams,
   BrowseRenameResult,
   DirAudioFileItem,
@@ -123,6 +125,16 @@ const api = {
   ): Promise<BrowseDeleteFilesResult> => {
     const result = await ipcRenderer.invoke(
       'browse-delete-files',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  browseMoveFiles: async (
+    params: BrowseMoveFilesParams
+  ): Promise<BrowseMoveFilesResult> => {
+    const result = await ipcRenderer.invoke(
+      'browse-move-files',
       toIpcPlain(params)
     )
     return toIpcPlain(result)
