@@ -263,7 +263,6 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
 
   :deep(.n-tabs-tab) {
     font-size: 13px;
-    padding: 6px !important;
   }
 
   :deep(.n-tab-pane) {
