@@ -5,3 +5,4 @@ release
 *.log
 .DS_Store
 .idea
+*.tsbuildinfo
