@@ -19,7 +19,7 @@ defineProps<{
     padding: 2px 10px 4px;
     font-size: 10px;
     line-height: 1.2;
-    opacity: 0.5;
+    opacity: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

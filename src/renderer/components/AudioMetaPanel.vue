@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { NTabPane, NTabs } from 'naive-ui'
+import { NIcon, NTabPane, NTabs } from 'naive-ui'
+import { MusicalNotesOutline } from '@vicons/ionicons5'
 import { computed, ref, watch } from 'vue'
 import { useAudioCoverLightbox } from '@renderer/composables/useAudioCoverLightbox'
 import { useAudioMetaCache } from '@renderer/composables/useAudioMetaCache'
@@ -47,10 +48,6 @@ const extendedRows = computed(() => {
 const hasExtended = computed(() => extendedRows.value.length > 0)
 
 const showCover = computed(() => Boolean(meta.value?.coverDataUrl))
-
-const coverSrc = computed(
-  () => meta.value?.coverDataUrl ?? '/icon.png'
-)
 
 const { open: openCoverLightbox } = useAudioCoverLightbox()
 
@@ -101,13 +98,23 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
         <NTabPane name="regular" tab="常规">
           <div v-if="meta" class="audio-meta-panel__regular">
             <img
+              v-if="showCover && meta.coverDataUrl"
               class="audio-meta-panel__cover"
-              :class="{ 'audio-meta-panel__cover--logo': !showCover }"
-              :src="coverSrc"
-              :alt="showCover ? '专辑封面' : '应用 Logo'"
-              :title="showCover ? '点击查看原图' : undefined"
+              :src="meta.coverDataUrl"
+              alt="专辑封面"
+              title="点击查看原图"
               @click.stop="onCoverClick"
             />
+            <div
+              v-else
+              class="audio-meta-panel__cover audio-meta-panel__cover-fallback"
+              role="img"
+              aria-label="无专辑封面"
+            >
+              <NIcon :size="36">
+                <MusicalNotesOutline />
+              </NIcon>
+            </div>
             <dl class="audio-meta-panel__dl">
               <template v-for="row in regularRows" :key="row.key">
                 <dt :title="row.key">{{ row.label }}</dt>
@@ -295,13 +302,20 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
   flex-shrink: 0;
   background: rgba(128, 128, 128, 0.12);
   cursor: pointer;
+}
 
-  &--logo {
-    object-fit: contain;
-    padding: 10px;
-    box-sizing: border-box;
-    cursor: default;
-    opacity: 0.92;
+.audio-meta-panel__cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  object-fit: unset;
+  background: var(--app-cover-placeholder-bg);
+  border: 1px solid $border-subtle;
+  color: var(--app-cover-placeholder-icon);
+
+  :deep(.n-icon) {
+    opacity: 0.9;
   }
 }
 

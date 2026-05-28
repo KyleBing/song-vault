@@ -1,6 +1,6 @@
 {
   "name": "lrc-copy-tool",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "将 LRC 歌词复制到同名音频所在目录",
   "main": "./out/main/index.js",
   "author": "",

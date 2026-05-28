@@ -10,6 +10,12 @@ html:not([data-theme]) {
   --app-surface-panel: rgba(255, 255, 255, 0.85);
   --app-surface-sidebar: rgba(255, 255, 255, 0.72);
   --app-surface-tree: #ffffff;
+  --app-cover-placeholder-bg: linear-gradient(
+    155deg,
+    rgba(110, 168, 254, 0.14) 0%,
+    rgba(0, 0, 0, 0.06) 100%
+  );
+  --app-cover-placeholder-icon: rgba(28, 30, 36, 0.38);
   --app-surface-raised: rgba(255, 255, 255, 0.95);
   --app-surface-active: rgba(110, 168, 254, 0.12);
   --app-glow-primary: rgba(110, 168, 254, 0.2);
@@ -29,6 +35,12 @@ html[data-theme='dark'] {
   --app-surface-panel: rgba(255, 255, 255, 0.03);
   --app-surface-sidebar: rgba(0, 0, 0, 0.18);
   --app-surface-tree: #1c1f28;
+  --app-cover-placeholder-bg: linear-gradient(
+    155deg,
+    rgba(110, 168, 254, 0.12) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  --app-cover-placeholder-icon: rgba(232, 234, 237, 0.42);
   --app-surface-raised: rgba(255, 255, 255, 0.02);
   --app-surface-active: rgba(110, 168, 254, 0.1);
   --app-glow-primary: rgba(110, 168, 254, 0.14);
