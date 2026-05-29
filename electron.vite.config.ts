@@ -10,17 +10,21 @@ const appVersion = (
   ) as { version: string }
 ).version
 
+const appVersionDefine = {
+  __APP_VERSION__: JSON.stringify(appVersion)
+}
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    define: appVersionDefine
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    define: appVersionDefine
   },
   renderer: {
-    define: {
-      __APP_VERSION__: JSON.stringify(appVersion)
-    },
+    define: appVersionDefine,
     publicDir: resolve(__dirname, 'build'),
     resolve: {
       alias: {

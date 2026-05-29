@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { APP_DISPLAY_NAME } from '../shared/appInfo'
 import {
   copyLrcToAudio,
   deleteOrphanAudio,
@@ -333,7 +334,7 @@ function createWindow(): void {
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
-    title: 'LRC 歌词归位',
+    title: APP_DISPLAY_NAME,
     ...(iconPath ? { icon: iconPath } : {}),
     backgroundColor: '#0f1117',
     webPreferences: {

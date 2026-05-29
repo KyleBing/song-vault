@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="build/icon.png" alt="LRC 歌词归位" width="96" height="96" />
+  <img src="build/icon.png" alt="乐库管理 SongVault" width="96" height="96" />
 </p>
 
-<h1 align="center">LRC 歌词归位</h1>
+<h1 align="center">乐库管理 SongVault</h1>
 
 <p align="center">
   Vue 3 + TypeScript + Electron 桌面应用：歌词归位、音乐解密、音频库管理与双曲库同步。
