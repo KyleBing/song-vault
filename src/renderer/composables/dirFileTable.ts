@@ -598,6 +598,41 @@ export async function enrichItemsWithAudioMetrics(
   }))
 }
 
+const FILE_STAT_COLUMN_KEYS = new Set([
+  'sizeBytes',
+  'birthtimeMs',
+  'mtimeMs'
+])
+
+export function needsFileStats(
+  columnIds: readonly string[],
+  sortKey?: string
+): boolean {
+  if (sortKey && FILE_STAT_COLUMN_KEYS.has(sortKey)) return true
+  return columnIds.some((id) => FILE_STAT_COLUMN_KEYS.has(id))
+}
+
+export async function enrichItemsWithFileStats(
+  items: DirAudioFileItem[],
+  columnIds: FileListColumnId[],
+  sortKey: DirFileSortKey,
+  force = false
+): Promise<DirAudioFileItem[]> {
+  if (!force && !needsFileStats(columnIds, sortKey)) return items
+  const paths = items.map((i) => i.filePath)
+  const byPath = await window.electronAPI.readFileStatsBatch(paths)
+  return items.map((item) => {
+    const stat = byPath[item.filePath]
+    if (!stat) return item
+    return {
+      ...item,
+      sizeBytes: stat.sizeBytes,
+      birthtimeMs: stat.birthtimeMs,
+      mtimeMs: stat.mtimeMs
+    }
+  })
+}
+
 /** 标记各文件在音频搜索目标中是否已有同名歌名的音频 */
 export async function enrichItemsWithSearchTargetMatches(
   items: DirAudioFileItem[],

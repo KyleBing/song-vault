@@ -46,7 +46,7 @@ import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
-import BrowseDirPickerModal from '@renderer/components/BrowseDirPickerModal.vue'
+import BrowseDirPickerModal from './BrowseDirPickerModal.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 
@@ -828,7 +828,7 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .source-files-page {
   flex: 1;

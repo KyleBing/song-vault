@@ -1139,7 +1139,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .library-sync-page {
     flex: 1;

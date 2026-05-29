@@ -170,7 +170,7 @@ function onFolderCheckUpdate(row: SyncDiffTreeRow, checked: boolean): void {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .sync-tree-row {
     display: flex;

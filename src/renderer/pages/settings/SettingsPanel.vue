@@ -336,7 +336,7 @@ async function revealConfigFile(): Promise<void> {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 $settings-inline-pad: 20px;
 $settings-nav-width: 132px;

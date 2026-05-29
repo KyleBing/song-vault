@@ -363,7 +363,7 @@ function plainTableRowProps(row: PlainMp3Item) {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .decode-results {
   flex: 1;

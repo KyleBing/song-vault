@@ -26,7 +26,7 @@ const sizeLabel = computed(() => {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .decode-file-info-panel {
   height: 72px;

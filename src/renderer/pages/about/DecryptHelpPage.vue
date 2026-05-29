@@ -79,7 +79,7 @@ import { NScrollbar } from 'naive-ui'
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .decrypt-help-scroll {
   flex: 1;

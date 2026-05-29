@@ -82,12 +82,31 @@ export interface JobStats {
   orphanAudio: number
 }
 
+/** 扫描与匹配耗时及规模统计 */
+export interface JobRunMeta {
+  /** 总耗时（毫秒） */
+  elapsedMs: number
+  /** 目录扫描耗时（复用缓存时为 0） */
+  scanElapsedMs: number
+  /** 匹配计算耗时 */
+  matchElapsedMs: number
+  /** 是否复用了上次目录结构缓存 */
+  usedScanCache: boolean
+  /** LRC 源目录内歌词文件总数 */
+  lrcSourceCount: number
+  /** 目标目录内音频文件总数 */
+  targetAudioCount: number
+  /** 目标目录内歌词文件总数 */
+  targetLrcCount: number
+}
+
 /** runJob 的完整返回 */
 export interface JobResult {
   audioItems: AudioJobItem[]
   orphanLrcItems: OrphanLrcItem[]
   orphanAudioItems: OrphanAudioItem[]
   stats: JobStats
+  meta: JobRunMeta
   empty: boolean
   execute: boolean
 }
@@ -210,12 +229,13 @@ function getOrRefreshScanCache(
   pathFilterRules: PathFilterRule[],
   extensions: Set<string>,
   refreshScan: boolean
-): JobScanCache {
+): { cache: JobScanCache; usedCache: boolean; scanElapsedMs: number } {
   const fingerprint = scanFingerprint(lrcDirs, searchRoots, pathFilterRules)
   if (!refreshScan && scanCache?.fingerprint === fingerprint) {
-    return scanCache
+    return { cache: scanCache, usedCache: true, scanElapsedMs: 0 }
   }
 
+  const scanStart = performance.now()
   scanCache = {
     fingerprint,
     lrcSourceIndex: buildLrcSourceIndex(lrcDirs, pathFilterRules),
@@ -226,7 +246,19 @@ function getOrRefreshScanCache(
       pathFilterRules
     )
   }
-  return scanCache
+  return {
+    cache: scanCache,
+    usedCache: false,
+    scanElapsedMs: performance.now() - scanStart
+  }
+}
+
+function countLrcSourceFiles(index: Map<string, string[]>): number {
+  let total = 0
+  for (const paths of index.values()) {
+    total += paths.length
+  }
+  return total
 }
 
 function findSizeMatchedCanonical(
@@ -624,6 +656,7 @@ function bumpStat(stats: JobStats, status: AudioItemStatus): void {
  * 以目标文件夹内全部音频为主构建匹配结果；可选执行复制。
  */
 export function runJob(params: RunJobParams): JobResult {
+  const jobStart = performance.now()
   const {
     lrcDirs,
     searchRoots,
@@ -635,14 +668,14 @@ export function runJob(params: RunJobParams): JobResult {
   } = params
   const selection: SourceSelection = { sourceOverrides, preferredSourceDir }
   const shouldRefreshScan = refreshScan || execute
-  const cached = getOrRefreshScanCache(
+  const { cache, usedCache, scanElapsedMs } = getOrRefreshScanCache(
     lrcDirs,
     searchRoots,
     pathFilterRules,
     AUDIO_EXTENSIONS,
     shouldRefreshScan
   )
-  const { lrcSourceIndex, targetScan } = cached
+  const { lrcSourceIndex, targetScan } = cache
   const { audioPaths, entriesByDir } = targetScan
   const orphanLrcItems = buildOrphanLrcItems(targetScan)
   const orphanAudioItems = buildOrphanAudioItems(targetScan)
@@ -656,6 +689,7 @@ export function runJob(params: RunJobParams): JobResult {
 
   const audioItems: AudioJobItem[] = []
   let didMutateDisk = false
+  const matchStart = performance.now()
 
   for (const audioPath of audioPaths) {
     if (orphanAudioPaths.has(path.resolve(audioPath))) continue
@@ -738,9 +772,20 @@ export function runJob(params: RunJobParams): JobResult {
   }
 
   stats.audioTotal = audioItems.length
+  const matchElapsedMs = performance.now() - matchStart
 
   if (didMutateDisk) {
     invalidateScanCache()
+  }
+
+  const meta: JobRunMeta = {
+    elapsedMs: performance.now() - jobStart,
+    scanElapsedMs,
+    matchElapsedMs,
+    usedScanCache: usedCache,
+    lrcSourceCount: countLrcSourceFiles(lrcSourceIndex),
+    targetAudioCount: targetScan.audioPaths.length,
+    targetLrcCount: targetScan.allLrc.length
   }
 
   return {
@@ -748,6 +793,7 @@ export function runJob(params: RunJobParams): JobResult {
     orphanLrcItems,
     orphanAudioItems,
     stats,
+    meta,
     empty:
       audioItems.length === 0 &&
       orphanLrcItems.length === 0 &&

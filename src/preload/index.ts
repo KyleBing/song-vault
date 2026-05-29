@@ -26,6 +26,7 @@ import type {
   BrowseRenamePathParams,
   BrowseRenameResult,
   DirAudioFileItem,
+  FileStatFields,
   FindAudioInSearchRootsParams,
   ListDirAudioFilesParams,
   ListSourceDirChildrenParams,
@@ -205,6 +206,16 @@ const api = {
   ): Promise<Record<string, AudioFileMetrics>> => {
     const result = await ipcRenderer.invoke(
       'read-audio-metrics-batch',
+      toIpcPlain(filePaths)
+    )
+    return toIpcPlain(result)
+  },
+
+  readFileStatsBatch: async (
+    filePaths: string[]
+  ): Promise<Record<string, FileStatFields>> => {
+    const result = await ipcRenderer.invoke(
+      'read-file-stats-batch',
       toIpcPlain(filePaths)
     )
     return toIpcPlain(result)

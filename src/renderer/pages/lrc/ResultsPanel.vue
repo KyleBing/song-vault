@@ -951,7 +951,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 
 .table-container {

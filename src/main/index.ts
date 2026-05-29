@@ -38,6 +38,7 @@ import {
   listDirAudioFiles,
   listDirEncryptedMusicFiles,
   listSourceDirChildren,
+  readFileStatFieldsBatch,
   type BrowseCreateDirParams,
   type BrowseDeleteFilesParams,
   type BrowseDeletePathParams,
@@ -83,6 +84,7 @@ const IPC_CHANNELS = [
   'save-app-config',
   'reveal-app-config-in-folder',
   'read-audio-metrics-batch',
+  'read-file-stats-batch',
   'read-audio-meta',
   'compare-library-sync',
   'copy-sync-file',
@@ -235,6 +237,16 @@ function registerIpcHandlers(): void {
         ? filePaths.filter((p): p is string => typeof p === 'string')
         : []
       return toIpcPlain(await readAudioFileMetricsBatch(paths))
+    }
+  )
+
+  ipcMain.handle(
+    'read-file-stats-batch',
+    async (_, filePaths: unknown) => {
+      const paths = Array.isArray(filePaths)
+        ? filePaths.filter((p): p is string => typeof p === 'string')
+        : []
+      return toIpcPlain(await readFileStatFieldsBatch(paths))
     }
   )
 

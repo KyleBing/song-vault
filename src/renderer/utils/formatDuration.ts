@@ -12,3 +12,10 @@ export function formatElapsedMs(ms: number): string {
     }
     return `${pad2(totalMin)}:${pad2(sec)}`
 }
+
+/** 短耗时展示：不足 1 秒用毫秒，否则同 formatElapsedMs */
+export function formatElapsedMsShort(ms: number): string {
+    if (!Number.isFinite(ms) || ms < 0) return '—'
+    if (ms < 1000) return `${Math.round(ms)}ms`
+    return formatElapsedMs(ms)
+}

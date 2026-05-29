@@ -68,7 +68,7 @@ function clearPath(): void {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 .sync-folder-field {
     display: flex;
     flex-direction: column;

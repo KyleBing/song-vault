@@ -40,6 +40,24 @@ export function relativeToRoots(filePath: string, roots: string[]): string {
   return bestRel.replace(/\//g, '\\')
 }
 
+/** 相对某一目录的路径；文件位于该目录下时返回文件名 */
+export function relativeToDir(filePath: string, baseDir: string): string {
+  const file = normPath(filePath)
+  const base = normPath(baseDir)
+  if (!base) return file.split('/').pop() ?? file
+
+  if (file.toLowerCase() === base.toLowerCase()) {
+    return file.split('/').pop() ?? file
+  }
+
+  const prefix = `${base}/`
+  if (file.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return file.slice(base.length + 1).replace(/\//g, '\\')
+  }
+
+  return file.split('/').pop() ?? file
+}
+
 export { dirnameOf } from '@shared/pathLite'
 
 /** 拼接目录与文件名 */

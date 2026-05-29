@@ -109,7 +109,7 @@ function resetDefaults(): void {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .columns-editor {
   display: flex;

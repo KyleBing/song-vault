@@ -115,7 +115,7 @@ function moveToLeftTitle(): string {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .sync-diff-row {
     display: grid;

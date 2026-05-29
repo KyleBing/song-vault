@@ -48,7 +48,7 @@ import {
 } from '@renderer/composables/dirFileTable'
 import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
-import DecodeFileInfoPanel from '@renderer/components/DecodeFileInfoPanel.vue'
+import DecodeFileInfoPanel from './DecodeFileInfoPanel.vue'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
   applySortableHeaders,
@@ -957,7 +957,7 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .decode-page {
   flex: 1;

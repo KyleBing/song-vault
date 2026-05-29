@@ -44,7 +44,7 @@ function onChange(v: string | null): void {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .source-lrc-select-empty {
     font-size: 12px;

@@ -5,6 +5,10 @@ import { computed, ref, unref } from 'vue'
 import type { JobResult } from '@shared/lrcJob'
 import type { SourceSelection } from '@shared/sourcePick'
 import { useScanAlerts } from '@renderer/composables/useScanAlerts'
+import {
+  formatElapsedMs,
+  formatElapsedMsShort
+} from '@renderer/utils/formatDuration'
 import { plainStringList } from '@renderer/utils/ipcPayload'
 
 const props = defineProps<{
@@ -90,10 +94,56 @@ const {
 } = useScanAlerts(resultRef, computed(() => props.sourceSelection))
 
 const showPanel = computed(() => hasResult.value)
+
+const runSummaryText = computed(() => {
+  const result = props.result
+  const meta = result?.meta
+  const s = stats.value
+  if (!result || !meta || !s) return null
+
+  const timingParts = [
+    `扫描 ${formatElapsedMsShort(meta.scanElapsedMs)}`,
+    `匹配 ${formatElapsedMsShort(meta.matchElapsedMs)}`
+  ]
+  if (meta.usedScanCache) {
+    timingParts.push('目录缓存')
+  }
+
+  const orphanTotal = s.orphanLrc + s.orphanAudio
+  const matchParts = [
+    `已匹配 ${s.matched}`,
+    `待复制 ${s.canCopy}`,
+    `缺源 ${s.noLrcSource}`,
+    `待选源 ${s.sourceAmbiguous}`
+  ]
+  if (orphanTotal > 0) {
+    matchParts.push(`多余 ${orphanTotal}`)
+  }
+  if (result.execute && s.copied > 0) {
+    matchParts.push(`已复制 ${s.copied}`)
+  }
+
+  return {
+    timing: `用时 ${formatElapsedMs(meta.elapsedMs)}（${timingParts.join(' · ')}）`,
+    scale: `目标 ${meta.targetAudioCount} 首 · ${meta.targetLrcCount} 歌词 · LRC 源 ${meta.lrcSourceCount} 歌词`,
+    match: matchParts.join(' · ')
+  }
+})
 </script>
 
 <template>
   <section v-if="showPanel" class="scan-alerts">
+    <div v-if="runSummaryText" class="run-summary">
+      <p class="run-summary__line run-summary__timing">
+        {{ runSummaryText.timing }}
+      </p>
+      <p class="run-summary__line">
+        {{ runSummaryText.scale }}
+      </p>
+      <p class="run-summary__line run-summary__match">
+        {{ runSummaryText.match }}
+      </p>
+    </div>
     <NAlert
       v-if="needPickFirst"
       type="warning"
@@ -196,7 +246,7 @@ const showPanel = computed(() => hasResult.value)
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .scan-alerts {
   display: flex;
@@ -221,6 +271,35 @@ const showPanel = computed(() => hasResult.value)
   strong {
     color: $color-primary-light;
   }
+}
+
+.run-summary {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.run-summary__line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.78;
+}
+
+.run-summary__timing {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.run-summary__match {
+  font-size: 11px;
+  opacity: 0.62;
 }
 
 .orphan-actions {

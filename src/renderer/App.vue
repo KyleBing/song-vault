@@ -17,10 +17,10 @@ import {
   saveAppConfig
 } from '@renderer/lib/appConfigClient'
 import { useThemeStore } from '@renderer/stores/theme'
-import SettingsPanel from './components/SettingsPanel.vue'
-import MusicDecodePage from './components/MusicDecodePage.vue'
-import SourceFilesPage from './components/SourceFilesPage.vue'
-import LibrarySyncPage from './components/LibrarySyncPage.vue'
+import SettingsPanel from '@renderer/pages/settings/SettingsPanel.vue'
+import MusicDecodePage from '@renderer/pages/decode/MusicDecodePage.vue'
+import SourceFilesPage from '@renderer/pages/library/SourceFilesPage.vue'
+import LibrarySyncPage from '@renderer/pages/sync/LibrarySyncPage.vue'
 import {
   APP_CONFIG_VERSION,
   createDefaultAppConfig,
@@ -36,12 +36,12 @@ import {
   countReadyToCopy,
   type SourceSelection
 } from '@shared/sourcePick'
-import ResultsPanel from './components/ResultsPanel.vue'
-import AudioMetaPanel from './components/AudioMetaPanel.vue'
-import AudioCoverLightbox from './components/AudioCoverLightbox.vue'
-import ScanAlertsPanel from './components/ScanAlertsPanel.vue'
-import AppTopNav from './components/AppTopNav.vue'
-import AboutPage from './components/AboutPage.vue'
+import ResultsPanel from '@renderer/pages/lrc/ResultsPanel.vue'
+import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import AudioCoverLightbox from '@renderer/components/AudioCoverLightbox.vue'
+import ScanAlertsPanel from '@renderer/pages/lrc/ScanAlertsPanel.vue'
+import AppTopNav from '@renderer/components/AppTopNav.vue'
+import AboutPage from '@renderer/pages/about/AboutPage.vue'
 import styleTokens from './styles/variables.module.scss'
 
 const layoutStore = useLayoutStore()

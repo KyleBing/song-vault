@@ -95,7 +95,7 @@ function removeAt(index: number): void {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .folder-panel {
   flex: 1;

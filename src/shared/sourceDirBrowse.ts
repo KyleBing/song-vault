@@ -1,8 +1,9 @@
 /**
- * 音频搜索目标目录浏览与管理：目录树、单目录音频列表、文件夹与文件增删改。
+ * 音频搜索目标目录浏览与管理：目录树、目录及子目录音频列表、文件夹与文件增删改。
  */
 
 import fs from 'fs'
+import fsPromises from 'fs/promises'
 import path from 'path'
 import { emptyAudioFileMetrics, type AudioFileMetrics } from './audioFileMetrics'
 import { AUDIO_EXTENSIONS } from './lrcJob'
@@ -43,28 +44,63 @@ export interface FileStatFields {
   mtimeMs: number
 }
 
-/** 从 fs.statSync 读取文件大小、创建时间、修改时间 */
-export function readFileStatFields(filePath: string): FileStatFields {
-  let sizeBytes = 0
+/** 从 fs.Stats 解析文件大小、创建时间、修改时间 */
+function fileStatFieldsFromStat(stat: fs.Stats): FileStatFields {
+  let sizeBytes = Number(stat.size)
   let birthtimeMs = 0
   let mtimeMs = 0
-  try {
-    const stat = fs.statSync(filePath)
-    sizeBytes = Number(stat.size)
-    const birthRaw = Number(stat.birthtimeMs ?? stat.birthtime.getTime())
-    if (Number.isFinite(birthRaw) && birthRaw > 0) {
-      birthtimeMs = birthRaw
-    } else {
-      birthtimeMs = Number(stat.ctimeMs ?? stat.ctime.getTime())
-    }
-    mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
-    if (!Number.isFinite(sizeBytes)) sizeBytes = 0
-    if (!Number.isFinite(birthtimeMs)) birthtimeMs = 0
-    if (!Number.isFinite(mtimeMs)) mtimeMs = 0
-  } catch {
-    /* 无法 stat 时保留 0 */
+  const birthRaw = Number(stat.birthtimeMs ?? stat.birthtime.getTime())
+  if (Number.isFinite(birthRaw) && birthRaw > 0) {
+    birthtimeMs = birthRaw
+  } else {
+    birthtimeMs = Number(stat.ctimeMs ?? stat.ctime.getTime())
   }
+  mtimeMs = Number(stat.mtimeMs ?? stat.mtime.getTime())
+  if (!Number.isFinite(sizeBytes)) sizeBytes = 0
+  if (!Number.isFinite(birthtimeMs)) birthtimeMs = 0
+  if (!Number.isFinite(mtimeMs)) mtimeMs = 0
   return { sizeBytes, birthtimeMs, mtimeMs }
+}
+
+/** 从 fs.statSync 读取文件大小、创建时间、修改时间 */
+export function readFileStatFields(filePath: string): FileStatFields {
+  try {
+    return fileStatFieldsFromStat(fs.statSync(filePath))
+  } catch {
+    return { sizeBytes: 0, birthtimeMs: 0, mtimeMs: 0 }
+  }
+}
+
+const FILE_STAT_BATCH_CONCURRENCY = 64
+
+/** 批量读取文件 stat（限制并发，不阻塞列表先展示） */
+export async function readFileStatFieldsBatch(
+  filePaths: string[],
+  concurrency = FILE_STAT_BATCH_CONCURRENCY
+): Promise<Record<string, FileStatFields>> {
+  const unique = [...new Set(filePaths.filter(Boolean))]
+  const out: Record<string, FileStatFields> = {}
+  if (unique.length === 0) return out
+
+  let index = 0
+  async function worker(): Promise<void> {
+    while (index < unique.length) {
+      const i = index++
+      const p = unique[i]!
+      try {
+        out[p] = fileStatFieldsFromStat(await fsPromises.stat(p))
+      } catch {
+        out[p] = { sizeBytes: 0, birthtimeMs: 0, mtimeMs: 0 }
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, unique.length) },
+    () => worker()
+  )
+  await Promise.all(workers)
+  return out
 }
 
 export interface BrowseRootsParams {
@@ -223,6 +259,75 @@ export function listSourceDirChildren(
   )
 }
 
+function scanDirAudioFiles(
+  dirPath: string,
+  pathFilterRules: PathFilterRule[],
+  items: DirAudioFileItem[],
+  isRoot: boolean
+): void {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true })
+  } catch (err) {
+    if (isRoot) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`无法读取目录: ${msg}`)
+    }
+    return
+  }
+
+  const lrcByBase = new Map<string, string>()
+  const subdirs: string[] = []
+
+  for (const ent of entries) {
+    if (ent.isDirectory()) {
+      if (!shouldFilterEntry(ent.name, true, pathFilterRules)) {
+        subdirs.push(path.join(dirPath, ent.name))
+      }
+      continue
+    }
+    if (!ent.isFile()) continue
+    if (shouldFilterEntry(ent.name, false, pathFilterRules)) continue
+    const parsed = path.parse(ent.name)
+    if (parsed.ext.slice(1).toLowerCase() !== 'lrc') continue
+    lrcByBase.set(normName(parsed.name), path.join(dirPath, ent.name))
+  }
+
+  for (const ent of entries) {
+    if (!ent.isFile()) continue
+    if (shouldFilterEntry(ent.name, false, pathFilterRules)) continue
+    const ext = path.extname(ent.name).slice(1).toLowerCase()
+    if (!isSearchTargetAudioExt(ext)) continue
+
+    const baseName = path.parse(ent.name).name
+    const key = normName(baseName)
+    const full = path.join(dirPath, ent.name)
+
+    items.push({
+      filePath: full,
+      fileName: ent.name,
+      ext,
+      sizeBytes: 0,
+      birthtimeMs: 0,
+      mtimeMs: 0,
+      hasLrc: lrcByBase.has(key),
+      lrcPath: lrcByBase.get(key),
+      audio: emptyAudioFileMetrics()
+    })
+  }
+
+  subdirs.sort((a, b) =>
+    path.basename(a).localeCompare(path.basename(b), undefined, {
+      sensitivity: 'base'
+    })
+  )
+
+  for (const sub of subdirs) {
+    scanDirAudioFiles(sub, pathFilterRules, items, false)
+  }
+}
+
+/** 列出目录及其子目录下的全部音频文件（仅 readdir，不 stat；同级 LRC 按各目录内匹配） */
 export function listDirAudioFiles(
   params: ListDirAudioFilesParams
 ): DirAudioFileItem[] {
@@ -230,51 +335,8 @@ export function listDirAudioFiles(
   const dirPath = path.resolve(params.dirPath)
   assertUnderBrowseRoots(dirPath, roots)
 
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(dirPath, { withFileTypes: true })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    throw new Error(`无法读取目录: ${msg}`)
-  }
-
-  const lrcByBase = new Map<string, string>()
-
-  for (const ent of entries) {
-    if (!ent.isFile()) continue
-    if (shouldFilterEntry(ent.name, false, params.pathFilterRules)) continue
-    const parsed = path.parse(ent.name)
-    if (parsed.ext.slice(1).toLowerCase() !== 'lrc') continue
-    lrcByBase.set(normName(parsed.name), path.join(dirPath, ent.name))
-  }
-
   const items: DirAudioFileItem[] = []
-
-  for (const ent of entries) {
-    if (!ent.isFile()) continue
-    if (shouldFilterEntry(ent.name, false, params.pathFilterRules)) continue
-    const ext = path.extname(ent.name).slice(1).toLowerCase()
-    if (!isSearchTargetAudioExt(ext)) continue
-
-    const baseName = path.parse(ent.name).name
-    const key = normName(baseName)
-    const lrcPath = lrcByBase.get(key)
-    const full = path.join(dirPath, ent.name)
-    const { sizeBytes, birthtimeMs, mtimeMs } = readFileStatFields(full)
-
-    items.push({
-      filePath: full,
-      fileName: ent.name,
-      ext,
-      sizeBytes,
-      birthtimeMs,
-      mtimeMs,
-      hasLrc: lrcByBase.has(key),
-      lrcPath,
-      audio: emptyAudioFileMetrics()
-    })
-  }
-
+  scanDirAudioFiles(dirPath, params.pathFilterRules, items, true)
   return items
 }
 

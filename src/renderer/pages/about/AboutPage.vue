@@ -136,7 +136,7 @@ const latestVersion = computed(() => CHANGELOG_RELEASES[0]?.version ?? APP_VERSI
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 $about-aside-width: 300px;
 

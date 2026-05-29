@@ -123,7 +123,7 @@ function onPatternInput(index: number, value: string): void {
 </template>
 
 <style lang="scss" scoped>
-@use '../styles/variables' as *;
+@use '../../styles/variables' as *;
 
 .filter-rules {
   display: flex;
