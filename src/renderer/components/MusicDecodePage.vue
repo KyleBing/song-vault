@@ -127,7 +127,7 @@ const {
 
 const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
-const sortKey = ref<DirFileSortKey>('fileName')
+const sortKey = ref<DirFileSortKey>('inSearchTarget')
 const sortOrder = ref<DirFileSortOrder>('asc')
 
 const sortKeyOptions = computed(() =>

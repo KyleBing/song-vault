@@ -441,7 +441,13 @@ export function compareDirAudioFileField(
     case 'inSearchTarget': {
       const aHas = (a.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
       const bHas = (b.sourceAudioPaths?.length ?? 0) > 0 ? 1 : 0
-      return aHas - bHas
+      let cmp = aHas - bHas
+      if (cmp === 0) {
+        cmp = a.fileName.localeCompare(b.fileName, undefined, {
+          sensitivity: 'base'
+        })
+      }
+      return cmp
     }
     case 'bitrate':
       return (
