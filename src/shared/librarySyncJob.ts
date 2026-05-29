@@ -82,18 +82,48 @@ export interface DeleteSyncFilesResult {
 }
 
 function resolveRoot(root: string): string {
-    const resolved = path.resolve(root.trim())
-    if (!resolved) {
-        throw new Error('目录路径无效')
+    const check = checkSyncRoot(root)
+    if (!check.ok) {
+        throw new Error(check.error ?? '目录路径无效')
     }
+    return check.path
+}
+
+export interface SyncRootCheck {
+    path: string
+    ok: boolean
+    error?: string
+}
+
+export interface ValidateSyncRootsResult {
+    left: SyncRootCheck
+    right: SyncRootCheck
+}
+
+function checkSyncRoot(root: string): SyncRootCheck {
+    const trimmed = root.trim()
+    if (!trimmed) {
+        return { path: '', ok: false, error: '未指定目录' }
+    }
+    const resolved = path.resolve(trimmed)
     if (!fs.existsSync(resolved)) {
-        throw new Error(`目录不存在: ${resolved}`)
+        return { path: resolved, ok: false, error: `目录不存在: ${resolved}` }
     }
     const stat = fs.statSync(resolved)
     if (!stat.isDirectory()) {
-        throw new Error(`不是文件夹: ${resolved}`)
+        return { path: resolved, ok: false, error: `不是文件夹: ${resolved}` }
     }
-    return resolved
+    return { path: resolved, ok: true }
+}
+
+export function validateSyncRoots(
+    leftRoot: string,
+    rightRoot: string
+): ValidateSyncRootsResult {
+    return {
+        left: checkSyncRoot(leftRoot),
+        right: checkSyncRoot(rightRoot)
+    }
 }
 
 function toRelativeKey(root: string, fullPath: string): string {

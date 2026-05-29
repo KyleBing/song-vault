@@ -19,6 +19,29 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.2.2',
+    date: '2026-05-29',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '曲库同步：删除选中差异项（含同名歌词）；同步/删除结果气泡；左右对比统计面板',
+          '曲库同步：进入页与扫描前校验目录是否存在，无效时页面内提示',
+          '表格显示：设置中可调字号，行高随字号收紧，同屏显示更多行',
+          '耗时提示：曲库同步批量复制与 LRC 扫描/匹配/删除展示用时与剩余估算'
+        ]
+      },
+      {
+        title: '变更',
+        items: [
+          '应用更名为「乐库管理 SongVault」（包名 song-vault）',
+          '各工作台页面组件归类至 pages/ 子目录',
+          '音乐解码：默认按「库中已有」排序（未入库靠前）；解码列表不再默认展示创建时间'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.2.1',
     date: '2026-05-28',
     sections: [

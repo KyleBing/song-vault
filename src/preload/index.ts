@@ -40,7 +40,8 @@ import type {
   DeleteSyncFilesParams,
   DeleteSyncFilesResult,
   MoveSyncFileParams,
-  MoveSyncFileResult
+  MoveSyncFileResult,
+  ValidateSyncRootsResult
 } from '../shared/librarySyncJob'
 import { toIpcPlain } from '../shared/serialize'
 import {
@@ -232,6 +233,18 @@ const api = {
     const result = await ipcRenderer.invoke(
       'compare-library-sync',
       toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  validateSyncRoots: async (
+    leftRoot: string,
+    rightRoot: string
+  ): Promise<ValidateSyncRootsResult> => {
+    const result = await ipcRenderer.invoke(
+      'validate-sync-roots',
+      leftRoot,
+      rightRoot
     )
     return toIpcPlain(result)
   },

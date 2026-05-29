@@ -18,7 +18,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import type { PathFilterRule } from '@shared/appConfig'
 import type {
     CompareLibrarySyncResult,
-    SyncDiffItem
+    SyncDiffItem,
+    ValidateSyncRootsResult
 } from '@shared/librarySyncJob'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
@@ -48,6 +49,8 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const loading = ref(false)
+const validatingDirs = ref(false)
+const syncDirsValidation = ref<ValidateSyncRootsResult | null>(null)
 const scanButtonLoading = ref(false)
 const batchCopyActiveDirection = ref<'toRight' | 'toLeft' | null>(null)
 const deletingSelected = ref(false)
@@ -98,6 +101,32 @@ const {
 const canCompare = computed(
     () => !!syncLeftDir.value.trim() && !!syncRightDir.value.trim()
 )
+
+const syncDirsReady = computed(() => {
+    const validation = syncDirsValidation.value
+    return !!validation && validation.left.ok && validation.right.ok
+})
+
+const syncDirIssues = computed(() => {
+    const validation = syncDirsValidation.value
+    if (!validation) return []
+    const issues: Array<{ label: string; message: string; path: string }> = []
+    if (!validation.left.ok) {
+        issues.push({
+            label: syncLeftLabel.value,
+            message: validation.left.error ?? '目录无效',
+            path: validation.left.path || syncLeftDir.value.trim()
+        })
+    }
+    if (!validation.right.ok) {
+        issues.push({
+            label: syncRightLabel.value,
+            message: validation.right.error ?? '目录无效',
+            path: validation.right.path || syncRightDir.value.trim()
+        })
+    }
+    return issues
+})
 
 const syncLeftLabel = computed(
     () => (syncLeftAlias.value ?? '').trim() || '左侧'
@@ -319,11 +348,31 @@ function onFileRowClick(key: string, event: MouseEvent): void {
     onRowClick({ key }, event, orderedFileKeys)
 }
 
+async function validateSyncDirs(): Promise<ValidateSyncRootsResult> {
+    validatingDirs.value = true
+    try {
+        const result = await window.electronAPI.validateSyncRoots(
+            syncLeftDir.value.trim(),
+            syncRightDir.value.trim()
+        )
+        syncDirsValidation.value = result
+        return result
+    } finally {
+        validatingDirs.value = false
+    }
+}
+
 async function runCompare(options?: {
     silent?: boolean
     scanLoading?: boolean
 }): Promise<void> {
     if (!canCompare.value) return
+
+    const validation = await validateSyncDirs()
+    if (!validation.left.ok || !validation.right.ok) {
+        return
+    }
+
     if (options?.scanLoading) scanButtonLoading.value = true
     loading.value = true
     try {
@@ -344,19 +393,35 @@ async function runCompare(options?: {
     }
 }
 
-function tryAutoCompare(): void {
+async function tryAutoCompare(): Promise<void> {
     if (!canCompare.value || loading.value || batchCopying.value || deletingSelected.value) {
         return
     }
-    void runCompare()
+    const validation = syncDirsValidation.value ?? await validateSyncDirs()
+    if (!validation.left.ok || !validation.right.ok) {
+        return
+    }
+    await runCompare()
 }
 
 onMounted(() => {
-    tryAutoCompare()
+    void (async () => {
+        if (canCompare.value) {
+            await validateSyncDirs()
+        }
+        await tryAutoCompare()
+    })()
 })
 
 watch([syncLeftDir, syncRightDir], () => {
-    tryAutoCompare()
+    void (async () => {
+        if (!canCompare.value) {
+            syncDirsValidation.value = null
+            return
+        }
+        await validateSyncDirs()
+        await tryAutoCompare()
+    })()
 })
 
 async function copyOne(
@@ -563,6 +628,27 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     <div class="library-sync-page">
         <section v-if="!canCompare" class="library-sync-hint">
             <p>请先在「设置 → 同步设置」中指定左右两个曲库目录。</p>
+            <NButton size="small" @click="emit('openSettings')">打开同步设置</NButton>
+        </section>
+
+        <section
+            v-else-if="validatingDirs && !syncDirsValidation"
+            class="library-sync-hint"
+        >
+            <p>正在检查曲库目录…</p>
+        </section>
+
+        <section
+            v-else-if="!syncDirsReady"
+            class="library-sync-hint library-sync-hint--warning"
+        >
+            <p>以下曲库目录无法访问，请检查路径或在设置中重新指定：</p>
+            <ul class="library-sync-hint__issues">
+                <li v-for="issue in syncDirIssues" :key="issue.label">
+                    <strong>{{ issue.label }}</strong>：{{ issue.message }}
+                    <span class="library-sync-hint__path">{{ issue.path }}</span>
+                </li>
+            </ul>
             <NButton size="small" @click="emit('openSettings')">打开同步设置</NButton>
         </section>
 
@@ -1163,6 +1249,29 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     background: $surface-panel;
     font-size: 13px;
     opacity: 0.75;
+}
+
+.library-sync-hint--warning {
+    border-color: rgba(234, 179, 8, 0.45);
+    background: rgba(234, 179, 8, 0.08);
+    opacity: 1;
+}
+
+.library-sync-hint__issues {
+    margin: 0;
+    padding-left: 1.2em;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.library-sync-hint__path {
+    display: block;
+    margin-top: 2px;
+    font-family: $font-mono;
+    font-size: 11px;
+    opacity: 0.65;
+    word-break: break-all;
 }
 
 .workspace {

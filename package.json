@@ -1,6 +1,6 @@
 {
   "name": "song-vault",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "乐库管理桌面应用：歌词归位、音乐解密、音频库与双曲库同步",
   "main": "./out/main/index.js",
   "author": "",

@@ -17,6 +17,7 @@ import {
   copySyncFile,
   deleteSyncFiles,
   moveSyncFile,
+  validateSyncRoots,
   type CompareLibrarySyncParams,
   type CopySyncFileParams,
   type DeleteSyncFilesParams,
@@ -259,6 +260,15 @@ function registerIpcHandlers(): void {
     'compare-library-sync',
     async (_, params: CompareLibrarySyncParams) => {
       return toIpcPlain(compareLibrarySync(toIpcPlain(params)))
+    }
+  )
+
+  ipcMain.handle(
+    'validate-sync-roots',
+    async (_, leftRoot: unknown, rightRoot: unknown) => {
+      const left = typeof leftRoot === 'string' ? leftRoot : ''
+      const right = typeof rightRoot === 'string' ? rightRoot : ''
+      return toIpcPlain(validateSyncRoots(left, right))
     }
   )
 
