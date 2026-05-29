@@ -40,13 +40,8 @@ export const FILE_LIST_COLUMN_DEFS: FileListColumnDef[] = [
   { id: 'platform', label: '平台', category: 'basic', kinds: ['decode'] },
   { id: 'sizeBytes', label: '大小', category: 'basic', kinds: ['source', 'decode'] },
   { id: 'hasLrc', label: '歌词', category: 'basic', kinds: ['source'] },
-  {
-    id: 'inSearchTarget',
-    label: '库中已有',
-    category: 'basic',
-    kinds: ['decode']
-  },
-  { id: 'birthtimeMs', label: '创建时间', category: 'time', kinds: ['source', 'decode'] },
+  { id: 'inSearchTarget', label: '库中已有', category: 'basic', kinds: ['decode'] },
+  { id: 'birthtimeMs', label: '创建时间', category: 'time', kinds: ['source'] },
   { id: 'mtimeMs', label: '修改时间', category: 'time', kinds: ['source', 'decode'] },
   { id: 'bitrate', label: '比特率', category: 'audio', kinds: ['source'] },
   { id: 'duration', label: '时长', category: 'audio', kinds: ['source'] },
@@ -84,7 +79,6 @@ export function createDefaultFileListColumns(): FileListColumnsSettings {
       'inSearchTarget',
       'platform',
       'ext',
-      'birthtimeMs',
       'sizeBytes'
     ]
   }
@@ -138,12 +132,16 @@ function mergeMissingColumns(
   return out
 }
 
+function sanitizeDecodeColumns(ids: FileListColumnId[]): FileListColumnId[] {
+  return ids.filter((id) => id !== 'birthtimeMs')
+}
+
 export function normalizeFileListColumns(raw: unknown): FileListColumnsSettings {
   const defaults = createDefaultFileListColumns()
   if (!raw || typeof raw !== 'object') return defaults
   const obj = raw as Record<string, unknown>
   const source = filterValidColumns(obj.source, 'source')
-  const decode = filterValidColumns(obj.decode, 'decode')
+  const decode = sanitizeDecodeColumns(filterValidColumns(obj.decode, 'decode'))
   return {
     source:
       source.length > 0
@@ -151,7 +149,7 @@ export function normalizeFileListColumns(raw: unknown): FileListColumnsSettings 
         : defaults.source,
     decode:
       decode.length > 0
-        ? mergeMissingColumns(decode, defaults.decode)
+        ? sanitizeDecodeColumns(mergeMissingColumns(decode, defaults.decode))
         : defaults.decode
   }
 }
