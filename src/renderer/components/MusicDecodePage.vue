@@ -27,6 +27,7 @@ import { storeToRefs } from 'pinia'
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import { decryptMusicBatch } from '@renderer/lib/musicDecryptClient'
+import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import type { FileListColumnsSettings, PathFilterRule } from '@shared/appConfig'
 import { columnsForKind } from '@shared/fileListColumns'
 import type { MusicDecryptBatchResult } from '@shared/musicDecryptJob'
@@ -151,21 +152,6 @@ const decryptTiming = ref({
 const lastResult = ref<MusicDecryptBatchResult | null>(null)
 
 const DECRYPT_ETA_MIN_SAMPLES = 5
-
-function formatElapsedMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '—'
-  const sec = Math.max(1, Math.round(ms / 1000))
-  if (sec < 60) return `${sec} 秒`
-  const min = Math.floor(sec / 60)
-  const remSec = sec % 60
-  if (min < 60) {
-    return remSec > 0 ? `${min} 分 ${remSec} 秒` : `${min} 分`
-  }
-  const hour = Math.floor(min / 60)
-  const remMin = min % 60
-  if (remMin > 0) return `${hour} 小时 ${remMin} 分`
-  return `${hour} 小时`
-}
 
 function estimateDecryptRemainingMs(
   done: number,

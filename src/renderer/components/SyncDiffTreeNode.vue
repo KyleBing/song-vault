@@ -3,7 +3,10 @@ import { NCheckbox, NIcon } from 'naive-ui'
 import { ChevronForward } from '@vicons/ionicons5'
 import { computed } from 'vue'
 import type { SyncDiffItem } from '@shared/librarySyncJob'
-import type { SyncDiffTreeRow } from '@renderer/utils/syncDiffTree'
+import {
+    collectSyncDiffFileKeysUnderFolder,
+    type SyncDiffTreeRow
+} from '@renderer/utils/syncDiffTree'
 import SyncDiffFileRow from './SyncDiffFileRow.vue'
 import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
 
@@ -20,6 +23,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     toggleExpand: [key: string]
     toggleSelect: [key: string, checked: boolean, shiftKey?: boolean]
+    toggleFolderSelect: [folder: SyncDiffTreeRow, checked: boolean]
     rowClick: [key: string, event: MouseEvent]
     copyToRight: [item: SyncDiffItem]
     copyToLeft: [item: SyncDiffItem]
@@ -64,6 +68,28 @@ function onCheckMouseDown(event: MouseEvent): void {
 function onCheckUpdate(key: string, checked: boolean): void {
     emit('toggleSelect', key, checked, checkShiftKey)
 }
+
+function folderCheckState(row: SyncDiffTreeRow): {
+    checked: boolean
+    indeterminate: boolean
+} {
+    const keys = collectSyncDiffFileKeysUnderFolder(row)
+    if (!keys.length) {
+        return { checked: false, indeterminate: false }
+    }
+    const selectedCount = keys.filter((k) => isSelected(k)).length
+    if (selectedCount === 0) {
+        return { checked: false, indeterminate: false }
+    }
+    if (selectedCount === keys.length) {
+        return { checked: true, indeterminate: false }
+    }
+    return { checked: false, indeterminate: true }
+}
+
+function onFolderCheckUpdate(row: SyncDiffTreeRow, checked: boolean): void {
+    emit('toggleFolderSelect', row, checked)
+}
 </script>
 
 <template>
@@ -75,7 +101,19 @@ function onCheckUpdate(key: string, checked: boolean): void {
         >
             <div class="sync-tree-row__check" @click.stop @mousedown="onCheckMouseDown">
                 <NCheckbox
-                    v-if="!node.isFolder"
+                    v-if="node.isFolder"
+                    :checked="folderCheckState(node).checked"
+                    :indeterminate="folderCheckState(node).indeterminate"
+                    :disabled="
+                        loading
+                            || batchCopying
+                            || countDiffFiles(node) === 0
+                    "
+                    size="small"
+                    @update:checked="(checked) => onFolderCheckUpdate(node, checked)"
+                />
+                <NCheckbox
+                    v-else
                     :checked="isSelected(node.key)"
                     :disabled="loading || batchCopying"
                     size="small"
@@ -123,6 +161,7 @@ function onCheckUpdate(key: string, checked: boolean): void {
             :is-copying="isCopying"
             @toggle-expand="(key) => emit('toggleExpand', key)"
             @toggle-select="(key, checked, shiftKey) => emit('toggleSelect', key, checked, shiftKey)"
+            @toggle-folder-select="(folder, checked) => emit('toggleFolderSelect', folder, checked)"
             @row-click="(key, event) => emit('rowClick', key, event)"
             @copy-to-right="(item) => emit('copyToRight', item)"
             @copy-to-left="(item) => emit('copyToLeft', item)"

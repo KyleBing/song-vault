@@ -12,7 +12,6 @@ import {
 import { storeToRefs } from 'pinia'
 import { computed, h, ref, watch, type Ref } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
-import SourceLrcSelect from './SourceLrcSelect.vue'
 import type {
     AudioJobItem,
     AudioItemStatus,
@@ -26,7 +25,7 @@ import {
     pickSourceLrc,
     type SourceSelection
 } from '@shared/sourcePick'
-import { dirnameOf } from '@shared/pathLite'
+import { dirnameOf, samePath } from '@shared/pathLite'
 import { formatFileSize } from '@shared/formatAudioDisplay'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
 import { lrcPresenceCell } from '@renderer/utils/lrcPresenceCell'
@@ -38,6 +37,7 @@ import {
     type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import SourceLrcSelect from './SourceLrcSelect.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 
@@ -333,6 +333,40 @@ function shortLrcSource(p: string): string {
   return relativeToRoots(p, props.lrcDirs)
 }
 
+/** 「选择源歌词」列：无候选、单候选、多候选下拉 */
+function renderSourcePickCell(row: AudioJobItem) {
+    const paths = row.sourceLrcPaths ?? []
+    if (!paths.length) {
+        return h(
+            'span',
+            { class: 'source-pick-empty' },
+            row.message ?? '无可选源歌词'
+        )
+    }
+
+    if (paths.length === 1) {
+        return pathCell(paths[0], shortLrcSource(paths[0]))
+    }
+
+    const resolved = resolveSourcePath(row)
+    const selectedPath = resolved
+        ? paths.find((p) => samePath(p, resolved))
+        : undefined
+
+    if (resolved && !selectedPath) {
+        return pathCell(resolved, shortLrcSource(resolved))
+    }
+
+    return h('div', { class: 'source-pick-cell' }, [
+        h(SourceLrcSelect, {
+            row,
+            lrcDirs: props.lrcDirs,
+            value: selectedPath ?? null,
+            onPick: (v: string) => onPickSource(row, v)
+        })
+    ])
+}
+
 /** 表格单元格：短路径；音频文件悬停显示完整标签 */
 function pathCell(full: string, short: string) {
     return audioAwarePathCell(full, short)
@@ -436,23 +470,8 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             title: '选择源歌词',
             key: 'sourcePick',
             width: 220,
-            ellipsis: { tooltip: false },
             render(row) {
-                const paths = row.sourceLrcPaths
-                if (!paths?.length) return '—'
-
-                if (paths.length === 1) {
-                    return pathCell(paths[0], shortLrcSource(paths[0]))
-                }
-
-                return h('div', { class: 'source-pick-cell' }, [
-                    h(SourceLrcSelect, {
-                        row,
-                        lrcDirs: props.lrcDirs,
-                        value: resolveSourcePath(row) ?? null,
-                        onPick: (v: string) => onPickSource(row, v)
-                    })
-                ])
+                return renderSourcePickCell(row)
             }
         },
         {
@@ -614,7 +633,7 @@ const needLrcAudio = computed(() =>
     )
 )
 
-// 待选源音频数据
+// 待选源：扫描结果为「待选源」的全部行
 const pickSourceAudio = computed(() =>
     plainAudio.value.filter((r) => r.status === 'source_ambiguous')
 )
@@ -835,6 +854,12 @@ function orphanAudioRowKey(row: { key: string }): string {
                     class="tab-pane-body"
                     @mousedown.capture="onAudioTableMouseDown"
                 >
+                    <p
+                        v-if="sortedPickSourceAudio.length === 0"
+                        class="tab-empty-hint"
+                    >
+                        暂无待选源歌曲。若提示仍有待选，请先在「全部」页查看状态。
+                    </p>
                     <div class="tab-table-wrap">
                         <VirtualDataTable
                             :key="`pick-${pickRevision}`"
@@ -1078,9 +1103,26 @@ function orphanAudioRowKey(row: { key: string }): string {
 }
 
 .source-pick-cell {
+    display: flex;
+    align-items: center;
     max-width: 100%;
     min-width: 0;
-    overflow: hidden;
+}
+
+.source-pick-empty {
+    display: inline-block;
+    font-size: 12px;
+    line-height: 1.4;
+    opacity: 0.65;
+}
+
+.tab-empty-hint {
+    flex-shrink: 0;
+    margin: 0 0 8px;
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0.65;
 }
 
 .table-status-cell {

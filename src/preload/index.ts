@@ -36,6 +36,8 @@ import type {
   CompareLibrarySyncResult,
   CopySyncFileParams,
   CopySyncFileResult,
+  DeleteSyncFilesParams,
+  DeleteSyncFilesResult,
   MoveSyncFileParams,
   MoveSyncFileResult
 } from '../shared/librarySyncJob'
@@ -234,6 +236,16 @@ const api = {
     params: MoveSyncFileParams
   ): Promise<MoveSyncFileResult> => {
     const result = await ipcRenderer.invoke('move-sync-file', toIpcPlain(params))
+    return toIpcPlain(result)
+  },
+
+  deleteSyncFiles: async (
+    params: DeleteSyncFilesParams
+  ): Promise<DeleteSyncFilesResult> => {
+    const result = await ipcRenderer.invoke(
+      'delete-sync-files',
+      toIpcPlain(params)
+    )
     return toIpcPlain(result)
   },
 

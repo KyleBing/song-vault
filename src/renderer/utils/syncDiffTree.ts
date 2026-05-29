@@ -77,6 +77,25 @@ export function collectSyncDiffFolderKeys(rows: SyncDiffTreeRow[]): string[] {
     return keys
 }
 
+/** 收集某文件夹节点下（含子文件夹）全部文件行 key */
+export function collectSyncDiffFileKeysUnderFolder(row: SyncDiffTreeRow): string[] {
+    const keys: string[] = []
+    if (!row.isFolder || !row.children?.length) return keys
+
+    function walk(nodes: SyncDiffTreeRow[]): void {
+        for (const node of nodes) {
+            if (node.isFolder) {
+                if (node.children?.length) walk(node.children)
+            } else {
+                keys.push(node.key)
+            }
+        }
+    }
+
+    walk(row.children)
+    return keys
+}
+
 /** 按树的前序遍历收集文件行 key（用于 Shift 连选） */
 export function flattenSyncDiffFileKeys(rows: SyncDiffTreeRow[]): string[] {
     const keys: string[] = []

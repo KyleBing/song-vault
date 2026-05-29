@@ -2,13 +2,17 @@
 import {
     NButton,
     NIcon,
+    NPopconfirm,
+    NProgress,
     NSpin,
     useMessage
 } from 'naive-ui'
 import {
     ArrowBack,
     ArrowForward,
-    Refresh
+    Close,
+    Refresh,
+    Trash
 } from '@vicons/ionicons5'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { PathFilterRule } from '@shared/appConfig'
@@ -20,11 +24,13 @@ import { pathFilterRulesForSave } from '@shared/pathFilters'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
     buildSyncDiffTree,
+    collectSyncDiffFileKeysUnderFolder,
     collectSyncDiffFolderKeys,
     flattenSyncDiffFileKeys,
     resolveSyncDiffItemsByKeys,
     type SyncDiffTreeRow
 } from '@renderer/utils/syncDiffTree'
+import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
 
 const syncLeftDir = defineModel<string>('syncLeftDir', { required: true })
@@ -42,8 +48,42 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const loading = ref(false)
-const batchCopying = ref(false)
+const scanButtonLoading = ref(false)
+const batchCopyActiveDirection = ref<'toRight' | 'toLeft' | null>(null)
+const deletingSelected = ref(false)
+const batchCopying = computed(() => batchCopyActiveDirection.value !== null)
+const syncTreeBusy = computed(
+    () => batchCopying.value || deletingSelected.value
+)
+const batchCopyProgress = ref({ done: 0, total: 0 })
+
+interface SyncToolbarResult {
+    kind: 'copy' | 'delete'
+    ok: number
+    fail: number
+    total: number
+    elapsedMs: number
+    direction?: 'toRight' | 'toLeft'
+    compareError?: string
+}
+
+const batchCopyResult = ref<SyncToolbarResult | null>(null)
+const batchCopyTiming = ref({ lastFileMs: 0, elapsedMs: 0 })
 const compareResult = ref<CompareLibrarySyncResult | null>(null)
+
+const SYNC_COPY_ETA_MIN_SAMPLES = 5
+
+function estimateBatchCopyRemainingMs(
+    done: number,
+    total: number,
+    elapsedMs: number
+): number | null {
+    if (done < SYNC_COPY_ETA_MIN_SAMPLES || done >= total || total <= 0) {
+        return null
+    }
+    const remaining = total - done
+    return (elapsedMs / done) * remaining
+}
 const copyingKeys = ref<Set<string>>(new Set())
 const expandedRowKeys = ref<string[]>([])
 
@@ -93,6 +133,80 @@ const batchCopyRightCount = computed(
 const batchCopyLeftCount = computed(
     () => selectedItems.value.filter((item) => item.right).length
 )
+
+const batchCopyProgressPercent = computed(() => {
+    const { done, total } = batchCopyProgress.value
+    if (!total) return 0
+    return Math.round((done / total) * 100)
+})
+
+const batchCopyProgressDetailText = computed(() => {
+    const { done, total } = batchCopyProgress.value
+    if (!batchCopying.value || total === 0) return ''
+    const parts: string[] = [`${done} / ${total}`]
+    if (done > 0) {
+        parts.push(`上个约 ${formatElapsedMs(batchCopyTiming.value.lastFileMs)}`)
+        parts.push(`已用 ${formatElapsedMs(batchCopyTiming.value.elapsedMs)}`)
+        const remainingMs = estimateBatchCopyRemainingMs(
+            done,
+            total,
+            batchCopyTiming.value.elapsedMs
+        )
+        if (remainingMs != null) {
+            parts.push(`剩余 ${formatElapsedMs(remainingMs)}`)
+        }
+    }
+    return parts.join(' · ')
+})
+
+const batchCopyResultTitle = computed(() => {
+    const result = batchCopyResult.value
+    if (!result) return ''
+    return result.kind === 'delete' ? '删除结果' : '同步结果'
+})
+
+const batchCopyResultText = computed(() => {
+    const result = batchCopyResult.value
+    if (!result) return ''
+    const lines: string[] = []
+    if (result.kind === 'delete') {
+        if (result.fail > 0) {
+            lines.push(
+                `已处理 ${result.total} 项：删除 ${result.ok} 个文件，失败 ${result.fail}`
+            )
+        } else {
+            lines.push(`已删除 ${result.ok} 个文件`)
+        }
+    } else {
+        const target =
+            result.direction === 'toRight'
+                ? syncRightLabel.value
+                : syncLeftLabel.value
+        if (result.fail > 0) {
+            lines.push(
+                `已向${target}处理 ${result.total} 项：成功 ${result.ok}，失败 ${result.fail}`
+            )
+        } else {
+            lines.push(`已向${target}同步 ${result.ok} 项`)
+        }
+    }
+    if (result.compareError) {
+        lines.push(`刷新对比失败：${result.compareError}`)
+    }
+    lines.push(`用时 ${formatElapsedMs(result.elapsedMs)}`)
+    return lines.join('\n')
+})
+
+const batchCopyResultTone = computed(() => {
+    const result = batchCopyResult.value
+    if (!result) return 'success' as const
+    if (result.compareError || result.fail > 0) return 'warning' as const
+    return 'success' as const
+})
+
+function dismissBatchCopyResult(): void {
+    batchCopyResult.value = null
+}
 
 interface SyncSideStats {
     total: number
@@ -192,12 +306,25 @@ function toggleSelect(key: string, checked: boolean, shiftKey = false): void {
     })
 }
 
+function toggleFolderSelect(folder: SyncDiffTreeRow, checked: boolean): void {
+    const fileKeys = collectSyncDiffFileKeysUnderFolder(folder)
+    if (!fileKeys.length) return
+    const fileKeySet = new Set(fileKeys)
+    selectedRowKeys.value = checked
+        ? [...new Set([...selectedRowKeys.value, ...fileKeys])]
+        : selectedRowKeys.value.filter((k) => !fileKeySet.has(k))
+}
+
 function onFileRowClick(key: string, event: MouseEvent): void {
     onRowClick({ key }, event, orderedFileKeys)
 }
 
-async function runCompare(): Promise<void> {
+async function runCompare(options?: {
+    silent?: boolean
+    scanLoading?: boolean
+}): Promise<void> {
     if (!canCompare.value) return
+    if (options?.scanLoading) scanButtonLoading.value = true
     loading.value = true
     try {
         compareResult.value = await window.electronAPI.compareLibrarySync({
@@ -207,14 +334,20 @@ async function runCompare(): Promise<void> {
         })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        message.error(msg)
+        if (!options?.silent) {
+            message.error(msg)
+        }
+        throw err
     } finally {
         loading.value = false
+        if (options?.scanLoading) scanButtonLoading.value = false
     }
 }
 
 function tryAutoCompare(): void {
-    if (!canCompare.value || loading.value || batchCopying.value) return
+    if (!canCompare.value || loading.value || batchCopying.value || deletingSelected.value) {
+        return
+    }
     void runCompare()
 }
 
@@ -236,7 +369,10 @@ async function copyOne(
     const key = rowCopyKey(item, copyDir)
 
     if (copyingKeys.value.has(key)) return
-    copyingKeys.value = new Set([...copyingKeys.value, key])
+    const trackRowLoading = batchCopyActiveDirection.value === null
+    if (trackRowLoading) {
+        copyingKeys.value = new Set([...copyingKeys.value, key])
+    }
 
     try {
         if (item.kind === 'moved') {
@@ -270,40 +406,46 @@ async function copyOne(
             })
         }
     } finally {
-        const next = new Set(copyingKeys.value)
-        next.delete(key)
-        copyingKeys.value = next
-    }
-}
-
-function syncSuccessMessage(
-    item: SyncDiffItem,
-    direction: 'toRight' | 'toLeft'
-): string {
-    if (item.kind === 'moved' && item.left && item.right) {
-        if (direction === 'toRight') {
-            return `已在${syncRightLabel.value}内移动: ${item.right.relativePath} → ${item.left.relativePath}`
+        if (trackRowLoading) {
+            const next = new Set(copyingKeys.value)
+            next.delete(key)
+            copyingKeys.value = next
         }
-        return `已在${syncLeftLabel.value}内移动: ${item.left.relativePath} → ${item.right.relativePath}`
     }
-    const copiedPath =
-        direction === 'toRight'
-            ? (item.left?.relativePath ?? item.relativePath)
-            : (item.right?.relativePath ?? item.relativePath)
-    return `已复制: ${copiedPath}`
 }
 
 async function copyItem(
     item: SyncDiffItem,
     direction: 'toRight' | 'toLeft'
 ): Promise<void> {
+    if (batchCopying.value || deletingSelected.value || loading.value) return
+
+    batchCopyResult.value = null
+    const operationStartedAt = performance.now()
+    let compareError: string | undefined
+
     try {
         await copyOne(item, direction)
-        message.success(syncSuccessMessage(item, direction))
-        await runCompare()
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         message.error(msg)
+        return
+    }
+
+    try {
+        await runCompare({ silent: true })
+    } catch (err) {
+        compareError = err instanceof Error ? err.message : String(err)
+    }
+
+    batchCopyResult.value = {
+        kind: 'copy',
+        ok: 1,
+        fail: 0,
+        total: 1,
+        elapsedMs: performance.now() - operationStartedAt,
+        direction,
+        compareError
     }
 }
 
@@ -313,7 +455,13 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
     )
     if (!items.length || batchCopying.value) return
 
-    batchCopying.value = true
+    batchCopyResult.value = null
+    batchCopyActiveDirection.value = direction
+    const total = items.length
+    batchCopyProgress.value = { done: 0, total }
+    batchCopyTiming.value = { lastFileMs: 0, elapsedMs: 0 }
+    const operationStartedAt = performance.now()
+    let lastCheckpointAt = operationStartedAt
     let ok = 0
     let fail = 0
 
@@ -325,15 +473,88 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
             } catch {
                 fail += 1
             }
-        }
-        await runCompare()
-        if (fail > 0) {
-            message.warning(`批量同步完成：成功 ${ok}，失败 ${fail}`)
-        } else {
-            message.success(`已同步 ${ok} 项`)
+            const now = performance.now()
+            batchCopyTiming.value = {
+                lastFileMs: now - lastCheckpointAt,
+                elapsedMs: now - operationStartedAt
+            }
+            lastCheckpointAt = now
+            batchCopyProgress.value = { done: ok + fail, total }
         }
     } finally {
-        batchCopying.value = false
+        batchCopyActiveDirection.value = null
+        batchCopyProgress.value = { done: 0, total: 0 }
+    }
+
+    let compareError: string | undefined
+    try {
+        await runCompare({ silent: true })
+    } catch (err) {
+        compareError = err instanceof Error ? err.message : String(err)
+    }
+
+    batchCopyResult.value = {
+        kind: 'copy',
+        ok,
+        fail,
+        total,
+        elapsedMs: performance.now() - operationStartedAt,
+        direction,
+        compareError
+    }
+}
+
+function syncDeleteEntries(items: SyncDiffItem[]) {
+    return items.map((item) => ({
+        leftRelativePath: item.left?.relativePath,
+        rightRelativePath: item.right?.relativePath
+    }))
+}
+
+async function deleteSelectedSyncFiles(): Promise<void> {
+    const items = selectedItems.value
+    if (!items.length || deletingSelected.value || batchCopying.value) return
+
+    const leftRoot = compareResult.value?.leftRoot ?? syncLeftDir.value.trim()
+    const rightRoot = compareResult.value?.rightRoot ?? syncRightDir.value.trim()
+
+    deletingSelected.value = true
+    batchCopyResult.value = null
+    const operationStartedAt = performance.now()
+    let deleted = 0
+    let fail = 0
+
+    try {
+        const res = await window.electronAPI.deleteSyncFiles({
+            leftRoot,
+            rightRoot,
+            entries: syncDeleteEntries(items)
+        })
+        deleted = res.deleted
+        fail = res.errors.length
+        clearSelection()
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        message.error(msg)
+        return
+    } finally {
+        deletingSelected.value = false
+    }
+
+    let compareError: string | undefined
+    try {
+        await runCompare({ silent: true })
+    } catch (err) {
+        compareError = err instanceof Error ? err.message : String(err)
+    }
+
+    batchCopyResult.value = {
+        kind: 'delete',
+        ok: deleted,
+        fail,
+        total: items.length,
+        elapsedMs: performance.now() - operationStartedAt,
+        compareError
     }
 }
 </script>
@@ -347,10 +568,40 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
 
         <div v-else class="workspace">
             <aside class="sidebar">
+                <div
+                    v-if="batchCopyResult"
+                    class="sync-result-bubble-wrap"
+                    role="status"
+                >
+                    <div
+                        class="sync-result-bubble"
+                        :class="`sync-result-bubble--${batchCopyResultTone}`"
+                    >
+                        <div class="sync-result-bubble__head">
+                            <span class="sync-result-bubble__title">
+                                {{ batchCopyResultTitle }}
+                            </span>
+                            <NButton
+                                quaternary
+                                circle
+                                size="tiny"
+                                class="sync-result-bubble__close"
+                                aria-label="关闭"
+                                @click="dismissBatchCopyResult"
+                            >
+                                <template #icon>
+                                    <NIcon :size="14"><Close /></NIcon>
+                                </template>
+                            </NButton>
+                        </div>
+                        <p class="sync-result-bubble__text">
+                            {{ batchCopyResultText }}
+                        </p>
+                    </div>
+                </div>
+
                 <div class="sidebar-scroll">
                     <section v-if="compareResult && syncStats" class="sync-stats-panel">
-                        <h3 class="sync-stats-panel__title">对比统计</h3>
-
                         <div class="sync-stats-compare">
                             <div class="sync-stats-compare__head">
                                 <div class="sync-stats-compare__side sync-stats-compare__side--left">
@@ -697,9 +948,9 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
                         <NButton
                             block
                             type="primary"
-                            :disabled="batchCopying"
-                            :loading="loading"
-                            @click="runCompare"
+                            :disabled="batchCopying || deletingSelected"
+                            :loading="scanButtonLoading"
+                            @click="runCompare({ scanLoading: true })"
                         >
                             <template #icon>
                                 <NIcon><Refresh /></NIcon>
@@ -714,11 +965,17 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
                         </p>
                         <NButton
                             v-if="compareResult && compareResult.items.length > 0"
+                            v-memo="[batchCopyActiveDirection, batchCopyRightCount]"
                             block
                             secondary
                             type="primary"
-                            :disabled="batchCopyRightCount === 0 || batchCopying || loading"
-                            :loading="batchCopying"
+                            :disabled="
+                                batchCopyRightCount === 0
+                                    || batchCopying
+                                    || deletingSelected
+                                    || loading
+                            "
+                            :loading="batchCopyActiveDirection === 'toRight'"
                             @click="batchCopy('toRight')"
                         >
                             <template #icon>
@@ -729,10 +986,16 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
                         </NButton>
                         <NButton
                             v-if="compareResult && compareResult.items.length > 0"
+                            v-memo="[batchCopyActiveDirection, batchCopyLeftCount]"
                             block
                             secondary
-                            :disabled="batchCopyLeftCount === 0 || batchCopying || loading"
-                            :loading="batchCopying"
+                            :disabled="
+                                batchCopyLeftCount === 0
+                                    || batchCopying
+                                    || deletingSelected
+                                    || loading
+                            "
+                            :loading="batchCopyActiveDirection === 'toLeft'"
                             @click="batchCopy('toLeft')"
                         >
                             <template #icon>
@@ -745,17 +1008,78 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
                             v-if="compareResult && compareResult.items.length > 0"
                             block
                             quaternary
-                            :disabled="selectedItems.length === 0"
+                            :disabled="
+                                selectedItems.length === 0
+                                    || batchCopying
+                                    || deletingSelected
+                                    || loading
+                            "
                             @click="clearSelection"
                         >
                             取消选择
                         </NButton>
+                        <NPopconfirm
+                            v-if="compareResult && compareResult.items.length > 0"
+                            :disabled="
+                                selectedItems.length === 0
+                                    || batchCopying
+                                    || deletingSelected
+                                    || loading
+                            "
+                            @positive-click="deleteSelectedSyncFiles"
+                        >
+                            <template #trigger>
+                                <NButton
+                                    block
+                                    type="error"
+                                    secondary
+                                    :disabled="
+                                        selectedItems.length === 0
+                                            || batchCopying
+                                            || deletingSelected
+                                            || loading
+                                    "
+                                    :loading="deletingSelected"
+                                >
+                                    <template #icon>
+                                        <NIcon><Trash /></NIcon>
+                                    </template>
+                                    删除选中
+                                    <span v-if="selectedItems.length > 0">
+                                        ({{ selectedItems.length }})
+                                    </span>
+                                </NButton>
+                            </template>
+                            确定删除选中的 {{ selectedItems.length }} 项？
+                            将删除左右曲库中对应的音频与同名歌词，不可恢复。
+                        </NPopconfirm>
+
+
+                        <NProgress
+                            v-if="batchCopying"
+                            type="line"
+                            :percentage="batchCopyProgressPercent"
+                            :show-indicator="true"
+                        />
+                        <p
+                            v-if="batchCopying && batchCopyProgressDetailText"
+                            class="sync-copy-progress-detail"
+                        >
+                            {{ batchCopyProgressDetailText }}
+                        </p>
                     </section>
                 </div>
+
+                <section class="sync-usage-guide" aria-label="使用说明">
+                    <h3 class="sync-usage-guide__title">使用说明</h3>
+                    <p class="sync-usage-guide__text">
+                        复制或移动时，若目标曲库内已有同名、同大小的文件（如「已移动」），将优先在同一曲库内移动对齐路径，而不是从另一侧曲库复制。
+                    </p>
+                </section>
             </aside>
 
             <section class="sync-main-pane">
-                <NSpin :show="loading || batchCopying" class="sync-main-spin">
+                <NSpin :show="loading" class="sync-main-spin">
                     <div
                         v-if="compareResult && compareResult.items.length === 0"
                         class="library-sync-empty"
@@ -792,10 +1116,11 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
                                 :expanded-keys="expandedKeySet"
                                 :selected-keys="selectedKeySet"
                                 :loading="loading"
-                                :batch-copying="batchCopying"
+                                :batch-copying="syncTreeBusy"
                                 :is-copying="isCopying"
                                 @toggle-expand="toggleExpand"
                                 @toggle-select="toggleSelect"
+                                @toggle-folder-select="toggleFolderSelect"
                                 @row-click="onFileRowClick"
                                 @copy-to-right="(item) => copyItem(item, 'toRight')"
                                 @copy-to-left="(item) => copyItem(item, 'toLeft')"
@@ -870,6 +1195,27 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
     gap: 14px;
 }
 
+.sync-usage-guide {
+    flex-shrink: 0;
+    padding: 12px 16px 14px;
+    border-top: 1px solid $border-sidebar;
+    background: $surface-sidebar;
+}
+
+.sync-usage-guide__title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.65;
+}
+
+.sync-usage-guide__text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    opacity: 0.5;
+}
+
 .sync-stats-panel {
     display: flex;
     flex-direction: column;
@@ -878,13 +1224,6 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
     border-radius: $radius-panel;
     border: 1px solid $border-subtle;
     background: $surface-panel;
-}
-
-.sync-stats-panel__title {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 600;
-    opacity: 0.7;
 }
 
 .sync-stats-compare {
@@ -1175,6 +1514,60 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
     font-size: 12px;
     text-align: center;
     opacity: 0.55;
+}
+
+.sync-copy-progress-detail {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: center;
+    opacity: 0.6;
+}
+
+.sync-result-bubble-wrap {
+    flex-shrink: 0;
+    padding: 12px 16px;
+}
+
+.sync-result-bubble {
+    padding: 10px 12px 11px;
+    border-radius: 14px;
+    border: 1px solid $border-subtle;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.sync-result-bubble--success {
+    background: rgba(34, 197, 94, 0.12);
+}
+
+.sync-result-bubble--warning {
+    background: rgba(234, 179, 8, 0.14);
+}
+
+.sync-result-bubble__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.sync-result-bubble__title {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sync-result-bubble__close {
+    flex-shrink: 0;
+    margin: -2px -4px -2px 0;
+}
+
+.sync-result-bubble__text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-line;
+    opacity: 0.88;
 }
 
 .sync-main-pane {

@@ -14,9 +14,11 @@ import {
 import {
   compareLibrarySync,
   copySyncFile,
+  deleteSyncFiles,
   moveSyncFile,
   type CompareLibrarySyncParams,
   type CopySyncFileParams,
+  type DeleteSyncFilesParams,
   type MoveSyncFileParams
 } from '../shared/librarySyncJob'
 import { isDecryptableExtension } from '../shared/musicFormats'
@@ -83,7 +85,8 @@ const IPC_CHANNELS = [
   'read-audio-meta',
   'compare-library-sync',
   'copy-sync-file',
-  'move-sync-file'
+  'move-sync-file',
+  'delete-sync-files'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -254,6 +257,10 @@ function registerIpcHandlers(): void {
     return toIpcPlain(moveSyncFile(toIpcPlain(params)))
   })
 
+  ipcMain.handle('delete-sync-files', async (_, params: DeleteSyncFilesParams) => {
+    return toIpcPlain(deleteSyncFiles(toIpcPlain(params)))
+  })
+
   ipcMain.handle('load-app-config', () => {
     return toIpcPlain({
       config: loadAppConfig(),
@@ -280,6 +287,7 @@ function registerIpcHandlers(): void {
 
 registerIpcHandlers()
 
+// 开发工具快捷键
 const DEVTOOLS_ACCELERATOR = 'CommandOrControl+Shift+I'
 
 /** Ctrl+Shift+I（macOS 为 Cmd+Shift+I）切换开发者工具 */

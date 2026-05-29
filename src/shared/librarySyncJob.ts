@@ -65,6 +65,22 @@ export interface MoveSyncFileResult {
     destPath: string
 }
 
+export interface DeleteSyncFileEntry {
+    leftRelativePath?: string
+    rightRelativePath?: string
+}
+
+export interface DeleteSyncFilesParams {
+    leftRoot: string
+    rightRoot: string
+    entries: DeleteSyncFileEntry[]
+}
+
+export interface DeleteSyncFilesResult {
+    deleted: number
+    errors: Array<{ path: string; message: string }>
+}
+
 function resolveRoot(root: string): string {
     const resolved = path.resolve(root.trim())
     if (!resolved) {
@@ -379,4 +395,61 @@ export function copySyncFile(params: CopySyncFileParams): CopySyncFileResult {
     fs.copyFileSync(sourcePath, destPath)
 
     return { ok: true, destPath }
+}
+
+function tryDeleteAudioWithSiblingLrc(
+    filePath: string,
+    errors: DeleteSyncFilesResult['errors']
+): boolean {
+    if (!fs.existsSync(filePath)) return false
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile()) {
+        errors.push({ path: filePath, message: '不是文件' })
+        return false
+    }
+
+    const lrcPath = findSiblingLrc(filePath)
+    fs.unlinkSync(filePath)
+    if (lrcPath && fs.existsSync(lrcPath)) {
+        try {
+            fs.unlinkSync(lrcPath)
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            errors.push({ path: lrcPath, message: `歌词删除失败: ${msg}` })
+        }
+    }
+    return true
+}
+
+/** 删除选中差异项在左右曲库中的音频（含同名歌词） */
+export function deleteSyncFiles(params: DeleteSyncFilesParams): DeleteSyncFilesResult {
+    const leftRoot = resolveRoot(params.leftRoot)
+    const rightRoot = resolveRoot(params.rightRoot)
+    const errors: DeleteSyncFilesResult['errors'] = []
+    let deleted = 0
+    const seen = new Set<string>()
+
+    function deleteUnderRoot(root: string, relativePath: string | undefined): void {
+        if (!relativePath?.trim()) return
+        const normalized = normalizeRelativePath(relativePath)
+        const fullPath = path.resolve(path.join(root, ...normalized.split('/')))
+        if (seen.has(fullPath)) return
+        seen.add(fullPath)
+        assertUnderRoot(root, fullPath)
+        try {
+            if (tryDeleteAudioWithSiblingLrc(fullPath, errors)) {
+                deleted += 1
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            errors.push({ path: fullPath, message: msg })
+        }
+    }
+
+    for (const entry of params.entries) {
+        deleteUnderRoot(leftRoot, entry.leftRelativePath)
+        deleteUnderRoot(rightRoot, entry.rightRelativePath)
+    }
+
+    return { deleted, errors }
 }

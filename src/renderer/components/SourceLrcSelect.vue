@@ -5,58 +5,56 @@ import type { AudioJobItem } from '@shared/lrcJob'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 
 const props = defineProps<{
-  row: AudioJobItem
-  lrcDirs: string[]
-  value: string | null
+    row: AudioJobItem
+    lrcDirs: string[]
+    value: string | null
 }>()
 
 const emit = defineEmits<{
-  pick: [lrcPath: string]
+    pick: [lrcPath: string]
 }>()
 
 const options = computed(() =>
-  (props.row.sourceLrcPaths ?? []).map((p) => ({
-    label: relativeToRoots(p, props.lrcDirs),
-    value: p
-  }))
+    (props.row.sourceLrcPaths ?? []).map((p) => ({
+        label: relativeToRoots(p, props.lrcDirs),
+        value: p
+    }))
 )
 
-/** 下拉选定后向父组件上报源歌词路径 */
 function onChange(v: string | null): void {
-  if (v) emit('pick', v)
+    if (v) emit('pick', v)
 }
 </script>
 
 <template>
-  <NSelect
-    class="source-lrc-select"
-    size="small"
-    placeholder="多个同名，请选择"
-    :options="options"
-    :value="value"
-    :consistent-menu-width="false"
-    to="body"
-    @update:value="onChange"
-  />
+    <span v-if="options.length === 0" class="source-lrc-select-empty">
+        无可选源歌词
+    </span>
+    <NSelect
+        v-else
+        class="source-lrc-select"
+        size="small"
+        placeholder="请选择"
+        :options="options"
+        :value="value"
+        :consistent-menu-width="false"
+        to="body"
+        @update:value="onChange"
+    />
 </template>
 
 <style lang="scss" scoped>
 @use '../styles/variables' as *;
 
+.source-lrc-select-empty {
+    font-size: 12px;
+    line-height: 1.4;
+    opacity: 0.65;
+}
+
 .source-lrc-select {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-
-  :deep(.n-base-selection) {
-    min-width: 0;
-  }
-
-  :deep(.n-base-selection-label),
-  :deep(.n-base-selection-placeholder) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+    width: 100%;
+    min-width: 120px;
+    max-width: 100%;
 }
 </style>
