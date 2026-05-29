@@ -423,6 +423,5 @@ function plainTableRowProps(row: PlainMp3Item) {
 
 .path-cell {
   font-family: $font-mono;
-  font-size: 12px;
 }
 </style>

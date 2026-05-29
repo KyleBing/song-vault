@@ -119,7 +119,7 @@ const pickRevision = ref(0)
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 /** 结果表格最大高度（随窗口高度变化） */
-const maxHeightForTable = computed(() => insets.value.windowHeight - 160)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 150)
 
 /** 列表容器底栏：随当前 Tab / 子 Tab 显示选中项路径 */
 const listSelectionPath = computed(() => {
@@ -339,7 +339,7 @@ function renderSourcePickCell(row: AudioJobItem) {
     if (!paths.length) {
         return h(
             'span',
-            { class: 'source-pick-empty' },
+            { class: 'source-pick-empty path-cell' },
             row.message ?? '无可选源歌词'
         )
     }
@@ -470,6 +470,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             title: '选择源歌词',
             key: 'sourcePick',
             width: 220,
+            ellipsis: { tooltip: true },
             render(row) {
                 return renderSourcePickCell(row)
             }
@@ -1039,6 +1040,11 @@ function orphanAudioRowKey(row: { key: string }): string {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+
+    :deep(.n-data-table-td[data-col-key='sourcePick']) {
+        overflow: hidden;
+        max-width: 0;
+    }
 }
 
 .orphan-sub-tabs {
@@ -1080,7 +1086,6 @@ function orphanAudioRowKey(row: { key: string }): string {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: $font-mono;
-    font-size: 12px;
 }
 
 .orphan-file-cell {
@@ -1092,12 +1097,12 @@ function orphanAudioRowKey(row: { key: string }): string {
 
     &__original {
         min-width: 0;
-        font-size: 11px;
+        font-size: max(10px, calc(var(--app-data-table-font-size, 12px) - 1px));
         opacity: 0.55;
         line-height: 1.35;
 
         :deep(.path-cell) {
-            font-size: 11px;
+            font-size: inherit;
         }
     }
 }
@@ -1107,12 +1112,10 @@ function orphanAudioRowKey(row: { key: string }): string {
     align-items: center;
     max-width: 100%;
     min-width: 0;
+    overflow: hidden;
 }
 
 .source-pick-empty {
-    display: inline-block;
-    font-size: 12px;
-    line-height: 1.4;
     opacity: 0.65;
 }
 

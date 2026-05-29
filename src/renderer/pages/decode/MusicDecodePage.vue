@@ -1248,7 +1248,6 @@ onMounted(() => {
 
 .path-cell {
   font-family: $font-mono;
-  font-size: 12px;
 }
 
 .queue-section :deep(.n-data-table-td) {

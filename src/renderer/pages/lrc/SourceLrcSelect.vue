@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { NSelect } from 'naive-ui'
-import { computed } from 'vue'
+import { NEllipsis, NSelect } from 'naive-ui'
+import { computed, h } from 'vue'
 import type { AudioJobItem } from '@shared/lrcJob'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 
@@ -21,6 +21,14 @@ const options = computed(() =>
     }))
 )
 
+function renderLabel(option: { label: string; value: string }) {
+    return h(
+        NEllipsis,
+        { tooltip: { placement: 'top' } },
+        { default: () => option.label }
+    )
+}
+
 function onChange(v: string | null): void {
     if (v) emit('pick', v)
 }
@@ -37,6 +45,7 @@ function onChange(v: string | null): void {
         placeholder="请选择"
         :options="options"
         :value="value"
+        :render-label="renderLabel"
         :consistent-menu-width="false"
         to="body"
         @update:value="onChange"
@@ -47,14 +56,32 @@ function onChange(v: string | null): void {
 @use '../../styles/variables' as *;
 
 .source-lrc-select-empty {
-    font-size: 12px;
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--app-data-table-font-size, 12px);
     line-height: 1.4;
     opacity: 0.65;
 }
 
 .source-lrc-select {
     width: 100%;
-    min-width: 120px;
+    min-width: 0;
     max-width: 100%;
+
+    :deep(.n-base-selection) {
+        min-width: 0;
+    }
+
+    :deep(.n-base-selection-label) {
+        overflow: hidden;
+    }
+
+    :deep(.n-base-selection-label .n-ellipsis) {
+        display: block;
+        min-width: 0;
+    }
 }
 </style>

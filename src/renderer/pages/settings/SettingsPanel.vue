@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   NIcon,
+  NInputNumber,
   NRadio,
   NRadioGroup,
   NTabPane,
@@ -17,8 +18,12 @@ import {
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { onMounted, ref, watch } from 'vue'
-import type { AppAppearance, PathFilterRule } from '@shared/appConfig'
+import type { AppAppearance, DataTableDisplaySettings, PathFilterRule } from '@shared/appConfig'
 import { APP_CONFIG_FILE_NAME } from '@shared/appConfig'
+import {
+  DATA_TABLE_FONT_SIZE_MAX,
+  DATA_TABLE_FONT_SIZE_MIN
+} from '@shared/dataTableDisplay'
 import { useThemeStore } from '@renderer/stores/theme'
 import FolderPanel from './FolderPanel.vue'
 import type { FileListColumnsSettings } from '@shared/appConfig'
@@ -62,6 +67,10 @@ const syncRightAlias = defineModel<string>('syncRightAlias', {
 })
 
 const fileListColumns = defineModel<FileListColumnsSettings>('fileListColumns', {
+  required: true
+})
+
+const dataTableDisplay = defineModel<DataTableDisplaySettings>('dataTableDisplay', {
   required: true
 })
 
@@ -177,6 +186,24 @@ async function revealConfigFile(): Promise<void> {
 
           <div class="settings-pane">
             <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">表格字体</h3>
+                <p class="settings-group-desc settings-group-desc--block">
+                  文件列表、歌词匹配、解码结果等页面的表格字号（{{ DATA_TABLE_FONT_SIZE_MIN }}–{{ DATA_TABLE_FONT_SIZE_MAX }} px，行高随字号自动调整）
+                </p>
+                <div class="settings-group-panel settings-group-panel--inline">
+                  <NInputNumber
+                    v-model:value="dataTableDisplay.fontSizePx"
+                    :min="DATA_TABLE_FONT_SIZE_MIN"
+                    :max="DATA_TABLE_FONT_SIZE_MAX"
+                    :step="1"
+                    size="small"
+                    class="data-table-font-input"
+                  />
+                  <span class="settings-inline-unit">px</span>
+                </div>
+              </section>
+
               <section class="settings-group">
                 <h3 class="settings-group-title">文件列表列</h3>
                 <p class="settings-group-desc settings-group-desc--block">
@@ -496,6 +523,22 @@ $settings-content-max: 720px;
     padding: 12px 14px 14px;
     min-height: 0;
   }
+
+  &--inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: fit-content;
+  }
+}
+
+.data-table-font-input {
+  width: 120px;
+}
+
+.settings-inline-unit {
+  font-size: 13px;
+  opacity: 0.75;
 }
 
 .settings-columns-row {

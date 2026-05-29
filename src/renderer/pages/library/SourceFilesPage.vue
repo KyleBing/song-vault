@@ -60,7 +60,7 @@ const props = defineProps<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 160)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 150)
 
 /** 元数据面板：多选时展示第一个选中文件 */
 const metaPanelFilePath = computed(() => selectedFileKeys.value[0] ?? null)
@@ -999,14 +999,12 @@ onMounted(() => {
 
 .path-cell {
   font-family: $font-mono;
-  font-size: 12px;
 }
 
 .size-cell,
 .metric-cell,
 .time-cell {
   font-family: $font-mono;
-  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 

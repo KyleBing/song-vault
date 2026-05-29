@@ -25,10 +25,16 @@ import {
   APP_CONFIG_VERSION,
   createDefaultAppConfig,
   type AppConfig,
+  type DataTableDisplaySettings,
   type FileListColumnsSettings,
   type PathFilterRule
 } from '@shared/appConfig'
 import { normalizeFileListColumns } from '@shared/fileListColumns'
+import {
+  dataTableCssVars,
+  normalizeDataTableDisplay
+} from '@shared/dataTableDisplay'
+import { provideDataTableDisplay } from '@renderer/composables/useDataTableDisplay'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import type { AppNavigateTarget } from '@shared/appNavigate'
 import type { JobResult } from '@shared/lrcJob'
@@ -100,6 +106,12 @@ const pathFilterRules = ref<PathFilterRule[]>([])
 const fileListColumns = ref<FileListColumnsSettings>(
   createDefaultAppConfig().fileListColumns
 )
+const dataTableDisplay = ref<DataTableDisplaySettings>(
+  createDefaultAppConfig().dataTableDisplay
+)
+const dataTableCssStyle = computed(() => dataTableCssVars(dataTableDisplay.value))
+
+provideDataTableDisplay(dataTableDisplay)
 /** 已完成启动配置加载，避免恢复时触发多余写入 */
 const configHydrated = ref(false)
 const loading = ref(false)
@@ -191,7 +203,8 @@ function buildAppConfig(): AppConfig {
     fileListColumns: {
       source: [...columns.source],
       decode: [...columns.decode]
-    }
+    },
+    dataTableDisplay: { ...toRaw(dataTableDisplay.value) }
   }
 }
 
@@ -224,6 +237,7 @@ onMounted(async () => {
     syncRightAlias.value = config.syncRightAlias
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
+    dataTableDisplay.value = normalizeDataTableDisplay(config.dataTableDisplay)
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -248,6 +262,7 @@ watch(
     syncRightAlias,
     pathFilterRules,
     fileListColumns,
+    dataTableDisplay,
     appearance
   ],
   () => void persistFolderConfig(),
@@ -262,7 +277,7 @@ watch(
   >
     <NMessageProvider>
       <AudioCoverLightbox />
-      <div class="app-shell">
+      <div class="app-shell" :style="dataTableCssStyle">
         <AppTopNav
           :active-view="activeView"
           @navigate="handleAppNavigate"
@@ -279,6 +294,7 @@ watch(
           v-model:sync-right-dir="syncRightDir"
           v-model:sync-right-alias="syncRightAlias"
           v-model:file-list-columns="fileListColumns"
+          v-model:data-table-display="dataTableDisplay"
           :initial-tab="settingsInitialTab"
           class="settings-layer"
         />

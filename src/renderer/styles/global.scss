@@ -106,6 +106,15 @@ body,
   width: 100%;
 }
 
+/** 表格路径、数值等等宽单元格字号（由设置 → 显示 → 表格字体控制） */
+.path-cell,
+.table-mono-cell,
+.size-cell,
+.metric-cell,
+.time-cell {
+  font-size: var(--app-data-table-font-size, 12px);
+}
+
 .n-data-table-th[data-col-key='status'],
 .n-data-table-td[data-col-key='status'],
 .n-data-table-th[data-col-key='hasLrc'],

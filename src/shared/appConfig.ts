@@ -1,4 +1,9 @@
 import {
+  createDefaultDataTableDisplay,
+  normalizeDataTableDisplay,
+  type DataTableDisplaySettings
+} from './dataTableDisplay'
+import {
   createDefaultFileListColumns,
   normalizeFileListColumns,
   type FileListColumnsSettings
@@ -10,6 +15,7 @@ import {
 } from './pathFilters'
 
 export type { FileListColumnsSettings, FileListColumnId, FileListKind } from './fileListColumns'
+export type { DataTableDisplaySettings } from './dataTableDisplay'
 
 export type { PathFilterRule }
 
@@ -53,6 +59,8 @@ export interface AppConfig {
   pathFilterRules: PathFilterRule[]
   /** 各文件列表页表格可见列（顺序即展示顺序） */
   fileListColumns: FileListColumnsSettings
+  /** 表格字号、行高等显示参数 */
+  dataTableDisplay: DataTableDisplaySettings
 }
 
 export function createDefaultAppConfig(): AppConfig {
@@ -68,7 +76,8 @@ export function createDefaultAppConfig(): AppConfig {
     syncRightAlias: '',
     appearance: 'light',
     pathFilterRules: createDefaultPathFilterRules(),
-    fileListColumns: createDefaultFileListColumns()
+    fileListColumns: createDefaultFileListColumns(),
+    dataTableDisplay: createDefaultDataTableDisplay()
   }
 }
 
@@ -110,6 +119,7 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
       ? obj.appearance
       : createDefaultAppConfig().appearance,
     pathFilterRules: normalizePathFilterRules(obj.pathFilterRules),
-    fileListColumns: normalizeFileListColumns(obj.fileListColumns)
+    fileListColumns: normalizeFileListColumns(obj.fileListColumns),
+    dataTableDisplay: normalizeDataTableDisplay(obj.dataTableDisplay)
   }
 }
