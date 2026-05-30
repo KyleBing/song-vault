@@ -1,5 +1,5 @@
 /**
- * 双曲库目录对比与单向复制（按相对路径同步到另一侧同名位置）。
+ * 双乐库目录对比与单向复制（按相对路径同步到另一侧同名位置）。
  */
 
 import fs from 'fs'
@@ -354,7 +354,7 @@ function safeRenameFile(src: string, dest: string): void {
 }
 
 /**
- * 在同一曲库根目录内移动文件（含同名歌词），用于「已移动」差异对齐路径。
+ * 在同一乐库根目录内移动文件（含同名歌词），用于「已移动」差异对齐路径。
  */
 export function moveSyncFile(params: MoveSyncFileParams): MoveSyncFileResult {
     const root = resolveRoot(params.root)
@@ -451,7 +451,7 @@ function tryDeleteAudioWithSiblingLrc(
     return true
 }
 
-/** 删除选中差异项在左右曲库中的音频（含同名歌词） */
+/** 删除选中差异项在左右乐库中的音频（含同名歌词） */
 export function deleteSyncFiles(params: DeleteSyncFilesParams): DeleteSyncFilesResult {
     const leftRoot = resolveRoot(params.leftRoot)
     const rightRoot = resolveRoot(params.rightRoot)

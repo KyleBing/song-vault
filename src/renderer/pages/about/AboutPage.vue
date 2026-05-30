@@ -7,9 +7,10 @@ import {
   APP_VERSION
 } from '@shared/appInfo'
 import { CHANGELOG_RELEASES } from '@shared/changelog'
+import AcknowledgmentsPage from './AcknowledgmentsPage.vue'
 import DecryptHelpPage from './DecryptHelpPage.vue'
 
-type AboutTab = 'changelog' | 'decrypt'
+type AboutTab = 'changelog' | 'decrypt' | 'acknowledgments'
 
 const activeTab = ref<AboutTab>('changelog')
 
@@ -128,6 +129,10 @@ const latestVersion = computed(() => CHANGELOG_RELEASES[0]?.version ?? APP_VERSI
 
           <NTabPane name="decrypt" tab="解密说明">
             <DecryptHelpPage class="about-decrypt-pane" />
+          </NTabPane>
+
+          <NTabPane name="acknowledgments" tab="开源致谢">
+            <AcknowledgmentsPage class="about-decrypt-pane" />
           </NTabPane>
         </NTabs>
       </section>

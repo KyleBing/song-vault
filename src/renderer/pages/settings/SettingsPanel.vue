@@ -244,7 +244,7 @@ async function revealConfigFile(): Promise<void> {
             <div class="settings-pane-body settings-pane-body--paths">
               <div class="settings-paths-row">
                 <section class="settings-group settings-path-column">
-                  <h3 class="settings-group-title">音频搜索目标</h3>
+                  <h3 class="settings-group-title">你的乐库目录</h3>
                   <p class="settings-group-desc">
                     递归子目录；扫描时会跳过 LRC 源目录
                   </p>
@@ -258,7 +258,7 @@ async function revealConfigFile(): Promise<void> {
 
                 <section class="settings-group settings-path-column">
                   <h3 class="settings-group-title">LRC 源文件夹</h3>
-                  <p class="settings-group-desc">递归扫描 .lrc 歌词文件</p>
+                  <p class="settings-group-desc">递归扫描 .lrc 歌词文件，一般是音乐软件的下载目录。</p>
                   <FolderPanel
                     v-model="lrcDirs"
                     class="settings-folder-panel"
@@ -295,25 +295,25 @@ async function revealConfigFile(): Promise<void> {
           <div class="settings-pane">
             <div class="settings-pane-body">
               <section class="settings-group">
-                <h3 class="settings-group-title">曲库同步目录</h3>
+                <h3 class="settings-group-title">乐库同步目录</h3>
                 <p class="settings-group-desc settings-group-desc--block">
-                  指定需要对比与同步的两个曲库根目录，例如本机文件夹与存储卡中的曲库
+                  指定需要对比与同步的两个乐库根目录，例如本机文件夹与存储卡中的乐库
                 </p>
                 <div class="settings-sync-row">
                   <div class="settings-group-panel settings-sync-column">
                     <SyncFolderField
                       v-model="syncLeftDir"
                       v-model:alias="syncLeftAlias"
-                      alias-placeholder="例如：本机曲库"
-                      path-placeholder="选择左侧曲库目录"
+                      alias-placeholder="例如：本机乐库"
+                      path-placeholder="选择左侧乐库目录"
                     />
                   </div>
                   <div class="settings-group-panel settings-sync-column">
                     <SyncFolderField
                       v-model="syncRightDir"
                       v-model:alias="syncRightAlias"
-                      alias-placeholder="例如：存储卡曲库"
-                      path-placeholder="选择右侧曲库目录"
+                      alias-placeholder="例如：存储卡乐库"
+                      path-placeholder="选择右侧乐库目录"
                     />
                   </div>
                 </div>
@@ -680,7 +680,7 @@ $settings-content-max: 720px;
   display: block;
   font-size: 10px;
   line-height: 1.2;
-  opacity: 0.5;
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -693,11 +693,12 @@ $settings-content-max: 720px;
   background: none;
   font: inherit;
   font-size: inherit;
-  color: $color-primary;
+  color: $color-text;
   text-decoration: none;
   cursor: pointer;
 
   &:hover {
+    color: $color-primary;
     text-decoration: underline;
     text-underline-offset: 1px;
     opacity: 0.85;

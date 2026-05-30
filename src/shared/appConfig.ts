@@ -45,13 +45,13 @@ export interface AppConfig {
   decodeSourceDirs: string[]
   /** 音乐解密输出目录 */
   decodeOutputDir: string
-  /** 曲库同步：左侧目录（如本机曲库） */
+  /** 乐库同步：左侧目录（如本机乐库） */
   syncLeftDir: string
-  /** 曲库同步：左侧目录别名 */
+  /** 乐库同步：左侧目录别名 */
   syncLeftAlias: string
-  /** 曲库同步：右侧目录（如存储卡曲库） */
+  /** 乐库同步：右侧目录（如存储卡乐库） */
   syncRightDir: string
-  /** 曲库同步：右侧目录别名 */
+  /** 乐库同步：右侧目录别名 */
   syncRightAlias: string
   /** 界面外观：深色 / 浅色 */
   appearance: AppAppearance

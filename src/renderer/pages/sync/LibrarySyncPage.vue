@@ -627,7 +627,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
 <template>
     <div class="library-sync-page">
         <section v-if="!canCompare" class="library-sync-hint">
-            <p>请先在「设置 → 同步设置」中指定左右两个曲库目录。</p>
+            <p>请先在「设置 → 同步设置」中指定左右两个乐库目录。</p>
             <NButton size="small" @click="emit('openSettings')">打开同步设置</NButton>
         </section>
 
@@ -635,14 +635,14 @@ async function deleteSelectedSyncFiles(): Promise<void> {
             v-else-if="validatingDirs && !syncDirsValidation"
             class="library-sync-hint"
         >
-            <p>正在检查曲库目录…</p>
+            <p>正在检查乐库目录…</p>
         </section>
 
         <section
             v-else-if="!syncDirsReady"
             class="library-sync-hint library-sync-hint--warning"
         >
-            <p>以下曲库目录无法访问，请检查路径或在设置中重新指定：</p>
+            <p>以下乐库目录无法访问，请检查路径或在设置中重新指定：</p>
             <ul class="library-sync-hint__issues">
                 <li v-for="issue in syncDirIssues" :key="issue.label">
                     <strong>{{ issue.label }}</strong>：{{ issue.message }}
@@ -1137,7 +1137,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                                 </NButton>
                             </template>
                             确定删除选中的 {{ selectedItems.length }} 项？
-                            将删除左右曲库中对应的音频与同名歌词，不可恢复。
+                            将删除左右乐库中对应的音频与同名歌词，不可恢复。
                         </NPopconfirm>
 
 
@@ -1159,7 +1159,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                 <section class="sync-usage-guide" aria-label="使用说明">
                     <h3 class="sync-usage-guide__title">使用说明</h3>
                     <p class="sync-usage-guide__text">
-                        复制或移动时，若目标曲库内已有同名、同大小的文件（如「已移动」），将优先在同一曲库内移动对齐路径，而不是从另一侧曲库复制。
+                        复制或移动时，若目标乐库内已有同名、同大小的文件（如「已移动」），将优先在同一乐库内移动对齐路径，而不是从另一侧乐库复制。
                     </p>
                 </section>
             </aside>

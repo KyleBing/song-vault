@@ -47,11 +47,11 @@ function fileLine(entry: SyncFileEntry, showPath: boolean): string {
 }
 
 function moveToRightTitle(): string {
-    return '在右侧曲库内移动到左侧路径'
+    return '在右侧乐库内移动到左侧路径'
 }
 
 function moveToLeftTitle(): string {
-    return '在左侧曲库内移动到右侧路径'
+    return '在左侧乐库内移动到右侧路径'
 }
 </script>
 

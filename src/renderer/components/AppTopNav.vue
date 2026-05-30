@@ -13,8 +13,8 @@ const emit = defineEmits<{
 const navItems: { id: AppNavigateTarget; label: string }[] = [
   { id: 'lrc', label: 'LRC 歌词归位' },
   { id: 'decode', label: '音乐解码' },
-  { id: 'library', label: '音频库' },
-  { id: 'sync', label: '曲库同步' },
+  { id: 'library', label: '乐库管理' },
+  { id: 'sync', label: '乐库同步' },
   { id: 'settings', label: '设置' },
   { id: 'about', label: '关于' }
 ]

@@ -26,7 +26,7 @@ function clearPath(): void {
             <span class="sync-folder-field__label">别名</span>
             <NInput
                 v-model:value="alias"
-                :placeholder="aliasPlaceholder ?? '例如：本机曲库'"
+                :placeholder="aliasPlaceholder ?? '例如：本机乐库'"
                 size="small"
             />
         </label>
