@@ -23,6 +23,12 @@ import {
   type DeleteSyncFilesParams,
   type MoveSyncFileParams
 } from '../shared/librarySyncJob'
+import {
+  deleteDuplicateFiles,
+  scanLibraryDuplicates,
+  type DeleteDuplicateFilesParams,
+  type ScanLibraryDuplicatesParams
+} from '../shared/libraryDuplicateJob'
 import { isDecryptableExtension } from '../shared/musicFormats'
 import {
   readMusicFile,
@@ -90,7 +96,9 @@ const IPC_CHANNELS = [
   'compare-library-sync',
   'copy-sync-file',
   'move-sync-file',
-  'delete-sync-files'
+  'delete-sync-files',
+  'scan-library-duplicates',
+  'delete-duplicate-files'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -283,6 +291,49 @@ function registerIpcHandlers(): void {
   ipcMain.handle('delete-sync-files', async (_, params: DeleteSyncFilesParams) => {
     return toIpcPlain(deleteSyncFiles(toIpcPlain(params)))
   })
+
+  ipcMain.handle(
+    'scan-library-duplicates',
+    async (_, params: unknown) => {
+      const plain = toIpcPlain(params)
+      const root =
+        plain &&
+        typeof plain === 'object' &&
+        'root' in plain &&
+        typeof (plain as ScanLibraryDuplicatesParams).root === 'string'
+          ? (plain as ScanLibraryDuplicatesParams).root
+          : ''
+      return toIpcPlain(
+        scanLibraryDuplicates({
+          root,
+          pathFilterRules:
+            plain &&
+            typeof plain === 'object' &&
+            'pathFilterRules' in plain &&
+            Array.isArray((plain as ScanLibraryDuplicatesParams).pathFilterRules)
+              ? (plain as ScanLibraryDuplicatesParams).pathFilterRules
+              : []
+        })
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'delete-duplicate-files',
+    async (_, params: unknown) => {
+      const plain = toIpcPlain(params) as DeleteDuplicateFilesParams | undefined
+      return toIpcPlain(
+        deleteDuplicateFiles({
+          root: typeof plain?.root === 'string' ? plain.root : '',
+          relativePaths: Array.isArray(plain?.relativePaths)
+            ? plain.relativePaths.filter(
+                (item): item is string => typeof item === 'string'
+              )
+            : []
+        })
+      )
+    }
+  )
 
   ipcMain.handle('load-app-config', () => {
     return toIpcPlain({

@@ -43,6 +43,12 @@ import type {
   MoveSyncFileResult,
   ValidateSyncRootsResult
 } from '../shared/librarySyncJob'
+import type {
+  DeleteDuplicateFilesParams,
+  DeleteDuplicateFilesResult,
+  ScanLibraryDuplicatesParams,
+  ScanLibraryDuplicatesResult
+} from '../shared/libraryDuplicateTypes'
 import { toIpcPlain } from '../shared/serialize'
 import {
   APP_NAVIGATE_CHANNEL,
@@ -269,6 +275,32 @@ const api = {
     const result = await ipcRenderer.invoke(
       'delete-sync-files',
       toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  scanLibraryDuplicates: async (
+    params: ScanLibraryDuplicatesParams
+  ): Promise<ScanLibraryDuplicatesResult> => {
+    const result = await ipcRenderer.invoke(
+      'scan-library-duplicates',
+      toIpcPlain({
+        root: params.root ?? '',
+        pathFilterRules: params.pathFilterRules ?? []
+      })
+    )
+    return toIpcPlain(result)
+  },
+
+  deleteDuplicateFiles: async (
+    params: DeleteDuplicateFilesParams
+  ): Promise<DeleteDuplicateFilesResult> => {
+    const result = await ipcRenderer.invoke(
+      'delete-duplicate-files',
+      toIpcPlain({
+        root: params.root ?? '',
+        relativePaths: params.relativePaths ?? []
+      })
     )
     return toIpcPlain(result)
   },

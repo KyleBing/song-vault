@@ -15,6 +15,7 @@ const navItems: { id: AppNavigateTarget; label: string }[] = [
   { id: 'decode', label: '音乐解码' },
   { id: 'library', label: '乐库管理' },
   { id: 'sync', label: '乐库同步' },
+  { id: 'duplicates', label: '重复清理' },
   { id: 'settings', label: '设置' },
   { id: 'about', label: '关于' }
 ]

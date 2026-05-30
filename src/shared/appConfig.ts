@@ -53,6 +53,8 @@ export interface AppConfig {
   syncRightDir: string
   /** 乐库同步：右侧目录别名 */
   syncRightAlias: string
+  /** 重复清理：扫描源目录 */
+  duplicateScanDir: string
   /** 界面外观：深色 / 浅色 */
   appearance: AppAppearance
   /** 扫描与浏览时跳过的文件/文件夹名称规则 */
@@ -74,6 +76,7 @@ export function createDefaultAppConfig(): AppConfig {
     syncLeftAlias: '',
     syncRightDir: '',
     syncRightAlias: '',
+    duplicateScanDir: '',
     appearance: 'light',
     pathFilterRules: createDefaultPathFilterRules(),
     fileListColumns: createDefaultFileListColumns(),
@@ -115,6 +118,7 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
     syncLeftAlias: optionalTrimmedString(obj.syncLeftAlias),
     syncRightDir: optionalTrimmedString(obj.syncRightDir),
     syncRightAlias: optionalTrimmedString(obj.syncRightAlias),
+    duplicateScanDir: optionalTrimmedString(obj.duplicateScanDir),
     appearance: isAppAppearance(obj.appearance)
       ? obj.appearance
       : createDefaultAppConfig().appearance,

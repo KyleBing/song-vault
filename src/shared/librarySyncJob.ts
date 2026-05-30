@@ -100,8 +100,8 @@ export interface ValidateSyncRootsResult {
     right: SyncRootCheck
 }
 
-function checkSyncRoot(root: string): SyncRootCheck {
-    const trimmed = root.trim()
+function checkSyncRoot(root: string | undefined | null): SyncRootCheck {
+    const trimmed = (root ?? '').trim()
     if (!trimmed) {
         return { path: '', ok: false, error: '未指定目录' }
     }
@@ -130,7 +130,8 @@ function toRelativeKey(root: string, fullPath: string): string {
     return path.relative(root, fullPath).split(path.sep).join('/')
 }
 
-function walkFiles(
+/** 递归扫描乐库根目录下的明文音频文件 */
+export function walkLibraryAudioFiles(
     root: string,
     pathFilterRules: PathFilterRule[]
 ): Map<string, SyncFileEntry> {
@@ -246,8 +247,8 @@ export function compareLibrarySync(
     const rightRoot = resolveRoot(params.rightRoot)
     const pathFilterRules = params.pathFilterRules ?? []
 
-    const leftMap = walkFiles(leftRoot, pathFilterRules)
-    const rightMap = walkFiles(rightRoot, pathFilterRules)
+    const leftMap = walkLibraryAudioFiles(leftRoot, pathFilterRules)
+    const rightMap = walkLibraryAudioFiles(rightRoot, pathFilterRules)
 
     const allPaths = new Set<string>([
         ...leftMap.keys(),

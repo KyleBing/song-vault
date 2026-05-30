@@ -4,6 +4,7 @@ export type AppNavigateTarget =
   | 'decode'
   | 'library'
   | 'sync'
+  | 'duplicates'
   | 'settings'
   | 'about'
 

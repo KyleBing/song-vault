@@ -21,6 +21,7 @@ import SettingsPanel from '@renderer/pages/settings/SettingsPanel.vue'
 import MusicDecodePage from '@renderer/pages/decode/MusicDecodePage.vue'
 import SourceFilesPage from '@renderer/pages/library/SourceFilesPage.vue'
 import LibrarySyncPage from '@renderer/pages/sync/LibrarySyncPage.vue'
+import LibraryDuplicatesPage from '@renderer/pages/duplicates/LibraryDuplicatesPage.vue'
 import {
   APP_CONFIG_VERSION,
   createDefaultAppConfig,
@@ -102,6 +103,7 @@ const syncLeftDir = ref('')
 const syncLeftAlias = ref('')
 const syncRightDir = ref('')
 const syncRightAlias = ref('')
+const duplicateScanDir = ref('')
 const pathFilterRules = ref<PathFilterRule[]>([])
 const fileListColumns = ref<FileListColumnsSettings>(
   createDefaultAppConfig().fileListColumns
@@ -198,6 +200,7 @@ function buildAppConfig(): AppConfig {
     syncLeftAlias: (syncLeftAlias.value ?? '').trim(),
     syncRightDir: syncRightDir.value.trim(),
     syncRightAlias: (syncRightAlias.value ?? '').trim(),
+    duplicateScanDir: duplicateScanDir.value.trim(),
     appearance: appearance.value,
     pathFilterRules: pathFilterRulesForSave(toRaw(pathFilterRules.value)),
     fileListColumns: {
@@ -235,6 +238,7 @@ onMounted(async () => {
     syncLeftAlias.value = config.syncLeftAlias
     syncRightDir.value = config.syncRightDir
     syncRightAlias.value = config.syncRightAlias
+    duplicateScanDir.value = config.duplicateScanDir
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
     dataTableDisplay.value = normalizeDataTableDisplay(config.dataTableDisplay)
@@ -260,6 +264,7 @@ watch(
     syncLeftAlias,
     syncRightDir,
     syncRightAlias,
+    duplicateScanDir,
     pathFilterRules,
     fileListColumns,
     dataTableDisplay,
@@ -307,6 +312,17 @@ watch(
           :path-filter-rules="pathFilterRules"
           class="settings-layer"
           @open-settings="openSyncSettings"
+        />
+        <LibraryDuplicatesPage
+          v-else-if="activeView === 'duplicates'"
+          v-model:duplicate-scan-dir="duplicateScanDir"
+          :search-roots="searchRoots"
+          :sync-left-dir="syncLeftDir"
+          :sync-left-alias="syncLeftAlias"
+          :sync-right-dir="syncRightDir"
+          :sync-right-alias="syncRightAlias"
+          :path-filter-rules="pathFilterRules"
+          class="settings-layer"
         />
         <SourceFilesPage
           v-else-if="activeView === 'library'"
