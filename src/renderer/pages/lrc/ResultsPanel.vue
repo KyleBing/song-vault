@@ -2,6 +2,7 @@
 import {
     NButton,
     NCard,
+    NEllipsis,
     NPopconfirm,
     NTabs,
     NTabPane,
@@ -10,7 +11,7 @@ import {
     type DataTableColumns
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { computed, h, ref, watch, type Ref } from 'vue'
+import { computed, h, ref, watch, type Ref, type VNode } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import type {
     AudioJobItem,
@@ -333,19 +334,29 @@ function shortLrcSource(p: string): string {
   return relativeToRoots(p, props.lrcDirs)
 }
 
+/** 非下拉态：单行省略，悬停显示完整路径 */
+function sourcePickTextCell(text: string): VNode {
+    return h('div', { class: 'source-pick-text' }, [
+        h(
+            NEllipsis,
+            {
+                class: 'path-cell',
+                tooltip: { placement: 'top' }
+            },
+            { default: () => text }
+        )
+    ])
+}
+
 /** 「选择源歌词」列：无候选、单候选、多候选下拉 */
 function renderSourcePickCell(row: AudioJobItem) {
     const paths = row.sourceLrcPaths ?? []
     if (!paths.length) {
-        return h(
-            'span',
-            { class: 'source-pick-empty path-cell' },
-            row.message ?? '无可选源歌词'
-        )
+        return sourcePickTextCell(row.message ?? '无可选源歌词')
     }
 
     if (paths.length === 1) {
-        return pathCell(paths[0], shortLrcSource(paths[0]))
+        return sourcePickTextCell(shortLrcSource(paths[0]))
     }
 
     const resolved = resolveSourcePath(row)
@@ -354,7 +365,7 @@ function renderSourcePickCell(row: AudioJobItem) {
         : undefined
 
     if (resolved && !selectedPath) {
-        return pathCell(resolved, shortLrcSource(resolved))
+        return sourcePickTextCell(shortLrcSource(resolved))
     }
 
     return h('div', { class: 'source-pick-cell' }, [
@@ -470,7 +481,6 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             title: '选择源歌词',
             key: 'sourcePick',
             width: 220,
-            ellipsis: { tooltip: true },
             render(row) {
                 return renderSourcePickCell(row)
             }
@@ -1044,6 +1054,21 @@ function orphanAudioRowKey(row: { key: string }): string {
     :deep(.n-data-table-td[data-col-key='sourcePick']) {
         overflow: hidden;
         max-width: 0;
+
+        .source-pick-text {
+            min-width: 0;
+            overflow: hidden;
+
+            .n-ellipsis {
+                display: block;
+                min-width: 0;
+            }
+        }
+
+        .source-pick-cell {
+            width: 100%;
+            min-width: 0;
+        }
     }
 }
 
@@ -1110,13 +1135,14 @@ function orphanAudioRowKey(row: { key: string }): string {
 .source-pick-cell {
     display: flex;
     align-items: center;
-    max-width: 100%;
     min-width: 0;
     overflow: hidden;
 }
 
-.source-pick-empty {
-    opacity: 0.65;
+.source-pick-text {
+    :deep(.path-cell) {
+        display: block;
+    }
 }
 
 .tab-empty-hint {
