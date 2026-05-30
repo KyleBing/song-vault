@@ -45,8 +45,8 @@
   },
   "build": {
     "appId": "com.songvault.desktop",
-    "productName": "乐库管理 SongVault",
-    "copyright": "Copyright © 乐库管理 SongVault",
+    "productName": "乐库管理",
+    "copyright": "Copyright © 乐库管理",
     "icon": "build/icon.png",
     "electronDist": "node_modules/electron/dist",
     "directories": {

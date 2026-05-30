@@ -54,7 +54,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       {
         title: '变更',
         items: [
-          '应用更名为「乐库管理 SongVault」（包名 song-vault）',
+          '应用更名为「乐库管理」（包名 song-vault）',
           '各工作台页面组件归类至 pages/ 子目录',
           '音乐解码：默认按「库中已有」排序（未入库靠前）；解码列表不再默认展示创建时间'
         ]
