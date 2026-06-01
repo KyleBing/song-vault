@@ -63,6 +63,8 @@ export interface AppConfig {
   fileListColumns: FileListColumnsSettings
   /** 表格字号、行高等显示参数 */
   dataTableDisplay: DataTableDisplaySettings
+  /** 已解锁高级功能（音乐解码等），持久保存 */
+  advancedUnlocked: boolean
 }
 
 export function createDefaultAppConfig(): AppConfig {
@@ -80,7 +82,8 @@ export function createDefaultAppConfig(): AppConfig {
     appearance: 'light',
     pathFilterRules: createDefaultPathFilterRules(),
     fileListColumns: createDefaultFileListColumns(),
-    dataTableDisplay: createDefaultDataTableDisplay()
+    dataTableDisplay: createDefaultDataTableDisplay(),
+    advancedUnlocked: false
   }
 }
 
@@ -124,6 +127,7 @@ export function normalizeAppConfig(raw: unknown): AppConfig {
       : createDefaultAppConfig().appearance,
     pathFilterRules: normalizePathFilterRules(obj.pathFilterRules),
     fileListColumns: normalizeFileListColumns(obj.fileListColumns),
-    dataTableDisplay: normalizeDataTableDisplay(obj.dataTableDisplay)
+    dataTableDisplay: normalizeDataTableDisplay(obj.dataTableDisplay),
+    advancedUnlocked: obj.advancedUnlocked === true
   }
 }

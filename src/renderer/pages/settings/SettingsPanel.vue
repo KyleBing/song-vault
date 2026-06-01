@@ -81,6 +81,7 @@ type SettingsTab = 'general' | 'display' | 'paths' | 'sync' | 'filter'
 
 const props = defineProps<{
   initialTab?: SettingsTab
+  advancedUnlocked?: boolean
 }>()
 
 const activeTab = ref<SettingsTab>(props.initialTab ?? 'general')
@@ -189,7 +190,9 @@ async function revealConfigFile(): Promise<void> {
               <section class="settings-group">
                 <h3 class="settings-group-title">表格字体</h3>
                 <p class="settings-group-desc settings-group-desc--block">
-                  文件列表、歌词匹配、解码结果等页面的表格字号（{{ DATA_TABLE_FONT_SIZE_MIN }}–{{ DATA_TABLE_FONT_SIZE_MAX }} px，行高随字号自动调整）
+                  文件列表、歌词匹配{{
+                    props.advancedUnlocked ? '、解码结果' : ''
+                  }}等页面的表格字号（{{ DATA_TABLE_FONT_SIZE_MIN }}–{{ DATA_TABLE_FONT_SIZE_MAX }} px，行高随字号自动调整）
                 </p>
                 <div class="settings-group-panel settings-group-panel--inline">
                   <NInputNumber
@@ -207,7 +210,11 @@ async function revealConfigFile(): Promise<void> {
               <section class="settings-group">
                 <h3 class="settings-group-title">文件列表列</h3>
                 <p class="settings-group-desc settings-group-desc--block">
-                  分别配置「音频搜索」与「音乐解码」结果表中显示的列
+                  {{
+                    props.advancedUnlocked
+                      ? '分别配置「音频搜索」与「音乐解码」结果表中显示的列'
+                      : '配置「音频搜索」结果表中显示的列'
+                  }}
                 </p>
                 <div class="settings-columns-row">
                   <div class="settings-group-panel settings-group-panel--columns">
@@ -218,7 +225,10 @@ async function revealConfigFile(): Promise<void> {
                       hide-title
                     />
                   </div>
-                  <div class="settings-group-panel settings-group-panel--columns">
+                  <div
+                    v-if="props.advancedUnlocked"
+                    class="settings-group-panel settings-group-panel--columns"
+                  >
                     <span class="settings-sub-label">音乐解码</span>
                     <FileListColumnsEditor
                       v-model="fileListColumns"
@@ -267,7 +277,10 @@ async function revealConfigFile(): Promise<void> {
                   />
                 </section>
 
-                <section class="settings-group settings-path-column">
+                <section
+                  v-if="props.advancedUnlocked"
+                  class="settings-group settings-path-column"
+                >
                   <h3 class="settings-group-title">音乐解码浏览目录</h3>
                   <p class="settings-group-desc">
                     如 QQ 音乐、网易云等客户端的下载目录，用于浏览加密音乐

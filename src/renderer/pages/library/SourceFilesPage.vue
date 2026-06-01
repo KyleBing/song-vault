@@ -33,6 +33,7 @@ import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
   buildSortKeyOptions,
   enrichItemsWithAudioMetrics,
+  enrichItemsWithFileStats,
   handleDirFileSorterUpdate,
   formatFileSize,
   normalizeDirAudioFileItem,
@@ -298,6 +299,12 @@ async function loadAudioFiles(dirPath: string): Promise<void> {
     })
     let normalized = items.map(normalizeDirAudioFileItem)
     const columnIds = columnsForKind(props.fileListColumns, 'source')
+    normalized = await enrichItemsWithFileStats(
+      normalized,
+      columnIds,
+      sortKey.value,
+      true
+    )
     normalized = await enrichItemsWithAudioMetrics(
       normalized,
       columnIds,
@@ -425,11 +432,9 @@ watch(
 watch(sortKey, async (key) => {
   if (!audioFiles.value.length) return
   const columnIds = columnsForKind(props.fileListColumns, 'source')
-  audioFiles.value = await enrichItemsWithAudioMetrics(
-    audioFiles.value,
-    columnIds,
-    key
-  )
+  let items = audioFiles.value
+  items = await enrichItemsWithFileStats(items, columnIds, key)
+  audioFiles.value = await enrichItemsWithAudioMetrics(items, columnIds, key)
 })
 
 watch(sortKeyOptions, (opts) => {

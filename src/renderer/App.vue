@@ -48,12 +48,16 @@ import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import AudioCoverLightbox from '@renderer/components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from '@renderer/pages/lrc/ScanAlertsPanel.vue'
 import AppTopNav from '@renderer/components/AppTopNav.vue'
+import AdvancedUnlockModal from '@renderer/components/AdvancedUnlockModal.vue'
 import AboutPage from '@renderer/pages/about/AboutPage.vue'
+import { useAdvancedUnlockStore } from '@renderer/stores/advancedUnlock'
 import styleTokens from './styles/variables.module.scss'
 
 const layoutStore = useLayoutStore()
 const themeStore = useThemeStore()
+const advancedUnlock = useAdvancedUnlockStore()
 const { appearance } = storeToRefs(themeStore)
+const { unlocked: advancedUnlocked } = storeToRefs(advancedUnlock)
 
 const naiveTheme = computed(() =>
   appearance.value === 'dark' ? darkTheme : null
@@ -65,15 +69,25 @@ const activeView = ref<AppView>('lrc')
 
 /** 从设置页等跳转到工作台 */
 function openView(view: 'lrc' | 'decode' | 'library'): void {
-  activeView.value = view
+  handleAppNavigate(view)
 }
 
 /** 顶栏 / 快捷键导航 */
 function handleAppNavigate(view: AppNavigateTarget): void {
+  if (view === 'decode' && !advancedUnlocked.value) {
+    advancedUnlock.openModal('decode')
+    return
+  }
   if (view !== 'settings') {
     settingsInitialTab.value = 'general'
   }
   activeView.value = view
+}
+
+/** 解锁成功后跳转到待进入页面 */
+function onAdvancedUnlocked(): void {
+  const pending = advancedUnlock.consumePendingView()
+  if (pending) handleAppNavigate(pending)
 }
 
 /** 窗口尺寸变化时更新布局 store */
@@ -207,7 +221,8 @@ function buildAppConfig(): AppConfig {
       source: [...columns.source],
       decode: [...columns.decode]
     },
-    dataTableDisplay: { ...toRaw(dataTableDisplay.value) }
+    dataTableDisplay: { ...toRaw(dataTableDisplay.value) },
+    advancedUnlocked: advancedUnlocked.value
   }
 }
 
@@ -242,6 +257,7 @@ onMounted(async () => {
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
     dataTableDisplay.value = normalizeDataTableDisplay(config.dataTableDisplay)
+    advancedUnlock.hydrateFromConfig(config.advancedUnlocked)
   } catch (err) {
     console.error('加载目录配置失败', err)
   } finally {
@@ -252,6 +268,13 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)
   unsubscribeAppNavigate?.()
+})
+
+watch(advancedUnlocked, (ok, prev) => {
+  if (ok && prev === false) onAdvancedUnlocked()
+  else if (!ok && activeView.value === 'decode') {
+    activeView.value = 'lrc'
+  }
 })
 
 watch(
@@ -281,6 +304,7 @@ watch(
     :theme-overrides="themeOverrides"
   >
     <NMessageProvider>
+      <AdvancedUnlockModal />
       <AudioCoverLightbox />
       <div class="app-shell" :style="dataTableCssStyle">
         <AppTopNav
@@ -290,6 +314,7 @@ watch(
         <div class="app-main">
         <SettingsPanel
           v-if="activeView === 'settings'"
+          :advanced-unlocked="advancedUnlocked"
           v-model:path-filter-rules="pathFilterRules"
           v-model:search-roots="searchRoots"
           v-model:lrc-dirs="lrcDirs"
@@ -332,7 +357,7 @@ watch(
           class="settings-layer"
         />
         <MusicDecodePage
-          v-else-if="activeView === 'decode'"
+          v-else-if="activeView === 'decode' && advancedUnlocked"
           v-model:decode-source-dirs="decodeSourceDirs"
           v-model:decode-output-dir="decodeOutputDir"
           :search-roots="searchRoots"
@@ -342,6 +367,7 @@ watch(
         />
         <AboutPage
           v-else-if="activeView === 'about'"
+          :advanced-unlocked="advancedUnlocked"
           class="settings-layer"
         />
         <div v-else-if="activeView === 'lrc'" class="workspace">

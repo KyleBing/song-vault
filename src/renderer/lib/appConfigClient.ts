@@ -69,3 +69,10 @@ export async function persistAppearance(
   if (config.appearance === appearance) return
   await saveAppConfig({ ...config, appearance })
 }
+
+/** 解锁高级功能后写入配置（重启后仍保持解锁） */
+export async function persistAdvancedUnlocked(): Promise<void> {
+  const config = await loadAppConfigOnce()
+  if (config.advancedUnlocked) return
+  await saveAppConfig({ ...config, advancedUnlocked: true })
+}

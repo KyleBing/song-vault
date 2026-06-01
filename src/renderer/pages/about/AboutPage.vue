@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NScrollbar, NTabPane, NTabs, NTag } from 'naive-ui'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   APP_DISPLAY_NAME,
   APP_TAGLINE,
@@ -12,7 +12,20 @@ import DecryptHelpPage from './DecryptHelpPage.vue'
 
 type AboutTab = 'changelog' | 'decrypt' | 'acknowledgments'
 
+const props = defineProps<{
+  advancedUnlocked?: boolean
+}>()
+
 const activeTab = ref<AboutTab>('changelog')
+
+watch(
+  () => props.advancedUnlocked,
+  (ok) => {
+    if (!ok && activeTab.value === 'decrypt') {
+      activeTab.value = 'changelog'
+    }
+  }
+)
 
 const sectionTone: Record<string, 'add' | 'change' | 'fix' | 'default'> = {
   新增: 'add',
@@ -127,7 +140,11 @@ const latestVersion = computed(() => CHANGELOG_RELEASES[0]?.version ?? APP_VERSI
             </NScrollbar>
           </NTabPane>
 
-          <NTabPane name="decrypt" tab="解密说明">
+          <NTabPane
+            v-if="props.advancedUnlocked"
+            name="decrypt"
+            tab="解密说明"
+          >
             <DecryptHelpPage class="about-decrypt-pane" />
           </NTabPane>
 
