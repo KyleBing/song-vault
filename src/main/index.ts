@@ -45,6 +45,7 @@ import {
   listDirAudioFiles,
   listDirEncryptedMusicFiles,
   listSourceDirChildren,
+  validateSearchRoots,
   readFileStatFieldsBatch,
   type BrowseCreateDirParams,
   type BrowseDeleteFilesParams,
@@ -94,6 +95,7 @@ const IPC_CHANNELS = [
   'read-file-stats-batch',
   'read-audio-meta',
   'compare-library-sync',
+  'validate-search-roots',
   'copy-sync-file',
   'move-sync-file',
   'delete-sync-files',
@@ -279,6 +281,13 @@ function registerIpcHandlers(): void {
       return toIpcPlain(validateSyncRoots(left, right))
     }
   )
+
+  ipcMain.handle('validate-search-roots', async (_, roots: unknown) => {
+    const list = Array.isArray(roots)
+      ? roots.filter((r): r is string => typeof r === 'string')
+      : []
+    return toIpcPlain(validateSearchRoots(list))
+  })
 
   ipcMain.handle('copy-sync-file', async (_, params: CopySyncFileParams) => {
     return toIpcPlain(copySyncFile(toIpcPlain(params)))

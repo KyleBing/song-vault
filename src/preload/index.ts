@@ -29,6 +29,7 @@ import type {
   FileStatFields,
   FindAudioInSearchRootsParams,
   ListDirAudioFilesParams,
+  BrowseRootCheck,
   ListSourceDirChildrenParams,
   SourceDirChild
 } from '../shared/sourceDirBrowse'
@@ -251,6 +252,14 @@ const api = {
       'validate-sync-roots',
       leftRoot,
       rightRoot
+    )
+    return toIpcPlain(result)
+  },
+
+  validateSearchRoots: async (roots: string[]): Promise<BrowseRootCheck[]> => {
+    const result = await ipcRenderer.invoke(
+      'validate-search-roots',
+      toIpcPlain(roots)
     )
     return toIpcPlain(result)
   },

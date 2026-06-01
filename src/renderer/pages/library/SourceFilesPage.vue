@@ -7,6 +7,7 @@ import {
   NModal,
   NPopconfirm,
   NSpin,
+  NTag,
   NTooltip,
   NTree,
   useMessage,
@@ -21,12 +22,13 @@ import {
   TrashOutline
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
+import type { TreeOption } from 'naive-ui'
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
 import type { FileListColumnsSettings, PathFilterRule } from '@shared/appConfig'
 import { columnsForKind } from '@shared/fileListColumns'
 import { isBrowseRoot } from '@shared/pathKeys'
-import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
+import type { BrowseRootCheck, DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
   buildSortKeyOptions,
@@ -41,8 +43,12 @@ import {
   type DirFileSortOrder
 } from '@renderer/composables/dirFileTable'
 import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter'
-import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
+import {
+  TREE_ROOT_INACCESSIBLE_KEY,
+  useLazyDirTree
+} from '@renderer/composables/useLazyDirTree'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { plainStringList } from '@renderer/utils/ipcPayload'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
@@ -105,10 +111,115 @@ const filtersForApi = computed(() =>
   pathFilterRulesForSave(props.pathFilterRules)
 )
 
+const rootChecks = ref<BrowseRootCheck[]>([])
+let validateGeneration = 0
+let refreshTreeGeneration = 0
+
+/** 路径规范化（小写、正斜杠）用于比较 */
+function pathResolveLower(p: string): string {
+  return p.replace(/\\/g, '/').toLowerCase()
+}
+
+function normalizeRootKey(p: string): string {
+  return pathResolveLower(p.replace(/[/\\]+$/, '') || p)
+}
+
+function isSameOrUnderRoot(target: string, root: string): boolean {
+  const t = normalizeRootKey(target)
+  const r = normalizeRootKey(root)
+  return t === r || t.startsWith(`${r}/`)
+}
+
+function findOwningRoot(dirPath: string): string | undefined {
+  return searchRoots.value.find((r) => isSameOrUnderRoot(dirPath, r))
+}
+
+function rootCheckFor(configuredRoot: string): BrowseRootCheck | undefined {
+  const key = normalizeRootKey(configuredRoot)
+  const idx = searchRoots.value.findIndex((r) => normalizeRootKey(r) === key)
+  if (idx < 0) return undefined
+  if (rootChecks.value.length !== searchRoots.value.length) {
+    return undefined
+  }
+  const check = rootChecks.value[idx]
+  if (!check) return undefined
+  if (normalizeRootKey(check.path) !== key) {
+    return rootChecks.value.find((c) => normalizeRootKey(c.path) === key)
+  }
+  return check
+}
+
+/** 根目录是否已确认不存在（仅用于树节点提示） */
+function isRootMissing(root: string): boolean {
+  const check = rootCheckFor(root)
+  return !!check && !check.ok
+}
+
+/** 是否允许加载子目录；未校验完成前允许加载，仅在校验明确失败时拦截 */
+function dirAccessible(dirPath: string): boolean {
+  const owningRoot = findOwningRoot(dirPath)
+  if (!owningRoot) return false
+  const check = rootCheckFor(owningRoot)
+  if (!check) return true
+  return check.ok
+}
+
+function renderTreeLabel(info: { option: TreeOption }): ReturnType<typeof h> {
+  const opt = info.option
+  const label = String(opt.label ?? '')
+  if (opt[TREE_ROOT_INACCESSIBLE_KEY] !== true) {
+    return h('span', { class: 'tree-node-label' }, label)
+  }
+  return h('span', { class: 'tree-node-label tree-node-label--missing-root' }, [
+    h('span', { class: 'tree-node-label__name' }, label),
+    h(
+      NTag,
+      {
+        size: 'small',
+        type: 'warning',
+        round: true,
+        bordered: true,
+        class: 'tree-root-missing-tag'
+      },
+      () => '路径不存在'
+    )
+  ])
+}
+
+const selectedDirAccessError = computed(() => {
+  if (!selectedDir.value) return null
+  const owningRoot = findOwningRoot(selectedDir.value)
+  if (!owningRoot) return null
+  const check = rootCheckFor(owningRoot)
+  if (!check || check.ok) return null
+  return check.error ?? '目录不存在'
+})
+
+async function validateConfiguredRoots(): Promise<void> {
+  if (searchRoots.value.length === 0) {
+    rootChecks.value = []
+    return
+  }
+  const gen = ++validateGeneration
+  try {
+    const checks = await window.electronAPI.validateSearchRoots(
+      plainStringList(searchRoots.value)
+    )
+    if (gen !== validateGeneration) return
+    rootChecks.value = checks
+  } catch (err) {
+    if (gen !== validateGeneration) return
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('validateSearchRoots failed', err)
+    message.error(`校验乐库目录失败: ${msg}`)
+  }
+}
+
 const {
   treeData,
   expandedKeys,
   rebuildTreeRoots,
+  primeAccessibleRoots,
   onLoadTreeNode,
   onUpdateExpandedKeys,
   refreshNode,
@@ -120,7 +231,9 @@ const {
 } = useLazyDirTree({
   roots: searchRoots,
   browseRoots,
-  filtersForApi
+  filtersForApi,
+  dirAccessible,
+  rootMissing: isRootMissing
 })
 
 /** 重命名搜索目标根目录后同步配置中的路径 */
@@ -140,19 +253,21 @@ function removeSearchRoot(targetPath: string): void {
   )
 }
 
-/** 路径规范化（小写、正斜杠）用于比较 */
-function pathResolveLower(p: string): string {
-  return p.replace(/\\/g, '/').toLowerCase()
-}
-
 /** 重建树并尽量保留展开状态与当前选中目录 */
 async function rebuildTreeKeepSelection(): Promise<void> {
   const keep = selectedDir.value
   rebuildTreeRoots()
+  await primeAccessibleRoots()
   if (keep && isUnderAnyRoot(keep)) {
     selectedKeys.value = [keep]
     selectedDir.value = keep
-    await ensurePathLoaded(keep)
+    if (dirAccessible(keep)) {
+      await ensurePathLoaded(keep)
+      void loadAudioFiles(keep)
+    } else {
+      audioFiles.value = []
+      clearFileSelection()
+    }
   } else {
     selectedKeys.value = []
     selectedDir.value = null
@@ -163,15 +278,16 @@ async function rebuildTreeKeepSelection(): Promise<void> {
 
 /** 判断路径是否仍位于某一搜索目标根之下 */
 function isUnderAnyRoot(target: string): boolean {
-  const t = pathResolveLower(target)
-  return searchRoots.value.some((r) => {
-    const root = pathResolveLower(r)
-    return t === root || t.startsWith(`${root}/`)
-  })
+  return searchRoots.value.some((r) => isSameOrUnderRoot(target, r))
 }
 
 /** 加载选中目录下的音频文件列表 */
 async function loadAudioFiles(dirPath: string): Promise<void> {
+  if (!dirAccessible(dirPath)) {
+    audioFiles.value = []
+    clearFileSelection()
+    return
+  }
   filesLoading.value = true
   clearFileSelection()
   try {
@@ -288,7 +404,9 @@ const selectedDirStatsText = computed(() => {
   return `${count} 个 · ${sizeLabel} · ${lrcPart}`
 })
 
-const canManageDir = computed(() => !!selectedDir.value)
+const canManageDir = computed(
+  () => !!selectedDir.value && dirAccessible(selectedDir.value)
+)
 
 function openSelectedDirInFileManager(): void {
   void openDirInFileManager(selectedDir.value, message)
@@ -297,7 +415,9 @@ function openSelectedDirInFileManager(): void {
 watch(
   () => props.fileListColumns,
   () => {
-    if (selectedDir.value) void loadAudioFiles(selectedDir.value)
+    if (selectedDir.value && dirAccessible(selectedDir.value)) {
+      void loadAudioFiles(selectedDir.value)
+    }
   },
   { deep: true }
 )
@@ -321,9 +441,9 @@ watch(sortKeyOptions, (opts) => {
 watch(
   searchRoots,
   () => {
-    void rebuildTreeKeepSelection()
+    void refreshLibraryTree()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 
 watch(
@@ -572,14 +692,18 @@ async function deleteSelectedFiles(): Promise<void> {
 }
 
 /** 刷新目录树与当前目录文件列表 */
-function refreshAll(): void {
-  void rebuildTreeKeepSelection()
-  if (selectedDir.value) void loadAudioFiles(selectedDir.value)
+async function refreshAll(): Promise<void> {
+  await refreshLibraryTree()
 }
 
-onMounted(() => {
-  void rebuildTreeKeepSelection()
-})
+/** 先同步画出根节点，再校验并加载子目录（与解码页一致，避免树空白） */
+async function refreshLibraryTree(): Promise<void> {
+  const gen = ++refreshTreeGeneration
+  rebuildTreeRoots()
+  await validateConfiguredRoots()
+  if (gen !== refreshTreeGeneration) return
+  await rebuildTreeKeepSelection()
+}
 </script>
 
 <template>
@@ -693,19 +817,26 @@ onMounted(() => {
           <NEmpty
             v-if="!searchRoots.length"
             size="small"
-            description="请先在「设置」中添加音频搜索目标"
+            description="请先在「设置 → 路径」中添加你的乐库目录"
             class="tree-empty"
           />
           <NTree
-            v-else
+            v-else-if="treeData.length"
             block-line
             selectable
             :data="treeData"
             :expanded-keys="expandedKeys"
             :selected-keys="selectedKeys"
+            :render-label="renderTreeLabel"
             :on-load="onLoadTreeNode"
             @update:expanded-keys="onUpdateExpandedKeys"
             @update:selected-keys="onSelectKeys"
+          />
+          <NEmpty
+            v-else
+            size="small"
+            description="正在加载目录树…"
+            class="tree-empty"
           />
         </div>
         <footer v-if="selectedDir" class="tree-foot">
@@ -803,9 +934,16 @@ onMounted(() => {
           <div v-else-if="!selectedDir" class="files-placeholder">
             <NEmpty size="small" description="点击目录树中的文件夹查看音频" />
           </div>
+          <div
+            v-else-if="selectedDir && selectedDirAccessError"
+            class="files-placeholder"
+          >
+            <NEmpty size="small" :description="selectedDirAccessError" />
+          </div>
           <p
             v-if="
               selectedDir &&
+              !selectedDirAccessError &&
               !filesLoading &&
               audioFiles.length > 0 &&
               sortedAudioFiles.length === 0
@@ -815,7 +953,12 @@ onMounted(() => {
             没有匹配「{{ fileNameFilter.trim() }}」的文件
           </p>
           <p
-            v-else-if="selectedDir && !filesLoading && audioFiles.length === 0"
+            v-else-if="
+              selectedDir &&
+              !selectedDirAccessError &&
+              !filesLoading &&
+              audioFiles.length === 0
+            "
             class="files-empty-hint"
           >
             该目录下没有音频文件
@@ -926,6 +1069,32 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.tree-node-label {
+  display: inline;
+}
+
+.tree-node-label--missing-root {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.tree-node-label__name {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.5;
+}
+
+.tree-root-missing-tag {
+  flex-shrink: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .tree-spin,

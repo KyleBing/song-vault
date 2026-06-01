@@ -103,8 +103,36 @@ export async function readFileStatFieldsBatch(
   return out
 }
 
+export interface BrowseRootCheck {
+  path: string
+  ok: boolean
+  error?: string
+}
+
 export interface BrowseRootsParams {
   browseRoots: string[]
+}
+
+/** 校验单个乐库/搜索目标根目录是否可访问 */
+export function checkBrowseRoot(root: string | undefined | null): BrowseRootCheck {
+  const trimmed = (root ?? '').trim()
+  if (!trimmed) {
+    return { path: '', ok: false, error: '未指定目录' }
+  }
+  const resolved = path.resolve(trimmed)
+  if (!fs.existsSync(resolved)) {
+    return { path: resolved, ok: false, error: `目录不存在: ${resolved}` }
+  }
+  const stat = fs.statSync(resolved)
+  if (!stat.isDirectory()) {
+    return { path: resolved, ok: false, error: `不是文件夹: ${resolved}` }
+  }
+  return { path: resolved, ok: true }
+}
+
+/** 批量校验搜索目标根目录（与配置项一一对应） */
+export function validateSearchRoots(roots: string[]): BrowseRootCheck[] {
+  return roots.map((r) => checkBrowseRoot(r))
 }
 
 export interface BrowseListParams extends BrowseRootsParams {
@@ -230,6 +258,10 @@ export function listSourceDirChildren(
   const dirPath = path.resolve(params.dirPath)
   assertUnderBrowseRoots(dirPath, roots)
 
+  if (!fs.existsSync(dirPath)) {
+    throw new Error(`目录不存在: ${dirPath}`)
+  }
+
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(dirPath, { withFileTypes: true })
@@ -334,6 +366,10 @@ export function listDirAudioFiles(
   const roots = normalizeRoots(params.browseRoots)
   const dirPath = path.resolve(params.dirPath)
   assertUnderBrowseRoots(dirPath, roots)
+
+  if (!fs.existsSync(dirPath)) {
+    throw new Error(`目录不存在: ${dirPath}`)
+  }
 
   const items: DirAudioFileItem[] = []
   scanDirAudioFiles(dirPath, params.pathFilterRules, items, true)
