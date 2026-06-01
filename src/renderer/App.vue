@@ -328,18 +328,21 @@ watch(
           :initial-tab="settingsInitialTab"
           class="settings-layer"
         />
-        <LibrarySyncPage
-          v-else-if="activeView === 'sync'"
-          v-model:sync-left-dir="syncLeftDir"
-          v-model:sync-left-alias="syncLeftAlias"
-          v-model:sync-right-dir="syncRightDir"
-          v-model:sync-right-alias="syncRightAlias"
-          :path-filter-rules="pathFilterRules"
-          class="settings-layer"
-          @open-settings="openSyncSettings"
-        />
+        <KeepAlive v-show="activeView === 'sync'">
+            <LibrarySyncPage
+                v-if="activeView === 'sync'"
+                key="library-sync"
+                v-model:sync-left-dir="syncLeftDir"
+                v-model:sync-left-alias="syncLeftAlias"
+                v-model:sync-right-dir="syncRightDir"
+                v-model:sync-right-alias="syncRightAlias"
+                :path-filter-rules="pathFilterRules"
+                class="settings-layer"
+                @open-settings="openSyncSettings"
+            />
+        </KeepAlive>
         <LibraryDuplicatesPage
-          v-else-if="activeView === 'duplicates'"
+          v-if="activeView === 'duplicates'"
           v-model:duplicate-scan-dir="duplicateScanDir"
           :search-roots="searchRoots"
           :sync-left-dir="syncLeftDir"
@@ -350,14 +353,14 @@ watch(
           class="settings-layer"
         />
         <SourceFilesPage
-          v-else-if="activeView === 'library'"
+          v-if="activeView === 'library'"
           v-model:search-roots="searchRoots"
           :path-filter-rules="pathFilterRules"
           :file-list-columns="fileListColumns"
           class="settings-layer"
         />
         <MusicDecodePage
-          v-else-if="activeView === 'decode' && advancedUnlocked"
+          v-if="activeView === 'decode' && advancedUnlocked"
           v-model:decode-source-dirs="decodeSourceDirs"
           v-model:decode-output-dir="decodeOutputDir"
           :search-roots="searchRoots"
@@ -366,11 +369,11 @@ watch(
           class="settings-layer"
         />
         <AboutPage
-          v-else-if="activeView === 'about'"
+          v-if="activeView === 'about'"
           :advanced-unlocked="advancedUnlocked"
           class="settings-layer"
         />
-        <div v-else-if="activeView === 'lrc'" class="workspace">
+        <div v-if="activeView === 'lrc'" class="workspace">
           <aside class="sidebar">
             <div class="sidebar-scroll">
               <section v-if="!canPreview" class="config-hint">

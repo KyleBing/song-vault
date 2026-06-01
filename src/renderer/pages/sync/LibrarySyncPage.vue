@@ -15,13 +15,14 @@ import {
     Refresh,
     Trash
 } from '@vicons/ionicons5'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, ref, shallowRef, watch } from 'vue'
 import type { PathFilterRule } from '@shared/appConfig'
 import type {
     CompareLibrarySyncResult,
     SyncDiffItem,
     ValidateSyncRootsResult
 } from '@shared/librarySyncJob'
+import { normalizePathKey } from '@shared/pathKeys'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
@@ -33,6 +34,7 @@ import {
     type SyncDiffTreeRow
 } from '@renderer/utils/syncDiffTree'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
+import { useLibrarySyncSessionStore } from '@renderer/stores/librarySyncSession'
 import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
 
 const syncLeftDir = defineModel<string>('syncLeftDir', { required: true })
@@ -49,6 +51,7 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
+const syncSession = useLibrarySyncSessionStore()
 const loading = ref(false)
 const validatingDirs = ref(false)
 const syncDirsValidation = ref<ValidateSyncRootsResult | null>(null)
@@ -137,10 +140,37 @@ const syncRightLabel = computed(
     () => (syncRightAlias.value ?? '').trim() || '右侧'
 )
 
-const treeData = computed(() => {
-    if (!compareResult.value?.items.length) return []
-    return buildSyncDiffTree(compareResult.value.items)
-})
+const pathFilterRulesKey = computed(() =>
+    JSON.stringify(pathFilterRulesForSave(props.pathFilterRules))
+)
+
+const treeData = shallowRef<SyncDiffTreeRow[]>([])
+
+function applyCompareSnapshot(
+    result: CompareLibrarySyncResult,
+    validation: ValidateSyncRootsResult | null,
+    tree?: SyncDiffTreeRow[],
+    expanded?: string[]
+): void {
+    compareResult.value = result
+    const builtTree =
+        tree ??
+        (result.items.length > 0 ? buildSyncDiffTree(result.items) : [])
+    treeData.value = builtTree
+    expandedRowKeys.value =
+        expanded ??
+        (builtTree.length > 0 ? collectSyncDiffFolderKeys(builtTree) : [])
+    clearSelection()
+    syncSession.setCompareSnapshot(
+        result,
+        pathFilterRulesKey.value,
+        syncLeftDir.value.trim(),
+        syncRightDir.value.trim(),
+        validation,
+        builtTree,
+        expandedRowKeys.value
+    )
+}
 
 const orderedFileKeys = computed(() => flattenSyncDiffFileKeys(treeData.value))
 
@@ -296,18 +326,6 @@ function stackFlex(value: number): string {
     return value > 0 ? String(value) : '0'
 }
 
-watch(
-    () => compareResult.value?.items,
-    (items) => {
-        clearSelection()
-        if (!items?.length) {
-            expandedRowKeys.value = []
-            return
-        }
-        expandedRowKeys.value = collectSyncDiffFolderKeys(buildSyncDiffTree(items))
-    }
-)
-
 function rowCopyKey(item: SyncDiffItem, direction: 'left' | 'right'): string {
     return `${item.relativePath}:${direction}`
 }
@@ -349,17 +367,38 @@ function onFileRowClick(key: string, event: MouseEvent): void {
     onRowClick({ key }, event, orderedFileKeys)
 }
 
-async function validateSyncDirs(): Promise<ValidateSyncRootsResult> {
-    validatingDirs.value = true
+/** 让 loading 状态先绘制，避免长时间 IPC/建树阻塞前界面无反馈 */
+async function flushLoadingPaint(): Promise<void> {
+    await nextTick()
+    await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+    })
+}
+
+async function validateSyncDirs(options?: { background?: boolean }): Promise<ValidateSyncRootsResult> {
+    if (!options?.background) {
+        validatingDirs.value = true
+    }
     try {
         const result = await window.electronAPI.validateSyncRoots(
             syncLeftDir.value.trim(),
             syncRightDir.value.trim()
         )
         syncDirsValidation.value = result
+        if (
+            syncSession.matchesSession(
+                syncLeftDir.value.trim(),
+                syncRightDir.value.trim(),
+                pathFilterRulesKey.value
+            )
+        ) {
+            syncSession.setDirsValidation(result)
+        }
         return result
     } finally {
-        validatingDirs.value = false
+        if (!options?.background) {
+            validatingDirs.value = false
+        }
     }
 }
 
@@ -369,19 +408,24 @@ async function runCompare(options?: {
 }): Promise<void> {
     if (!canCompare.value) return
 
-    const validation = await validateSyncDirs()
-    if (!validation.left.ok || !validation.right.ok) {
-        return
-    }
-
-    if (options?.scanLoading) scanButtonLoading.value = true
+    const showScanLoading = !!options?.scanLoading
+    if (showScanLoading) scanButtonLoading.value = true
     loading.value = true
+    await flushLoadingPaint()
+
     try {
-        compareResult.value = await window.electronAPI.compareLibrarySync({
+        const validation = await validateSyncDirs({ background: true })
+        if (!validation.left.ok || !validation.right.ok) {
+            return
+        }
+
+        const result = await window.electronAPI.compareLibrarySync({
             leftRoot: syncLeftDir.value.trim(),
             rightRoot: syncRightDir.value.trim(),
             pathFilterRules: pathFilterRulesForSave(props.pathFilterRules)
         })
+        await flushLoadingPaint()
+        applyCompareSnapshot(result, validation)
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!options?.silent) {
@@ -390,40 +434,141 @@ async function runCompare(options?: {
         throw err
     } finally {
         loading.value = false
-        if (options?.scanLoading) scanButtonLoading.value = false
+        if (showScanLoading) scanButtonLoading.value = false
     }
 }
 
-async function tryAutoCompare(): Promise<void> {
-    if (!canCompare.value || loading.value || batchCopying.value || deletingSelected.value) {
+function tryRestoreCachedCompare(): boolean {
+    const left = syncLeftDir.value.trim()
+    const right = syncRightDir.value.trim()
+    if (!left || !right) return false
+    if (
+        syncSession.matchesSession(left, right, pathFilterRulesKey.value)
+    ) {
+        const cached = syncSession.compareResult
+        if (!cached) return false
+        compareResult.value = cached
+        if (syncSession.dirsValidation) {
+            syncDirsValidation.value = syncSession.dirsValidation
+        }
+        if (syncSession.cachedTree.length > 0) {
+            treeData.value = syncSession.cachedTree
+            expandedRowKeys.value = [...syncSession.expandedFolderKeys]
+        } else if (cached.items.length > 0) {
+            const builtTree = buildSyncDiffTree(cached.items)
+            treeData.value = builtTree
+            expandedRowKeys.value = collectSyncDiffFolderKeys(builtTree)
+        } else {
+            treeData.value = []
+            expandedRowKeys.value = []
+        }
+        return true
+    }
+    return false
+}
+
+/** 首屏渲染前同步恢复缓存，避免先闪「正在检查目录」 */
+if (canCompare.value) {
+    tryRestoreCachedCompare()
+}
+
+async function tryAutoCompareIfNeeded(): Promise<void> {
+    if (
+        !canCompare.value ||
+        loading.value ||
+        batchCopying.value ||
+        deletingSelected.value ||
+        compareResult.value
+    ) {
         return
     }
-    const validation = syncDirsValidation.value ?? await validateSyncDirs()
+    const validation = syncDirsValidation.value ?? (await validateSyncDirs())
     if (!validation.left.ok || !validation.right.ok) {
         return
     }
     await runCompare()
 }
 
+/** 进入页面：有结果则直接展示，无结果也不自动重新扫描 */
+function onSyncPageActivated(): void {
+    if (!canCompare.value) {
+        syncDirsValidation.value = null
+        compareResult.value = null
+        treeData.value = []
+        expandedRowKeys.value = []
+        return
+    }
+    if (compareResult.value || tryRestoreCachedCompare()) {
+        void validateSyncDirs({ background: true })
+        return
+    }
+    void validateSyncDirs({ background: true })
+}
+
+/** 首次挂载且从未对比过：自动扫描一次 */
+async function bootstrapFirstVisitCompare(): Promise<void> {
+    if (!canCompare.value) return
+    if (compareResult.value || tryRestoreCachedCompare()) {
+        void validateSyncDirs({ background: true })
+        return
+    }
+    if (syncSession.compareResult) {
+        void validateSyncDirs({ background: true })
+        return
+    }
+    await validateSyncDirs()
+    await tryAutoCompareIfNeeded()
+}
+
 onMounted(() => {
-    void (async () => {
-        if (canCompare.value) {
-            await validateSyncDirs()
-        }
-        await tryAutoCompare()
-    })()
+    void bootstrapFirstVisitCompare()
 })
 
-watch([syncLeftDir, syncRightDir], () => {
+onActivated(() => {
+    onSyncPageActivated()
+})
+
+watch([syncLeftDir, syncRightDir], (newDirs, oldDirs) => {
+    if (
+        oldDirs &&
+        normalizePathKey(newDirs[0] ?? '') === normalizePathKey(oldDirs[0] ?? '') &&
+        normalizePathKey(newDirs[1] ?? '') === normalizePathKey(oldDirs[1] ?? '')
+    ) {
+        return
+    }
     void (async () => {
         if (!canCompare.value) {
             syncDirsValidation.value = null
+            syncSession.clearCompareResult()
+            compareResult.value = null
+            treeData.value = []
+            expandedRowKeys.value = []
             return
         }
+        if (tryRestoreCachedCompare()) {
+            void validateSyncDirs({ background: true })
+            return
+        }
+        syncSession.clearCompareResult()
+        compareResult.value = null
+        treeData.value = []
+        expandedRowKeys.value = []
         await validateSyncDirs()
-        await tryAutoCompare()
+        await tryAutoCompareIfNeeded()
     })()
 })
+
+watch(
+    () => pathFilterRulesKey.value,
+    (next, prev) => {
+        if (prev === undefined || next === prev) return
+        if (!compareResult.value && !syncSession.compareResult) return
+        syncSession.clearCompareResult()
+        compareResult.value = null
+        treeData.value = []
+        expandedRowKeys.value = []
+    }
+)
 
 async function copyOne(
     item: SyncDiffItem,
@@ -638,14 +783,14 @@ async function deleteSelectedSyncFiles(): Promise<void> {
         </section>
 
         <section
-            v-else-if="validatingDirs && !syncDirsValidation"
+            v-else-if="validatingDirs && !syncDirsValidation && !compareResult"
             class="library-sync-hint"
         >
             <p>正在检查乐库目录…</p>
         </section>
 
         <section
-            v-else-if="!syncDirsReady"
+            v-else-if="!syncDirsReady && !compareResult"
             class="library-sync-hint library-sync-hint--warning"
         >
             <p>以下乐库目录无法访问，请检查路径或在设置中重新指定：</p>
@@ -1040,7 +1185,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                         <NButton
                             block
                             type="primary"
-                            :disabled="batchCopying || deletingSelected"
+                            :disabled="batchCopying || deletingSelected || loading || scanButtonLoading"
                             :loading="scanButtonLoading"
                             @click="runCompare({ scanLoading: true })"
                         >
@@ -1171,7 +1316,11 @@ async function deleteSelectedSyncFiles(): Promise<void> {
             </aside>
 
             <section class="sync-main-pane">
-                <NSpin :show="loading" class="sync-main-spin">
+                <NSpin
+                    :show="loading"
+                    description="正在扫描对比…"
+                    class="sync-main-spin"
+                >
                     <div
                         v-if="compareResult && compareResult.items.length === 0"
                         class="library-sync-empty"
