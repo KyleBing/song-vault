@@ -71,6 +71,7 @@ export function createDefaultFileListColumns(): FileListColumnsSettings {
       'fileName',
       'ext',
       'sizeBytes',
+      'mtimeMs',
       'hasLrc',
       ...AUDIO_META_NORMAL_FORMAT_KEYS
     ],
@@ -79,7 +80,8 @@ export function createDefaultFileListColumns(): FileListColumnsSettings {
       'inSearchTarget',
       'platform',
       'ext',
-      'sizeBytes'
+      'sizeBytes',
+      'mtimeMs'
     ]
   }
 }

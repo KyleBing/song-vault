@@ -11,6 +11,7 @@ import {
     ArrowBack,
     ArrowForward,
     Close,
+    Folder,
     Refresh,
     Trash
 } from '@vicons/ionicons5'
@@ -628,7 +629,12 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     <div class="library-sync-page">
         <section v-if="!canCompare" class="library-sync-hint">
             <p>请先在「设置 → 同步设置」中指定左右两个乐库目录。</p>
-            <NButton size="small" @click="emit('openSettings')">打开同步设置</NButton>
+            <NButton size="small" @click="emit('openSettings')">
+                <template #icon>
+                    <NIcon><Folder /></NIcon>
+                </template>
+                打开同步设置
+            </NButton>
         </section>
 
         <section

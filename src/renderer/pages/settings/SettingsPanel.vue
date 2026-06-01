@@ -13,6 +13,7 @@ import {
   ColorPaletteOutline,
   FilterOutline,
   FolderOutline,
+  KeyOutline,
   OptionsOutline,
   SyncOutline
 } from '@vicons/ionicons5'
@@ -30,8 +31,13 @@ import type { FileListColumnsSettings } from '@shared/appConfig'
 import PathFilterRulesEditor from './PathFilterRulesEditor.vue'
 import FileListColumnsEditor from './FileListColumnsEditor.vue'
 import SyncFolderField from './SyncFolderField.vue'
+import AdvancedUnlockPinInput from '@renderer/components/AdvancedUnlockPinInput.vue'
+import { useAdvancedUnlockStore } from '@renderer/stores/advancedUnlock'
 
 const message = useMessage()
+const advancedUnlock = useAdvancedUnlockStore()
+const { unlocked: advancedUnlockedFromStore } = storeToRefs(advancedUnlock)
+const pinResetKey = ref(0)
 const configFilePath = ref('')
 
 const pathFilterRules = defineModel<PathFilterRule[]>('pathFilterRules', {
@@ -77,7 +83,13 @@ const dataTableDisplay = defineModel<DataTableDisplaySettings>('dataTableDisplay
 const themeStore = useThemeStore()
 const { appearance } = storeToRefs(themeStore)
 
-type SettingsTab = 'general' | 'display' | 'paths' | 'sync' | 'filter'
+type SettingsTab =
+  | 'general'
+  | 'display'
+  | 'paths'
+  | 'sync'
+  | 'filter'
+  | 'advanced'
 
 const props = defineProps<{
   initialTab?: SettingsTab
@@ -112,6 +124,15 @@ onMounted(async () => {
     /* 仅影响页脚展示 */
   }
 })
+
+function onAdvancedPinComplete(pin: string): void {
+  if (advancedUnlock.submitPin(pin)) {
+    message.success('高级功能已开启')
+    return
+  }
+  message.error('访问码不正确')
+  pinResetKey.value++
+}
 
 /** 在资源管理器中打开配置文件所在目录并选中该文件 */
 async function revealConfigFile(): Promise<void> {
@@ -354,6 +375,39 @@ async function revealConfigFile(): Promise<void> {
             </div>
           </div>
         </NTabPane>
+
+        <NTabPane name="advanced">
+          <template #tab>
+            <span class="settings-tab-label">
+              <NIcon :size="18"><KeyOutline /></NIcon>
+              高级功能
+            </span>
+          </template>
+
+          <div class="settings-pane">
+            <div class="settings-pane-body">
+              <section class="settings-group">
+                <h3 class="settings-group-title">访问控制</h3>
+                <div class="settings-group-panel">
+                  <template v-if="advancedUnlockedFromStore">
+                    <p class="settings-group-desc settings-group-desc--block">
+                      高级功能已开启。
+                    </p>
+                  </template>
+                  <template v-else>
+                    <p class="settings-group-desc settings-group-desc--block">
+                      输入 4 位访问码以开启高级功能。
+                    </p>
+                    <AdvancedUnlockPinInput
+                      :reset-key="pinResetKey"
+                      @complete="onAdvancedPinComplete"
+                    />
+                  </template>
+                </div>
+              </section>
+            </div>
+          </div>
+        </NTabPane>
       </NTabs>
 
       <footer class="settings-footer">
@@ -492,6 +546,7 @@ $settings-content-max: 720px;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  margin-bottom: 30px;
 }
 
 .settings-group-title {
@@ -556,7 +611,7 @@ $settings-content-max: 720px;
 
 .settings-columns-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
   gap: 16px;
   margin-top: 4px;
 

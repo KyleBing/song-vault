@@ -8,7 +8,7 @@ import {
   darkTheme,
   type GlobalThemeOverrides
 } from 'naive-ui'
-import { Play, Search } from '@vicons/ionicons5'
+import { Folder, Play, Search } from '@vicons/ionicons5'
 import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLayoutStore } from '@renderer/stores/layout'
@@ -48,7 +48,6 @@ import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import AudioCoverLightbox from '@renderer/components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from '@renderer/pages/lrc/ScanAlertsPanel.vue'
 import AppTopNav from '@renderer/components/AppTopNav.vue'
-import AdvancedUnlockModal from '@renderer/components/AdvancedUnlockModal.vue'
 import AboutPage from '@renderer/pages/about/AboutPage.vue'
 import { useAdvancedUnlockStore } from '@renderer/stores/advancedUnlock'
 import styleTokens from './styles/variables.module.scss'
@@ -75,7 +74,9 @@ function openView(view: 'lrc' | 'decode' | 'library'): void {
 /** 顶栏 / 快捷键导航 */
 function handleAppNavigate(view: AppNavigateTarget): void {
   if (view === 'decode' && !advancedUnlocked.value) {
-    advancedUnlock.openModal('decode')
+    advancedUnlock.setPendingView('decode')
+    settingsInitialTab.value = 'advanced'
+    activeView.value = 'settings'
     return
   }
   if (view !== 'settings') {
@@ -137,9 +138,9 @@ const sourceSelection = ref<SourceSelection>({ sourceOverrides: {} })
 const selectedOrphanKeys = ref<string[]>([])
 const selectedOrphanAudioKeys = ref<string[]>([])
 const metaPanelFilePath = ref<string | null>(null)
-const settingsInitialTab = ref<'general' | 'display' | 'paths' | 'sync' | 'filter'>(
-  'general'
-)
+const settingsInitialTab = ref<
+  'general' | 'display' | 'paths' | 'sync' | 'filter' | 'advanced'
+>('general')
 
 /** 打开设置页并定位到同步设置 */
 function openSyncSettings(): void {
@@ -304,7 +305,6 @@ watch(
     :theme-overrides="themeOverrides"
   >
     <NMessageProvider>
-      <AdvancedUnlockModal />
       <AudioCoverLightbox />
       <div class="app-shell" :style="dataTableCssStyle">
         <AppTopNav
@@ -377,8 +377,12 @@ watch(
                 <p class="config-hint-text">
                   请在「设置」中配置音频搜索目标与 LRC 源文件夹
                 </p>
-                <NButton size="small" @click="handleAppNavigate('settings')">
-                  打开设置
+                <NButton
+                 size="small" @click="handleAppNavigate('settings')">
+                    <template #icon>
+                      <NIcon><Folder /></NIcon>
+                    </template>
+                    打开设置
                 </NButton>
               </section>
 

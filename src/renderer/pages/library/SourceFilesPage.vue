@@ -822,7 +822,7 @@ async function refreshLibraryTree(): Promise<void> {
           <NEmpty
             v-if="!searchRoots.length"
             size="small"
-            description="请先在「设置 → 路径」中添加你的乐库目录"
+            description="「设置 → 路径」中添加你的乐库目录"
             class="tree-empty"
           />
           <NTree

@@ -7,7 +7,7 @@ import {
     NSpin,
     useMessage
 } from 'naive-ui'
-import { Close, FolderOpen, Refresh, Trash } from '@vicons/ionicons5'
+import { Close, Folder, FolderOpen, Refresh, Trash } from '@vicons/ionicons5'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { PathFilterRule } from '@shared/appConfig'
 import type {
@@ -404,10 +404,12 @@ async function deleteSelectedDuplicates(): Promise<void> {
             </p>
             <NSelect
                 v-if="hasConfiguredSources"
+                class="dup-source-select"
                 :value="duplicateScanDir || null"
                 :options="sourceSelectOptions"
                 size="small"
                 filterable
+                :consistent-menu-width="false"
                 placeholder="从已配置的目录选择"
                 @update:value="
                     (value) => {
@@ -419,7 +421,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
             />
             <NButton size="small" @click="pickScanDir">
                 <template #icon>
-                    <NIcon><FolderOpen /></NIcon>
+                    <NIcon><Folder /></NIcon>
                 </template>
                 选择目录
             </NButton>
@@ -483,10 +485,12 @@ async function deleteSelectedDuplicates(): Promise<void> {
                         <span class="dup-source-panel__label">扫描源</span>
                         <NSelect
                             v-if="hasConfiguredSources"
+                            class="dup-source-select"
                             :value="duplicateScanDir || null"
                             :options="sourceSelectOptions"
                             size="small"
                             filterable
+                            :consistent-menu-width="false"
                             placeholder="从已配置的目录选择"
                             @update:value="
                                 (value) => {
@@ -760,6 +764,21 @@ async function deleteSelectedDuplicates(): Promise<void> {
     border-radius: $radius-panel;
     border: 1px solid $border-subtle;
     background: $surface-panel;
+}
+
+.dup-source-select {
+    width: fit-content;
+    max-width: 100%;
+    min-width: 160px;
+
+    :deep(.n-base-selection) {
+        min-width: 0;
+    }
+
+    :deep(.n-base-selection-label) {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .dup-source-panel__label {

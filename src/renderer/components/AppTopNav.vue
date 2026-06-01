@@ -17,16 +17,18 @@ const advancedUnlock = useAdvancedUnlockStore()
 const { unlocked: advancedUnlocked } = storeToRefs(advancedUnlock)
 
 const navItems = computed(() => {
-  const decodeLabel = advancedUnlocked.value ? '音乐解码' : '高级功能'
-  return [
-    { id: 'lrc' as const, label: 'LRC 歌词归位' },
-    { id: 'decode' as const, label: decodeLabel },
-    { id: 'library' as const, label: '乐库管理' },
-    { id: 'sync' as const, label: '乐库同步' },
-    { id: 'duplicates' as const, label: '重复清理' },
-    { id: 'settings' as const, label: '设置' },
-    { id: 'about' as const, label: '关于' }
+  const items: { id: AppNavigateTarget; label: string }[] = [
+    { id: 'lrc', label: 'LRC 歌词归位' },
+    { id: 'library', label: '乐库管理' },
+    { id: 'sync', label: '乐库同步' },
+    { id: 'duplicates', label: '重复清理' },
+    { id: 'settings', label: '设置' },
+    { id: 'about', label: '关于' }
   ]
+  if (advancedUnlocked.value) {
+    items.splice(1, 0, { id: 'decode', label: '音乐解码' })
+  }
+  return items
 })
 </script>
 
