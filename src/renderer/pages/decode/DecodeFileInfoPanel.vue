@@ -34,7 +34,7 @@ const sizeLabel = computed(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 6px 0;
+  padding: 6px 10px;
   border-top: 1px solid $border-subtle;
   background: transparent;
   overflow: hidden;

@@ -659,9 +659,9 @@ onMounted(() => {
       <section class="browser-pane">
         <div class="browser-split">
           <div class="tree-pane">
-            <div class="pane-toolbar">
-              <span class="pane-title">目录</span>
-              <div class="pane-toolbar-actions">
+            <div class="pane-head">
+              <span>目录</span>
+              <div class="head-actions">
                 <NTooltip>
                   <template #trigger>
                     <NButton
@@ -1117,16 +1117,32 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 12px 12px 0;
   overflow: hidden;
+}
+
+.pane-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid $border-subtle;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .tree-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  margin: 0 -4px;
-  padding: 0 4px;
+  padding: 8px 10px;
 
   :deep(.n-tree) {
     font-size: 13px;
@@ -1135,8 +1151,7 @@ onMounted(() => {
 
 .tree-foot {
   flex-shrink: 0;
-  margin: 0 -12px;
-  padding: 3px 12px 5px;
+  padding: 3px 10px 5px;
   border-top: 1px solid $border-subtle;
 }
 
