@@ -38,9 +38,8 @@ function tryEmitComplete(): void {
 
 function onInput(index: number, event: Event): void {
     const el = event.target as HTMLInputElement
-    const digit = el.value.replace(/\D/g, '').slice(-1)
+    const digit = el.value.replace(/\*/g, '').replace(/\D/g, '').slice(-1)
     digits.value[index] = digit
-    el.value = digit
     if (digit && index < 3) {
         void focusCell(index + 1)
     }
@@ -48,10 +47,16 @@ function onInput(index: number, event: Event): void {
 }
 
 function onKeydown(index: number, event: KeyboardEvent): void {
-    if (event.key === 'Backspace' && !digits.value[index] && index > 0) {
-        event.preventDefault()
-        digits.value[index - 1] = ''
-        void focusCell(index - 1)
+    if (event.key === 'Backspace') {
+        if (digits.value[index]) {
+            digits.value[index] = ''
+            return
+        }
+        if (index > 0) {
+            event.preventDefault()
+            digits.value[index - 1] = ''
+            void focusCell(index - 1)
+        }
     }
 }
 
@@ -79,17 +84,17 @@ defineExpose({ clear: clearDigits, focus: () => focusCell(0) })
 </script>
 
 <template>
-    <div class="pin-input" role="group" aria-label="4 位访问码">
+    <div class="pin-input" role="group" aria-label="4 位解锁码">
         <input
             v-for="(_, index) in digits"
             :key="index"
             :ref="(el) => setRef(el, index)"
             class="pin-input__cell"
-            type="password"
+            type="text"
             inputmode="numeric"
             maxlength="1"
             autocomplete="off"
-            :value="digits[index]"
+            :value="digits[index] ? '*' : ''"
             :aria-label="`第 ${index + 1} 位`"
             @input="onInput(index, $event)"
             @keydown="onKeydown(index, $event)"

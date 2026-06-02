@@ -130,7 +130,7 @@ function onAdvancedPinComplete(pin: string): void {
     message.success('高级功能已开启')
     return
   }
-  message.error('访问码不正确')
+  message.error('解锁码不正确')
   pinResetKey.value++
 }
 
@@ -396,7 +396,7 @@ async function revealConfigFile(): Promise<void> {
                   </template>
                   <template v-else>
                     <p class="settings-group-desc settings-group-desc--block">
-                      输入 4 位访问码以开启高级功能。
+                      输入 4 位解锁码以开启高级功能。
                     </p>
                     <AdvancedUnlockPinInput
                       :reset-key="pinResetKey"
