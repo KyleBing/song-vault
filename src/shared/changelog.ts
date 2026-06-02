@@ -19,6 +19,35 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.2.5',
+    date: '2026-06-02',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '重复清理：封面对比弹窗，展示各副本封面、音频参数与封面元数据，点击卡片选择保留项'
+        ]
+      },
+      {
+        title: '变更',
+        items: [
+          '重复清理：列表增加封面缩略图，各副本展示大小、比特率、采样率、位深',
+          '高级功能：解锁码输入改为 * 掩码，文案统一为「解锁码」',
+          '设置：Tab「同步设置」「高级功能」简化为「同步」「高级」',
+          '解密说明：补充 QQ 音乐 Windows v19.51 推荐版本与 Telegram 下载链接',
+          '打包：镜像改由 .npmrc 配置，打包脚本跨平台可用；包名改为 songvault（安装目录同步）',
+          'README：更新截图与打包说明，公开文档不再列出音乐解码'
+        ]
+      },
+      {
+        title: '修复',
+        items: [
+          'Windows 打包：修复 cmd 下环境变量写法无效，以及 winCodeSign 符号链接权限导致的打包失败'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.2.4',
     date: '2026-06-01',
     sections: [
@@ -85,7 +114,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       {
         title: '变更',
         items: [
-          '应用更名为「乐库管理」（包名 song-vault）',
+          '应用更名为「乐库管理」（包名 songvault）',
           '各工作台页面组件归类至 pages/ 子目录',
           '音乐解码：默认按「库中已有」排序（未入库靠前）；解码列表不再默认展示创建时间'
         ]
