@@ -5,11 +5,11 @@
 <h1 align="center">乐库管理</h1>
 
 <p align="center">
-  Vue 3 + TypeScript + Electron 桌面应用：歌词归位、音乐解密、音频库管理与双乐库同步。
+桌面应用：歌词归位、音频库管理与双乐库同步，管理本地音频文件。
 </p>
 
 <p align="center">
-  <img width="1632" height="872" alt="应用主界面截图" src="https://github.com/user-attachments/assets/795c1b45-d90f-490d-b92e-f0e10e5a0c31" />
+<img width="3018" height="1509" alt="2026-06-02 10 13 27" src="https://github.com/user-attachments/assets/1d99bec3-aff2-4a2d-a7dc-a061c126e818" />
 </p>
 
 ## 一、功能概览
@@ -17,10 +17,9 @@
 | 序号 | 工作台 | 说明 |
 |------|--------|------|
 | 1 | LRC 歌词归位 | 从 LRC 源文件夹扫描歌词，复制到音频搜索目标中同名音频所在目录；支持预览匹配、批量复制与多余歌词清理 |
-| 2 | 音乐解码 | 解密 QQ 音乐、网易云等加密格式，导出为常规音频文件 |
-| 3 | 音频库 | 浏览本地音频目录树，查看元数据与封面，支持搜索、Shift 多选、移动与删除 |
-| 4 | 乐库同步 | 对比左右两个乐库目录的音频差异（相同、仅一侧、大小不同、已移动），支持跨库复制与同库内移动对齐路径 |
-| 5 | 设置 | LRC 源、音频目标、乐库目录、路径过滤规则等配置 |
+| 2 | 音频库 | 浏览本地音频目录树，查看元数据与封面，支持搜索、Shift 多选、移动与删除 |
+| 3 | 乐库同步 | 对比左右两个乐库目录的音频差异（相同、仅一侧、大小不同、已移动），支持跨库复制与同库内移动对齐路径 |
+| 4 | 设置 | LRC 源、音频目标、乐库目录、路径过滤规则等配置 |
 
 ## 二、环境要求
 
@@ -59,14 +58,14 @@ yarn pack:mac
 yarn pack:win
 ```
 
-`pack:mac` / `pack:win` 使用 `node_modules/electron` 中已安装的 Electron，一般无需再从 GitHub 下载完整运行时。若卡在 `downloading ... electron-...zip`，可使用镜像脚本：
+`pack:mac` / `pack:win` 默认通过 npmmirror 镜像下载 Electron 与 electron-builder 二进制，适合国内网络。若需从 GitHub 官方源下载，可使用：
 
 ```bash
-yarn pack:mac:mirror
-yarn pack:win:mirror
+yarn pack:mac:original
+yarn pack:win:original
 ```
 
-首次打包需下载依赖时请保持网络畅通；国内环境可依赖 `.npmrc` 中的 `electron_mirror` 配置。
+首次打包需下载依赖时请保持网络畅通；也可在 `.npmrc` 中配置 `electron_mirror` 作为补充。
 
 ## 六、LRC 歌词归位 — 使用流程
 
