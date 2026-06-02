@@ -2,6 +2,7 @@ node_modules
 dist
 out
 release
+build/icon.ico
 *.log
 .DS_Store
 .idea
