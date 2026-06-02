@@ -44,7 +44,7 @@ import unlockMusicLicense from '@unlock/LICENSE?raw'
           </div>
           <div class="ack-meta__row">
             <dt>版权</dt>
-            <dd>Copyright (c) 2019-2023 MengYX</dd>
+            <dd>Copyright (c) 2019-2026 MengYX</dd>
           </div>
           <div class="ack-meta__row">
             <dt>官网</dt>
