@@ -322,7 +322,7 @@ async function revealConfigFile(): Promise<void> {
           <template #tab>
             <span class="settings-tab-label">
               <NIcon :size="18"><SyncOutline /></NIcon>
-              同步设置
+              同步
             </span>
           </template>
 
@@ -380,7 +380,7 @@ async function revealConfigFile(): Promise<void> {
           <template #tab>
             <span class="settings-tab-label">
               <NIcon :size="18"><KeyOutline /></NIcon>
-              高级功能
+              高级
             </span>
           </template>
 
