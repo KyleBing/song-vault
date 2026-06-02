@@ -58,14 +58,7 @@ yarn pack:mac
 yarn pack:win
 ```
 
-`pack:mac` / `pack:win` 默认通过 npmmirror 镜像下载 Electron 与 electron-builder 二进制，适合国内网络。若需从 GitHub 官方源下载，可使用：
-
-```bash
-yarn pack:mac:original
-yarn pack:win:original
-```
-
-首次打包需下载依赖时请保持网络畅通；也可在 `.npmrc` 中配置 `electron_mirror` 作为补充。
+`pack:mac` / `pack:win` 通过项目 `.npmrc` 中的 npmmirror 镜像下载 Electron 与 electron-builder 二进制，Windows / macOS 均可直接运行。若需从 GitHub 官方源下载，可使用 `pack:*:original`（会临时忽略镜像配置）。
 
 ## 六、LRC 歌词归位 — 使用流程
 

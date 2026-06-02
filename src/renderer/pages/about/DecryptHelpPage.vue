@@ -38,7 +38,15 @@ import { NScrollbar } from 'naive-ui'
               <a href="https://github.com/ericjuice/music-decryptor" target="_blank" rel="noopener noreferrer">music-decryptor</a>），得到
               <code>.flac</code> 后再导入本工具
             </li>
-            <li>或使用 QQ 音乐 <strong>PC v19.43 及以下</strong> 重新下载</li>
+            <li>
+              或使用 QQ 音乐 PC 旧版重新下载：Windows 推荐 <strong>v19.51</strong>（
+              <a
+                href="https://t.me/unlock_music_chat/239274"
+                target="_blank"
+                rel="noopener noreferrer"
+              >Telegram 下载</a>
+              ），亦可尝试 v19.43 及以下
+            </li>
           </ul>
 
           <h3>安卓等</h3>

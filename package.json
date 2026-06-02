@@ -12,10 +12,10 @@
     "preview": "electron-vite preview",
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json",
     "pack": "yarn build && electron-builder",
-    "pack:mac:original": "yarn build && electron-builder --mac",
-    "pack:win:original": "yarn build && electron-builder --win",
-    "pack:mac": "yarn build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --mac",
-    "pack:win": "yarn build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win"
+    "pack:mac:original": "yarn build && cross-env ELECTRON_MIRROR= ELECTRON_BUILDER_BINARIES_MIRROR= electron-builder --mac",
+    "pack:win:original": "yarn build && cross-env ELECTRON_MIRROR= ELECTRON_BUILDER_BINARIES_MIRROR= electron-builder --win",
+    "pack:mac": "yarn build && electron-builder --mac",
+    "pack:win": "yarn build && electron-builder --win"
   },
   "dependencies": {
     "@jixun/qmc2-crypto": "file:./vendor/qmc2-crypto",
@@ -38,6 +38,7 @@
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "cross-env": "^7.0.3",
     "sass": "^1.100.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
@@ -79,7 +80,8 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "${productName}-${version}-Windows.${ext}"
+      "artifactName": "${productName}-${version}-Windows.${ext}",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
