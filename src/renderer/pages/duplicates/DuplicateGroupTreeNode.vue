@@ -15,6 +15,7 @@ const props = defineProps<{
     expandedKeys: Set<string>
     selectedKeys: Set<string>
     keepKeys: Record<string, string>
+    scanRoot: string
     loading: boolean
     deleting: boolean
 }>()
@@ -136,6 +137,7 @@ function onFolderCheckUpdate(row: DuplicateGroupTreeRow, checked: boolean): void
                     v-else-if="node.group"
                     :keep-key="keepKeys[node.group.id] ?? node.group.suggestedKeepKey"
                     :group="node.group"
+                    :scan-root="scanRoot"
                     @update:keep-key="emit('update:keepKey', node.group!.id, $event)"
                 />
             </div>
@@ -148,6 +150,7 @@ function onFolderCheckUpdate(row: DuplicateGroupTreeRow, checked: boolean): void
             :expanded-keys="expandedKeys"
             :selected-keys="selectedKeys"
             :keep-keys="keepKeys"
+            :scan-root="scanRoot"
             :loading="loading"
             :deleting="deleting"
             @toggle-expand="(key) => emit('toggleExpand', key)"

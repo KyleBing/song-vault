@@ -24,3 +24,11 @@ export function samePath(a: string, b: string): boolean {
 export function sameDir(a: string, b: string): boolean {
   return samePath(dirnameOf(a), dirnameOf(b))
 }
+
+/** 将相对路径（正斜杠）拼到根目录下，返回适合本机 fs 的路径 */
+export function joinUnderRoot(root: string, relativePath: string): string {
+  const base = root.replace(/[/\\]+$/, '')
+  const sep = base.includes('\\') ? '\\' : '/'
+  const parts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean)
+  return [base, ...parts].join(sep)
+}

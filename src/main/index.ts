@@ -313,7 +313,7 @@ function registerIpcHandlers(): void {
           ? (plain as ScanLibraryDuplicatesParams).root
           : ''
       return toIpcPlain(
-        scanLibraryDuplicates({
+        await scanLibraryDuplicates({
           root,
           pathFilterRules:
             plain &&

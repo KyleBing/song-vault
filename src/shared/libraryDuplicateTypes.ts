@@ -1,9 +1,11 @@
 import type { PathFilterRule } from './pathFilters'
+import type { AudioFileMetrics } from './audioFileMetrics'
 
 export interface DuplicateMember {
     relativePath: string
     fileName: string
     size: number
+    audio?: AudioFileMetrics
 }
 
 export interface DuplicateGroup {

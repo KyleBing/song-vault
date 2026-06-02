@@ -32,6 +32,7 @@ import {
 } from '@renderer/utils/duplicateGroupTree'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import DuplicateGroupTreeNode from './DuplicateGroupTreeNode.vue'
+import DuplicateGroupCoverCompare from './DuplicateGroupCoverCompare.vue'
 
 const duplicateScanDir = defineModel<string>('duplicateScanDir', { required: true })
 
@@ -137,6 +138,10 @@ const totalGroupCount = computed(() => scanResult.value?.groups.length ?? 0)
 
 const totalExtraCopies = computed(
     () => scanResult.value?.stats.extraCopyCount ?? 0
+)
+
+const scanRoot = computed(() =>
+    (scanResult.value?.root ?? duplicateScanDir.value ?? '').trim()
 )
 
 const deleteCandidateCount = computed(() => {
@@ -630,7 +635,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                     >
                         <p class="library-duplicates-empty__title">未发现重复</p>
                         <p class="library-duplicates-empty__desc">
-                            该目录内没有同名同大小且路径不同的音频
+                            该目录内没有同名且路径不同的音频
                         </p>
                     </div>
 
@@ -655,6 +660,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                                 :expanded-keys="expandedKeySet"
                                 :selected-keys="selectedKeySet"
                                 :keep-keys="keepKeys"
+                                :scan-root="scanRoot"
                                 :loading="loading"
                                 :deleting="deletingSelected"
                                 @toggle-expand="toggleExpand"
@@ -675,6 +681,10 @@ async function deleteSelectedDuplicates(): Promise<void> {
                 </NSpin>
             </section>
         </div>
+        <DuplicateGroupCoverCompare
+            :keep-keys="keepKeys"
+            @update:keep-key="updateKeepKey"
+        />
     </div>
 </template>
 

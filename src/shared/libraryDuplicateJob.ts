@@ -1,5 +1,5 @@
 /**
- * 乐库内重复音频扫描与删除（同名同大小、不同相对路径）。
+ * 乐库内重复音频扫描与删除（同名、不同相对路径；大小可相同或不同）。
  */
 
 import fs from 'fs'
@@ -20,6 +20,7 @@ import {
     walkLibraryAudioFiles,
     type SyncFileEntry
 } from './librarySyncJob'
+import { readAudioFileMetricsBatch } from './readAudioFileMetrics'
 
 export type {
     DeleteDuplicateFilesParams,
@@ -40,8 +41,8 @@ function resolveRoot(root: string): string {
     return check.path
 }
 
-function fileSignature(entry: SyncFileEntry): string {
-    return `${entry.fileName}\0${entry.size}`
+function fileNameKey(entry: SyncFileEntry): string {
+    return entry.fileName.toLowerCase()
 }
 
 function parseMacOsDuplicateBase(basename: string): string | null {
@@ -65,18 +66,18 @@ function pickSuggestedKeep(members: DuplicateMember[]): DuplicateMember {
 }
 
 function findDuplicateGroups(fileMap: Map<string, SyncFileEntry>): DuplicateGroup[] {
-    const bySignature = new Map<string, SyncFileEntry[]>()
+    const byFileName = new Map<string, SyncFileEntry[]>()
 
     for (const entry of fileMap.values()) {
-        const sig = fileSignature(entry)
-        const list = bySignature.get(sig) ?? []
+        const key = fileNameKey(entry)
+        const list = byFileName.get(key) ?? []
         list.push(entry)
-        bySignature.set(sig, list)
+        byFileName.set(key, list)
     }
 
     const groups: DuplicateGroup[] = []
 
-    for (const [sig, entries] of bySignature) {
+    for (const [key, entries] of byFileName) {
         if (entries.length < 2) continue
 
         const members: DuplicateMember[] = entries.map((entry) => ({
@@ -88,9 +89,9 @@ function findDuplicateGroups(fileMap: Map<string, SyncFileEntry>): DuplicateGrou
         const suggested = pickSuggestedKeep(members)
 
         groups.push({
-            id: sig,
+            id: key,
             fileName: entries[0].fileName,
-            size: entries[0].size,
+            size: suggested.size,
             members,
             suggestedKeepKey: duplicateMemberKey(suggested.relativePath)
         })
@@ -101,6 +102,34 @@ function findDuplicateGroups(fileMap: Map<string, SyncFileEntry>): DuplicateGrou
             sensitivity: 'base'
         })
     )
+}
+
+function memberFullPath(root: string, relativePath: string): string {
+    return path.resolve(path.join(root, ...relativePath.split('/')))
+}
+
+async function enrichGroupsWithAudioMetrics(
+    root: string,
+    groups: DuplicateGroup[]
+): Promise<DuplicateGroup[]> {
+    if (groups.length === 0) return groups
+
+    const fullPaths: string[] = []
+    for (const group of groups) {
+        for (const member of group.members) {
+            fullPaths.push(memberFullPath(root, member.relativePath))
+        }
+    }
+
+    const metricsByPath = await readAudioFileMetricsBatch(fullPaths)
+
+    return groups.map((group) => ({
+        ...group,
+        members: group.members.map((member) => ({
+            ...member,
+            audio: metricsByPath[memberFullPath(root, member.relativePath)] ?? {}
+        }))
+    }))
 }
 
 function buildStats(
@@ -118,10 +147,10 @@ function buildStats(
     }
 }
 
-/** 扫描乐库内的重复音频（同名同大小、相对路径不同） */
-export function scanLibraryDuplicates(
+/** 扫描乐库内的重复音频（同名、相对路径不同；大小可相同或不同） */
+export async function scanLibraryDuplicates(
     params: ScanLibraryDuplicatesParams
-): ScanLibraryDuplicatesResult {
+): Promise<ScanLibraryDuplicatesResult> {
     const rootInput = (params?.root ?? '').trim()
     if (!rootInput) {
         throw new Error('未指定扫描目录')
@@ -135,7 +164,10 @@ export function scanLibraryDuplicates(
     const root = check.path
     const pathFilterRules = params.pathFilterRules ?? []
     const fileMap = walkLibraryAudioFiles(root, pathFilterRules)
-    const groups = findDuplicateGroups(fileMap)
+    const groups = await enrichGroupsWithAudioMetrics(
+        root,
+        findDuplicateGroups(fileMap)
+    )
 
     return {
         root,
