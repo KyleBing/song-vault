@@ -2,7 +2,9 @@
 import { NScrollbar, NTabPane, NTabs, NTag } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 import {
+  APP_COPYRIGHT,
   APP_DISPLAY_NAME,
+  APP_LICENSE,
   APP_TAGLINE,
   APP_VERSION
 } from '@shared/appInfo'
@@ -74,6 +76,12 @@ const latestVersion = computed(() => CHANGELOG_RELEASES[0]?.version ?? APP_VERSI
           >
             最新发布 v{{ latestVersion }}
           </span>
+          <p class="about-aside__license-copyright">
+            {{ APP_COPYRIGHT }}
+          </p>
+          <p class="about-aside__license-license">
+            {{ APP_LICENSE }}
+          </p>
         </div>
       </aside>
 
@@ -236,13 +244,29 @@ $about-aside-width: 300px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   margin-top: 18px;
 }
 
 .about-aside__latest-hint {
   font-size: 11px;
   opacity: 0.5;
+}
+
+.about-aside__license-copyright {
+  margin: 0;
+  max-width: 240px;
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.48;
+}
+
+.about-aside__license-license {
+  margin: 0;
+  max-width: 240px;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.48;
 }
 
 .about-main {

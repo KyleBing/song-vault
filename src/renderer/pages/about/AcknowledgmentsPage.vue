@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { NScrollbar } from 'naive-ui'
+import {
+  APP_COPYRIGHT,
+  APP_DISPLAY_NAME,
+  APP_LICENSE
+} from '@shared/appInfo'
+import appLicense from '../../../../LICENSE?raw'
 import unlockMusicLicense from '@unlock/LICENSE?raw'
 </script>
 
@@ -7,8 +13,28 @@ import unlockMusicLicense from '@unlock/LICENSE?raw'
   <NScrollbar class="ack-scroll">
     <div class="ack-body">
       <p class="ack-lead">
-        本应用部分功能基于开源项目实现。以下为相关项目的版权与许可说明；修改与再分发时请遵循各自授权协议。
+        本应用以 {{ APP_LICENSE }} 开源。部分功能基于下列项目实现；修改与再分发时请遵循各自授权协议。
       </p>
+
+      <section class="ack-project">
+        <h2>{{ APP_DISPLAY_NAME }} SongVault</h2>
+        <p>
+          本桌面客户端（乐库管理 / SongVault）的源码与文档遵循 MIT 许可；再分发时须保留版权声明与许可全文。
+        </p>
+
+        <dl class="ack-meta">
+          <div class="ack-meta__row">
+            <dt>许可</dt>
+            <dd>{{ APP_LICENSE }}</dd>
+          </div>
+          <div class="ack-meta__row">
+            <dt>版权</dt>
+            <dd>{{ APP_COPYRIGHT }}</dd>
+          </div>
+        </dl>
+
+        <pre class="ack-license">{{ appLicense.trim() }}</pre>
+      </section>
 
       <section class="ack-project">
         <h2>Unlock Music</h2>

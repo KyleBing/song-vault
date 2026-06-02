@@ -6,3 +6,9 @@ export const APP_TAGLINE = '歌词归位、音乐解密、音频库与双乐库�
 
 /** 构建时由 Vite 从 package.json 注入 */
 export const APP_VERSION = __APP_VERSION__
+
+/** 与仓库根目录 LICENSE 一致 */
+export const APP_LICENSE = 'MIT License'
+
+/** 与仓库根目录 LICENSE 一致 */
+export const APP_COPYRIGHT = 'Copyright (c) 2026 乐库管理 SongVault'
