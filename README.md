@@ -9,7 +9,9 @@
 </p>
 
 <p align="center">
-<img width="3018" height="1509" alt="2026-06-02 10 13 27" src="https://github.com/user-attachments/assets/1d99bec3-aff2-4a2d-a7dc-a061c126e818" />
+
+<img width="1632" height="872" alt="index" src="https://github.com/user-attachments/assets/08d0754e-2f1e-4a9e-b9fe-63e31922c961" />
+
 </p>
 
 ## 一、功能概览
