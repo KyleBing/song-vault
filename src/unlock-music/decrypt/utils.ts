@@ -444,6 +444,13 @@ export function WriteMetaToMp3(
   return Buffer.from(writer.addTag());
 }
 
+function ensureMetaFlacPadding(writer: MetaFlac): void {
+  const w = writer as MetaFlac & { padding: Buffer | null }
+  if (w.padding == null) {
+    w.padding = Buffer.alloc(0)
+  }
+}
+
 export function WriteMetaToFlac(
   audioData: Buffer,
   info: IMusicMeta,
@@ -452,6 +459,7 @@ export function WriteMetaToFlac(
 ): Buffer {
   const meta = buildMusicMetaFromSources(info, original, replaceExisting);
   const writer = new MetaFlac(audioData);
+  ensureMetaFlacPadding(writer);
   clearManagedFlacTags(writer);
 
   setFlacTag(writer, 'TITLE', meta.title);
@@ -485,8 +493,12 @@ export function WriteMetaToFlac(
   setFlacTags(writer, 'SUBTITLE', meta.subtitle);
   setFlacTags(writer, 'CATALOGNUMBER', meta.catalognumber);
   if (meta.bpm) setFlacTag(writer, 'BPM', String(meta.bpm));
-  if (meta.picture) {
-    writer.importPictureFromBuffer(Buffer.from(meta.picture));
+  if (meta.picture?.byteLength) {
+    try {
+      writer.importPictureFromBuffer(Buffer.from(meta.picture));
+    } catch {
+      /* 封面写入失败时仍保留其它标签 */
+    }
   }
   return writer.save();
 }

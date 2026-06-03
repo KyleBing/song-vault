@@ -24,7 +24,14 @@ import {
     hasDuplicateScanSourceOptions
 } from '@shared/duplicateScanSources'
 import { isEditableAudioMetaPath } from '@shared/audioMetaEdit'
+import { metaTagFieldsHaveTraditionalChinese } from '@shared/traditionalChinese'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import {
+    applySortableHeaders,
+    handleTableSorterUpdate,
+    sortRows,
+    type TableSortOrder
+} from '@renderer/composables/useTableHeaderSort'
 import { useAudioMetaCache } from '@renderer/composables/useAudioMetaCache'
 import { useLayoutStore } from '@renderer/stores/layout'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
@@ -88,9 +95,75 @@ function renderEditableCell(row: MetaTagMismatchDisplayRow) {
     )
 }
 
+type MetaTagMismatchSortKey =
+    | 'relativePath'
+    | 'fileArtist'
+    | 'fileTitle'
+    | 'tagArtistDisplay'
+    | 'tagTitleDisplay'
+    | 'mismatchLabel'
+    | 'editableLabel'
+
+const SORTABLE_META_MISMATCH_KEYS = new Set<string>([
+    'relativePath',
+    'fileArtist',
+    'fileTitle',
+    'tagArtistDisplay',
+    'tagTitleDisplay',
+    'mismatchLabel',
+    'editableLabel'
+])
+
+function mismatchReasonRank(reasons: MetaTagMismatchReason[]): number {
+    if (reasons.includes('both')) return 3
+    if (reasons.includes('artist')) return 2
+    return 1
+}
+
+function compareMetaTagMismatchRow(
+    a: MetaTagMismatchDisplayRow,
+    b: MetaTagMismatchDisplayRow,
+    key: string
+): number {
+    switch (key) {
+        case 'relativePath':
+            return a.relativePath.localeCompare(b.relativePath, undefined, {
+                sensitivity: 'base'
+            })
+        case 'fileArtist':
+            return a.fileArtist.localeCompare(b.fileArtist, undefined, {
+                sensitivity: 'base'
+            })
+        case 'fileTitle':
+            return a.fileTitle.localeCompare(b.fileTitle, undefined, {
+                sensitivity: 'base'
+            })
+        case 'tagArtistDisplay':
+            return a.tagArtist.localeCompare(b.tagArtist, undefined, {
+                sensitivity: 'base'
+            })
+        case 'tagTitleDisplay':
+            return a.tagTitle.localeCompare(b.tagTitle, undefined, {
+                sensitivity: 'base'
+            })
+        case 'mismatchLabel':
+            return (
+                mismatchReasonRank(a.reasons) - mismatchReasonRank(b.reasons) ||
+                a.mismatchLabel.localeCompare(b.mismatchLabel, undefined, {
+                    sensitivity: 'base'
+                })
+            )
+        case 'editableLabel':
+            return Number(a.editable) - Number(b.editable)
+        default:
+            return a.relativePath.localeCompare(b.relativePath, undefined, {
+                sensitivity: 'base'
+            })
+    }
+}
+
 /** 列配置保持引用稳定，减轻虚拟列表滚动时的 diff */
-const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> =
-    [
+const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> = [
         { type: 'selection', fixed: 'left' },
         {
             title: '相对路径',
@@ -101,13 +174,13 @@ const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> =
         {
             title: '文件名·艺人',
             key: 'fileArtist',
-            width: 120,
+            width: 150,
             ellipsis: { tooltip: false }
         },
         {
             title: '文件名·曲名',
             key: 'fileTitle',
-            width: 120,
+            width: 150,
             ellipsis: { tooltip: false }
         },
         {
@@ -162,6 +235,7 @@ const scanButtonLoading = ref(false)
 const applyingTags = ref(false)
 const rootValidation = ref<SyncRootCheck | null>(null)
 const scanResult = ref<ScanMetaTagMismatchResult | null>(null)
+const filterTraditionalMeta = ref(false)
 
 const editModalShow = ref(false)
 const editFilePath = ref<string | null>(null)
@@ -246,11 +320,44 @@ const sourceSelectOptions = computed(() =>
 
 const tableRows = computed(() => scanResult.value?.items ?? [])
 
-const displayRows = computed(() => tableRows.value.map(toDisplayRow))
+const filteredTableRows = computed(() => {
+    if (!filterTraditionalMeta.value) return tableRows.value
+    return tableRows.value.filter((row) =>
+        metaTagFieldsHaveTraditionalChinese(row.tagArtist, row.tagTitle)
+    )
+})
 
-const rowKeys = computed(() => tableRows.value.map((row) => row.fullPath))
+const traditionalMetaCount = computed(
+    () =>
+        tableRows.value.filter((row) =>
+            metaTagFieldsHaveTraditionalChinese(row.tagArtist, row.tagTitle)
+        ).length
+)
 
-const tableColumns = META_MISMATCH_TABLE_COLUMNS
+const sortKey = ref<MetaTagMismatchSortKey>('relativePath')
+const sortOrder = ref<TableSortOrder>('asc')
+
+const displayRows = computed(() => {
+    const rows = filteredTableRows.value.map(toDisplayRow)
+    return sortRows(rows, sortKey.value, sortOrder.value, compareMetaTagMismatchRow)
+})
+
+const orderedRowKeys = computed(() => displayRows.value.map((row) => row.fullPath))
+
+const tableColumns = computed(() =>
+    applySortableHeaders(META_MISMATCH_TABLE_COLUMNS, {
+        sortKey: sortKey.value,
+        sortOrder: sortOrder.value,
+        isSortable: (key) => SORTABLE_META_MISMATCH_KEYS.has(key),
+        compare: (key) => (a, b) => compareMetaTagMismatchRow(a, b, key)
+    })
+)
+
+function onSorterUpdate(
+    sorter: Parameters<typeof handleTableSorterUpdate>[0]
+): void {
+    handleTableSorterUpdate(sorter, sortKey, sortOrder, 'relativePath')
+}
 
 const rowPropsCache = new Map<string, Record<string, unknown>>()
 
@@ -263,6 +370,11 @@ const {
     onTableMouseDown,
     rowProps: shiftRowProps
 } = useShiftRowSelection((row) => (row as MetaTagMismatchItem).fullPath)
+
+watch(filterTraditionalMeta, () => {
+    const visible = new Set(filteredTableRows.value.map((row) => row.fullPath))
+    selectedRowKeys.value = selectedRowKeys.value.filter((key) => visible.has(key))
+})
 
 const tableRowProps = useAudioPlayRowProps(
     shiftRowProps,
@@ -277,7 +389,7 @@ function onCheckedRowKeys(
         action: 'check' | 'uncheck' | 'checkAll' | 'uncheckAll'
     }
 ): void {
-    onUpdateCheckedRowKeys(keys.map(String), rowKeys, meta)
+    onUpdateCheckedRowKeys(keys.map(String), orderedRowKeys, meta)
 }
 
 const selectedItems = computed(() => {
@@ -337,6 +449,7 @@ async function runScan(options?: {
         })
         clearSelection()
         applyResult.value = null
+        filterTraditionalMeta.value = false
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!options?.silent) message.error(msg)
@@ -465,7 +578,7 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
     const key = row.fullPath
     let cached = rowPropsCache.get(key)
     if (!cached) {
-        cached = tableRowProps(row, rowKeys)
+        cached = tableRowProps(row, orderedRowKeys)
         rowPropsCache.set(key, cached)
     }
     return cached
@@ -613,6 +726,26 @@ function editSelected(): void {
                                 · 可写 {{ selectedEditableCount }}
                             </template>
                         </p>
+                        <NButton
+                            v-if="scanResult && scanResult.items.length > 0"
+                            block
+                            quaternary
+                            :type="filterTraditionalMeta ? 'primary' : 'default'"
+                            :disabled="traditionalMetaCount === 0"
+                            @click="filterTraditionalMeta = !filterTraditionalMeta"
+                        >
+                            {{
+                                filterTraditionalMeta
+                                    ? '显示全部'
+                                    : `仅繁体标签 (${traditionalMetaCount})`
+                            }}
+                        </NButton>
+                        <p
+                            v-if="scanResult && filterTraditionalMeta"
+                            class="mtm-selected-count"
+                        >
+                            显示 {{ displayRows.length }} / {{ scanResult.items.length }} 条
+                        </p>
                         <NPopconfirm
                             v-if="scanResult && scanResult.items.length > 0"
                             :disabled="
@@ -680,7 +813,7 @@ function editSelected(): void {
             <main class="mtm-main-pane">
                 <NSpin :show="loading" class="mtm-main-spin">
                     <div
-                        v-if="scanResult && scanResult.items.length > 0"
+                        v-if="scanResult && displayRows.length > 0"
                         ref="tableWrapRef"
                         class="mtm-table-wrap"
                         @mousedown.capture="onTableMouseDown"
@@ -695,7 +828,17 @@ function editSelected(): void {
                             size="small"
                             striped
                             @update:checked-row-keys="onCheckedRowKeys"
+                            @update:sorter="onSorterUpdate"
                         />
+                    </div>
+                    <div
+                        v-else-if="scanResult && scanResult.items.length > 0"
+                        class="meta-mismatch-empty"
+                    >
+                        <p class="meta-mismatch-empty__title">无匹配项</p>
+                        <p class="meta-mismatch-empty__desc">
+                            当前列表中没有标签含繁体字的记录。
+                        </p>
                     </div>
                     <div
                         v-else-if="scanResult"
