@@ -200,6 +200,7 @@ $width-player: 300px;
     height: 32px;
     object-fit: cover;
     border-radius: 4px;
+    border: 1px solid $border-subtle;
     flex-shrink: 0;
     background: rgba(128, 128, 128, 0.12);
     cursor: pointer;

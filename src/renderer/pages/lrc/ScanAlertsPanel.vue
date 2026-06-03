@@ -214,7 +214,7 @@ const runSummaryText = computed(() => {
             <template #icon>
               <NIcon><Trash /></NIcon>
             </template>
-            删除选中多余歌词 ({{ selectedOrphanKeys?.length ?? 0 }})
+            {{ selectedOrphanKeys?.length ?? 0 }}
           </NButton>
         </template>
         确定删除选中的 {{ selectedOrphanKeys?.length ?? 0 }} 个歌词文件？不可恢复。
@@ -232,7 +232,7 @@ const runSummaryText = computed(() => {
             <template #icon>
               <NIcon><Trash /></NIcon>
             </template>
-            删除选中多余音频 ({{ selectedOrphanAudioKeys?.length ?? 0 }})
+            {{ selectedOrphanAudioKeys?.length ?? 0 }}
           </NButton>
         </template>
         确定删除选中的 {{ selectedOrphanAudioKeys?.length ?? 0 }} 个音频文件？不可恢复。

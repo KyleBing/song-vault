@@ -227,11 +227,48 @@ function pictureDataToArrayBuffer(data: Buffer | Uint8Array): ArrayBuffer {
   return Uint8Array.from(buf).buffer;
 }
 
+function buildMusicMetaExplicitOnly(
+  explicit: Partial<IMusicMeta> & { artist?: string }
+): IMusicMeta {
+  return {
+    title: explicit.title?.trim() ?? '',
+    artists: mergeStringLists(explicit.artists, splitArtistText(explicit.artist)),
+    album: nonEmptyString(explicit.album),
+    albumartist: nonEmptyString(explicit.albumartist),
+    genre: mergeStringLists(explicit.genre),
+    year: explicit.year,
+    date: nonEmptyString(explicit.date),
+    trackNo: explicit.trackNo ?? undefined,
+    trackOf: explicit.trackOf ?? undefined,
+    diskNo: explicit.diskNo ?? undefined,
+    diskOf: explicit.diskOf ?? undefined,
+    comment: mergeStringLists(explicit.comment),
+    lyrics: mergeStringLists(explicit.lyrics),
+    composer: mergeStringLists(explicit.composer),
+    lyricist: mergeStringLists(explicit.lyricist),
+    conductor: mergeStringLists(explicit.conductor),
+    remixer: mergeStringLists(explicit.remixer),
+    producer: mergeStringLists(explicit.producer),
+    label: mergeStringLists(explicit.label),
+    grouping: nonEmptyString(explicit.grouping),
+    subtitle: mergeStringLists(explicit.subtitle),
+    bpm: explicit.bpm,
+    catalognumber: mergeStringLists(explicit.catalognumber),
+    picture: explicit.picture,
+    picture_desc: explicit.picture_desc
+  };
+}
+
 /** 合并解密结果、显式字段与解析出的内嵌标签（显式字段优先，避免重复） */
 export function buildMusicMetaFromSources(
   explicit: Partial<IMusicMeta> & { artist?: string },
-  parsed: IAudioMetadata
+  parsed: IAudioMetadata,
+  replaceExisting = false
 ): IMusicMeta {
+  if (replaceExisting) {
+    return buildMusicMetaExplicitOnly(explicit);
+  }
+
   const common = parsed.common;
   const artists = mergeStringLists(
     explicit.artists,
@@ -340,9 +377,10 @@ function setFlacTag(writer: MetaFlac, key: string, value?: string): void {
 export function WriteMetaToMp3(
   audioData: Buffer,
   info: IMusicMeta,
-  original: IAudioMetadata
+  original: IAudioMetadata,
+  replaceExisting = false
 ): Buffer {
-  const meta = buildMusicMetaFromSources(info, original);
+  const meta = buildMusicMetaFromSources(info, original, replaceExisting);
   const writer = new ID3Writer(audioData);
 
   const frames =
@@ -402,9 +440,10 @@ export function WriteMetaToMp3(
 export function WriteMetaToFlac(
   audioData: Buffer,
   info: IMusicMeta,
-  original: IAudioMetadata
+  original: IAudioMetadata,
+  replaceExisting = false
 ): Buffer {
-  const meta = buildMusicMetaFromSources(info, original);
+  const meta = buildMusicMetaFromSources(info, original, replaceExisting);
   const writer = new MetaFlac(audioData);
   clearManagedFlacTags(writer);
 

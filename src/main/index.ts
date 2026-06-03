@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
-import { existsSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { extname, join } from 'path'
 import { APP_DISPLAY_NAME } from '../shared/appInfo'
 import {
   copyLrcToAudio,
@@ -58,6 +58,8 @@ import {
 } from '../shared/sourceDirBrowse'
 import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
 import { readAudioFileMeta } from '../shared/readAudioFileMeta'
+import { writeAudioFileMeta } from './writeAudioFileMeta'
+import type { AudioMetaEditForm } from '../shared/audioMetaEdit'
 import { resolvePathToMediaUrl } from '../shared/pathToMediaUrl'
 import { toIpcPlain } from '../shared/serialize'
 import {
@@ -101,6 +103,8 @@ const IPC_CHANNELS = [
   'read-audio-metrics-batch',
   'read-file-stats-batch',
   'read-audio-meta',
+  'write-audio-meta',
+  'pick-cover-image',
   'compare-library-sync',
   'validate-search-roots',
   'copy-sync-file',
@@ -272,6 +276,74 @@ function registerIpcHandlers(): void {
   ipcMain.handle('read-audio-meta', async (_, filePath: unknown) => {
     const p = typeof filePath === 'string' ? filePath : ''
     return toIpcPlain(await readAudioFileMeta(p))
+  })
+
+  ipcMain.handle('write-audio-meta', async (_, payload: unknown) => {
+    const raw = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const filePath = typeof raw.filePath === 'string' ? raw.filePath : ''
+    const form = raw.form && typeof raw.form === 'object' ? (raw.form as AudioMetaEditForm) : null
+    const coverBase64 =
+      raw.coverBase64 === null
+        ? null
+        : typeof raw.coverBase64 === 'string'
+          ? raw.coverBase64
+          : undefined
+
+    if (!filePath || !form) {
+      return toIpcPlain({
+        ok: false,
+        filePath,
+        message: '参数无效'
+      })
+    }
+
+    return toIpcPlain(
+      await writeAudioFileMeta({
+        filePath,
+        form,
+        coverBase64
+      })
+    )
+  })
+
+  ipcMain.handle('pick-cover-image', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        {
+          name: '图片',
+          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']
+        }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return toIpcPlain({ ok: false, message: '未选择图片' })
+    }
+
+    const imagePath = result.filePaths[0]!
+    try {
+      const buffer = readFileSync(imagePath)
+      const ext = extname(imagePath).slice(1).toLowerCase()
+      const mimeByExt: Record<string, string> = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+        gif: 'image/gif',
+        bmp: 'image/bmp'
+      }
+      const mime = mimeByExt[ext] ?? 'image/jpeg'
+      const base64 = buffer.toString('base64')
+      return toIpcPlain({
+        ok: true,
+        dataUrl: `data:${mime};base64,${base64}`,
+        base64,
+        mime
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return toIpcPlain({ ok: false, message: msg || '读取图片失败' })
+    }
   })
 
   ipcMain.handle('path-to-media-url', async (_, filePath: unknown) => {

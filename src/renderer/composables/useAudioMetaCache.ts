@@ -48,5 +48,12 @@ export function useAudioMetaCache() {
     inflight.clear()
   }
 
-  return { getMeta, clearCache, loadingCount }
+  function invalidateMeta(filePath: string): void {
+    const key = filePath.trim()
+    if (!key) return
+    cache.delete(key)
+    inflight.delete(key)
+  }
+
+  return { getMeta, clearCache, invalidateMeta, loadingCount }
 }

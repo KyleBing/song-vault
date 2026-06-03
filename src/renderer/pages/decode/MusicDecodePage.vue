@@ -788,7 +788,7 @@ onMounted(() => {
                       <template #icon>
                         <NIcon><TrashOutline /></NIcon>
                       </template>
-                      删除选中 ({{ selectedFileKeys.length }})
+                      {{ selectedFileKeys.length }}
                     </NButton>
                   </template>
                   确定删除选中的 {{ selectedFileKeys.length }} 个文件？

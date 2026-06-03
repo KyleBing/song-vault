@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { NIcon, NTabPane, NTabs } from 'naive-ui'
-import { MusicalNotesOutline } from '@vicons/ionicons5'
+import { CreateOutline, MusicalNotesOutline } from '@vicons/ionicons5'
+import { NButton, NIcon, NTabPane, NTabs, NTooltip } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
+import AudioMetaEditModal from '@renderer/components/AudioMetaEditModal.vue'
 import { useAudioCoverLightbox } from '@renderer/composables/useAudioCoverLightbox'
 import { useAudioMetaCache } from '@renderer/composables/useAudioMetaCache'
 import { isMusicFilePathForMetaHover } from '@shared/isAudioFilePath'
+import { isEditableAudioMetaPath } from '@shared/audioMetaEdit'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
 import {
   buildExtendedMetaSections,
@@ -23,11 +25,16 @@ const activeTab = ref<'regular' | 'vorbis' | 'musicbrainz' | 'extended'>(
   'regular'
 )
 const meta = ref<AudioFileMetaInfo | null>(null)
+const editModalVisible = ref(false)
 
-const { getMeta } = useAudioMetaCache()
+const { getMeta, invalidateMeta } = useAudioMetaCache()
 
 const canLoadMeta = computed(
   () => !!props.filePath && isMusicFilePathForMetaHover(props.filePath)
+)
+
+const canEditMeta = computed(
+  () => !!props.filePath && isEditableAudioMetaPath(props.filePath) && meta.value?.ok
 )
 
 const regularRows = computed(() => buildRegularMetaRows(meta.value))
@@ -55,6 +62,22 @@ function onCoverClick(): void {
   if (!showCover.value) return
   const src = meta.value?.coverDataUrl
   if (src) openCoverLightbox(src)
+}
+
+function openEditModal(): void {
+  if (!canEditMeta.value) return
+  editModalVisible.value = true
+}
+
+async function reloadMeta(): Promise<void> {
+  const path = props.filePath
+  if (!path || !isMusicFilePathForMetaHover(path)) return
+  invalidateMeta(path)
+  meta.value = await getMeta(path)
+}
+
+async function onMetaSaved(): Promise<void> {
+  await reloadMeta()
 }
 
 watch(
@@ -95,6 +118,24 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
         size="small"
         class="audio-meta-panel__tabs"
       >
+        <template #suffix>
+          <NTooltip v-if="canEditMeta">
+            <template #trigger>
+              <NButton
+                quaternary
+                size="tiny"
+                class="audio-meta-panel__edit-btn"
+                @click="openEditModal"
+              >
+                <template #icon>
+                  <NIcon :size="16"><CreateOutline /></NIcon>
+                </template>
+              </NButton>
+            </template>
+            编辑元数据
+          </NTooltip>
+        </template>
+
         <NTabPane name="regular" tab="常规">
           <div v-if="meta" class="audio-meta-panel__regular">
             <img
@@ -220,6 +261,13 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
         </NTabPane>
       </NTabs>
     </div>
+
+    <AudioMetaEditModal
+      v-model:show="editModalVisible"
+      :file-path="filePath"
+      :meta="meta"
+      @saved="onMetaSaved"
+    />
   </div>
 </template>
 
@@ -268,6 +316,23 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
     flex-shrink: 0;
   }
 
+  :deep(.n-tabs-nav-scroll-content) {
+    align-items: center;
+  }
+
+  /* line 类型默认 tabGap 为 36px，用 n-tabs-tab-pad 撑开；此处去掉 pad 并改用较小间距 */
+  :deep(.n-tabs) {
+    --n-tab-gap: 0;
+  }
+
+  :deep(.n-tabs-tab-pad) {
+    width: 10px;
+  }
+
+  :deep(.n-tabs-tab-wrapper + .n-tabs-tab-wrapper) {
+    margin-left: 8px;
+  }
+
   :deep(.n-tabs-tab) {
     font-size: 13px;
   }
@@ -299,6 +364,7 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
   height: 88px;
   object-fit: cover;
   border-radius: 4px;
+  border: 1px solid $border-subtle;
   flex-shrink: 0;
   background: rgba(128, 128, 128, 0.12);
   cursor: pointer;
@@ -361,5 +427,9 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
   margin: 0;
   font-size: 11px;
   opacity: 0.55;
+}
+
+.audio-meta-panel__edit-btn {
+  margin-right: -4px;
 }
 </style>

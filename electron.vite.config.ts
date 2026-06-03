@@ -17,7 +17,13 @@ const appVersionDefine = {
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
-    define: appVersionDefine
+    define: appVersionDefine,
+    resolve: {
+      alias: {
+        '@unlock': unlockMusicRoot,
+        '@unlock/decrypt/entity': resolve(unlockMusicRoot, 'decrypt/entity.ts')
+      }
+    }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

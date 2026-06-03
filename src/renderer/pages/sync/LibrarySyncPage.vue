@@ -1281,10 +1281,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                                     <template #icon>
                                         <NIcon><Trash /></NIcon>
                                     </template>
-                                    删除选中
-                                    <span v-if="selectedItems.length > 0">
-                                        ({{ selectedItems.length }})
-                                    </span>
+                                    {{ selectedItems.length }}
                                 </NButton>
                             </template>
                             确定删除选中的 {{ selectedItems.length }} 项？

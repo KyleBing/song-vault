@@ -8,12 +8,18 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@unlock/*": ["src/unlock-music/*"],
+      "@unlock/decrypt/entity": ["src/unlock-music/decrypt/entity.ts"]
+    }
   },
   "include": [
     "electron.vite.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
+    "src/shared/**/*",
+    "src/unlock-music/decrypt/utils.ts",
+    "src/unlock-music/decrypt/entity.ts"
   ]
 }

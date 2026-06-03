@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioFileMetrics } from '../shared/audioFileMetrics'
 import type { AudioFileMetaInfo } from '../shared/audioFileMeta'
+import type {
+    AudioMetaEditForm,
+    PickCoverImageResult,
+    WriteAudioMetaResult
+} from '../shared/audioMetaEdit'
 import type { AppConfig } from '../shared/appConfig'
 import type {
   CopyLrcParams,
@@ -234,6 +239,20 @@ const api = {
 
   readAudioMeta: async (filePath: string): Promise<AudioFileMetaInfo> => {
     const result = await ipcRenderer.invoke('read-audio-meta', filePath)
+    return toIpcPlain(result)
+  },
+
+  writeAudioMeta: async (params: {
+    filePath: string
+    form: AudioMetaEditForm
+    coverBase64?: string | null
+  }): Promise<WriteAudioMetaResult> => {
+    const result = await ipcRenderer.invoke('write-audio-meta', toIpcPlain(params))
+    return toIpcPlain(result)
+  },
+
+  pickCoverImage: async (): Promise<PickCoverImageResult> => {
+    const result = await ipcRenderer.invoke('pick-cover-image')
     return toIpcPlain(result)
   },
 
