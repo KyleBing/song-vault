@@ -1,5 +1,6 @@
-import { NTag, NTooltip } from 'naive-ui'
+import { NTooltip } from 'naive-ui'
 import { h, type VNode } from 'vue'
+import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
 export interface LrcPresenceCellOptions {
   hasLrc: boolean
@@ -15,20 +16,19 @@ export function lrcPresenceCell(options: LrcPresenceCellOptions): VNode {
   const yesLabel = options.yesLabel ?? '有'
 
   if (!options.hasLrc) {
-    return h(NTag, { size: 'small', round: true }, () => noLabel)
+    return tableStatusPill(noLabel, 'default')
   }
 
   const tip = options.tooltipText?.trim()
   if (!tip) {
-    return h(NTag, { type: 'success', size: 'small', round: true }, () => yesLabel)
+    return tableStatusPill(yesLabel, 'success')
   }
 
   return h(
     NTooltip,
     { placement: 'top-start', style: { maxWidth: '560px' } },
     {
-      trigger: () =>
-        h(NTag, { type: 'success', size: 'small', round: true }, () => yesLabel),
+      trigger: () => tableStatusPill(yesLabel, 'success'),
       default: () => tip
     }
   )

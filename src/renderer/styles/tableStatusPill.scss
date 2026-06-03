@@ -1,0 +1,43 @@
+/* 表格 / 列表轻量状态标签（替代 NTag，便于虚拟滚动） */
+.sv-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 22px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.sv-pill--default {
+    color: inherit;
+    opacity: 0.72;
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.sv-pill--success {
+    color: #18a058;
+    background-color: rgba(24, 160, 88, 0.18);
+}
+
+.sv-pill--warning {
+    color: #f0a020;
+    background-color: rgba(240, 160, 32, 0.18);
+}
+
+.sv-pill--error {
+    color: #d03050;
+    background-color: rgba(208, 48, 80, 0.16);
+}
+
+.sv-pill--info {
+    color: #2080f0;
+    background-color: rgba(32, 128, 240, 0.16);
+}
+
+.sv-cell-empty {
+    opacity: 0.4;
+}

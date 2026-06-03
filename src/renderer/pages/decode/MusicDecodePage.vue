@@ -9,7 +9,6 @@ import {
   NProgress,
   NScrollbar,
   NSpin,
-  NTag,
   NTooltip,
   NTree,
   useMessage,
@@ -60,6 +59,7 @@ import {
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
+import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 import { storage } from '@unlock/utils/storage'
 
 const decodeSourceDirs = defineModel<string[]>('decodeSourceDirs', {
@@ -400,23 +400,16 @@ const queueColumns = computed(() => {
       render(row) {
         if (row.status === 'success') {
           return h('div', { class: 'table-status-cell' }, [
-            h(NTag, { type: 'success', size: 'small', round: true }, () => '成功')
+            tableStatusPill('成功', 'success')
           ])
         }
         if (row.status === 'failed') {
           return h('div', { class: 'table-status-cell' }, [
-            h(
-              NTag,
-              {
-                type: 'error',
-                size: 'small',
-                round: true,
-                class: 'status-tag-clickable',
-                onClick: () =>
-                  openErrorDetail(row.filePath, row.errorMessage ?? '未知错误')
-              },
-              () => '失败'
-            )
+            tableStatusPill('失败', 'error', {
+              class: 'status-tag-clickable',
+              onClick: () =>
+                openErrorDetail(row.filePath, row.errorMessage ?? '未知错误')
+            })
           ])
         }
         return h('div', { class: 'table-status-cell' }, '—')
@@ -931,23 +924,15 @@ onMounted(() => {
             </div>
             <p v-if="lastResult" class="decrypt-result-stats">
               <span class="decrypt-result-label">解密完成</span>
-              <NTag
-                type="success"
-                size="small"
-                round
-                :bordered="false"
-              >
+              <span class="sv-pill sv-pill--success">
                 成功 {{ lastResult.succeeded }}
-              </NTag>
-              <NTag
+              </span>
+              <span
                 v-if="lastResult.failed > 0"
-                type="error"
-                size="small"
-                round
-                :bordered="false"
+                class="sv-pill sv-pill--error"
               >
                 失败 {{ lastResult.failed }}
-              </NTag>
+              </span>
               <span
                 v-if="lastResult.failed > 0"
                 class="decrypt-result-hint"

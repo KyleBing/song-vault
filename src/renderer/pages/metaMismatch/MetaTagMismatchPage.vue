@@ -31,6 +31,7 @@ import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import AudioMetaEditModal from '@renderer/components/AudioMetaEditModal.vue'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
+import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
 /** 表格展示行：预计算文案，避免虚拟滚动时重复解析 */
 interface MetaTagMismatchDisplayRow extends MetaTagMismatchItem {
@@ -63,7 +64,7 @@ function toDisplayRow(row: MetaTagMismatchItem): MetaTagMismatchDisplayRow {
 function renderTagArtistCell(row: MetaTagMismatchDisplayRow) {
     return h(
         'span',
-        { class: row.tagArtistIsEmpty ? 'mtm-cell-empty' : undefined },
+        { class: row.tagArtistIsEmpty ? 'sv-cell-empty' : undefined },
         row.tagArtistDisplay
     )
 }
@@ -71,28 +72,19 @@ function renderTagArtistCell(row: MetaTagMismatchDisplayRow) {
 function renderTagTitleCell(row: MetaTagMismatchDisplayRow) {
     return h(
         'span',
-        { class: row.tagTitleIsEmpty ? 'mtm-cell-empty' : undefined },
+        { class: row.tagTitleIsEmpty ? 'sv-cell-empty' : undefined },
         row.tagTitleDisplay
     )
 }
 
 function renderMismatchCell(row: MetaTagMismatchDisplayRow) {
-    return h(
-        'span',
-        { class: 'mtm-pill mtm-pill--warning' },
-        row.mismatchLabel
-    )
+    return tableStatusPill(row.mismatchLabel, 'warning')
 }
 
 function renderEditableCell(row: MetaTagMismatchDisplayRow) {
-    return h(
-        'span',
-        {
-            class: row.editable
-                ? 'mtm-pill mtm-pill--success'
-                : 'mtm-pill mtm-pill--default'
-        },
-        row.editableLabel
+    return tableStatusPill(
+        row.editableLabel,
+        row.editable ? 'success' : 'default'
     )
 }
 
@@ -995,41 +987,4 @@ function editSelected(): void {
     max-width: 360px;
 }
 
-</style>
-
-<style lang="scss">
-/* render 单元格在表格外层，需非 scoped；配色对齐 Naive NTag */
-.n-data-table.virtual-data-table {
-    .mtm-pill {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 22px;
-        padding: 0 7px;
-        border-radius: 2px;
-        font-size: 12px;
-        line-height: 1;
-        white-space: nowrap;
-        box-sizing: border-box;
-    }
-
-    .mtm-pill--warning {
-        color: #f0a020;
-        background-color: rgba(240, 160, 32, 0.18);
-    }
-
-    .mtm-pill--success {
-        color: #18a058;
-        background-color: rgba(24, 160, 88, 0.18);
-    }
-
-    .mtm-pill--default {
-        opacity: 0.72;
-        background-color: rgba(128, 128, 128, 0.2);
-    }
-
-    .mtm-cell-empty {
-        opacity: 0.4;
-    }
-}
 </style>

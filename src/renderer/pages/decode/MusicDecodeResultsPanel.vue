@@ -2,7 +2,6 @@
 import {
   NTabPane,
   NTabs,
-  NTag,
   type DataTableColumns
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
@@ -28,6 +27,7 @@ import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
+import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
 const props = defineProps<{
   result: MusicScanResult
@@ -177,14 +177,9 @@ const encryptedColumns = computed<DataTableColumns<EncryptedMusicItem>>(() =>
         align: 'center',
         render(row) {
           return h('div', { class: 'table-status-cell' }, [
-            h(
-              NTag,
-              {
-                type: platformTagType[row.platform],
-                size: 'small',
-                round: true
-              },
-              () => PLATFORM_LABELS[row.platform]
+            tableStatusPill(
+              PLATFORM_LABELS[row.platform],
+              platformTagType[row.platform]
             )
           ])
         }

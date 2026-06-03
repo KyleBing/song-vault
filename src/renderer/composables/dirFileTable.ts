@@ -1,4 +1,4 @@
-import { NIcon, NTag, NTooltip, type DataTableColumns, type TagProps } from 'naive-ui'
+import { NIcon, NTooltip, type DataTableColumns, type TagProps } from 'naive-ui'
 import { FolderOpen } from '@vicons/ionicons5'
 import { computed, h, type ComputedRef, type Ref } from 'vue'
 import { needsAudioMetadata } from '@shared/audioFileMetrics'
@@ -17,6 +17,10 @@ import {
 } from '@shared/musicFormats'
 import type { DirAudioFileItem } from '@shared/sourceDirBrowse'
 import { formatFileTime } from '@renderer/utils/formatFileTime'
+import {
+    tableStatusPill,
+    tableStatusPillFromNaiveType
+} from '@renderer/utils/tableStatusPill'
 import {
   applySortableHeaders,
   handleTableSorterUpdate,
@@ -87,11 +91,7 @@ const EXT_TAG_TYPE: Record<string, TagProps['type']> = {
 
 function extCell(row: DirAudioFileItem) {
   const tagType = EXT_TAG_TYPE[row.ext] ?? 'default'
-  return h(
-    NTag,
-    { type: tagType, size: 'small', round: true, bordered: false },
-    () => row.ext.toUpperCase()
-  )
+  return tableStatusPillFromNaiveType(row.ext.toUpperCase(), tagType)
 }
 
 function decodeFormatTagType(ext: string): TagProps['type'] {
@@ -103,39 +103,28 @@ function decodeFormatTagType(ext: string): TagProps['type'] {
 }
 
 function decodeFormatCell(row: DirAudioFileItem) {
-  return h(
-    NTag,
-    {
-      type: decodeFormatTagType(row.ext),
-      size: 'small',
-      round: true,
-      bordered: false
-    },
-    () => `.${row.ext}`
+  return tableStatusPillFromNaiveType(
+    `.${row.ext}`,
+    decodeFormatTagType(row.ext)
   )
 }
 
 function platformCell(row: DirAudioFileItem) {
   const platform = classifyEncryptedExtension(row.ext)
   if (!platform) {
-    return h(NTag, { size: 'small', round: true }, () => row.ext.toUpperCase())
+    return tableStatusPill(row.ext.toUpperCase(), 'default')
   }
-  return h(
-    NTag,
-    {
-      type: platform === 'netease' ? 'warning' : 'info',
-      size: 'small',
-      round: true
-    },
-    () => PLATFORM_LABELS[platform]
+  return tableStatusPill(
+    PLATFORM_LABELS[platform],
+    platform === 'netease' ? 'warning' : 'info'
   )
 }
 
 function lrcCell(row: DirAudioFileItem) {
   if (!row.hasLrc) {
-    return h(NTag, { size: 'small', round: true }, () => '没有')
+    return tableStatusPill('没有', 'default')
   }
-  return h(NTag, { type: 'success', size: 'small', round: true }, () => '有')
+  return tableStatusPill('有', 'success')
 }
 
 function inSearchTargetPathsContent(paths: string[]) {
@@ -153,23 +142,21 @@ function inSearchTargetCell(row: DirAudioFileItem) {
       NTooltip,
       { placement: 'top' },
       {
-        trigger: () =>
-          h(NTag, { size: 'small', round: true, type: 'warning' }, () => '未配置'),
+        trigger: () => tableStatusPill('未配置', 'warning'),
         default: () => '请先在「设置」中添加「音频搜索目标」'
       }
     )
   }
   const paths = row.sourceAudioPaths ?? []
   if (paths.length === 0) {
-    return h(NTag, { size: 'small', round: true }, () => '无')
+    return tableStatusPill('无', 'default')
   }
   const label = paths.length === 1 ? '有' : `有 (${paths.length})`
   return h(
     NTooltip,
     { placement: 'top-start', style: { maxWidth: '560px' } },
     {
-      trigger: () =>
-        h(NTag, { type: 'success', size: 'small', round: true }, () => label),
+      trigger: () => tableStatusPill(label, 'success'),
       default: () => inSearchTargetPathsContent(paths)
     }
   )

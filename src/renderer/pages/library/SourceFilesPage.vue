@@ -7,7 +7,6 @@ import {
   NModal,
   NPopconfirm,
   NSpin,
-  NTag,
   NTooltip,
   NTree,
   useMessage,
@@ -57,6 +56,7 @@ import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import BrowseDirPickerModal from './BrowseDirPickerModal.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
+import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
 const searchRoots = defineModel<string[]>('searchRoots', { required: true })
 
@@ -179,17 +179,9 @@ function renderTreeLabel(info: { option: TreeOption }): ReturnType<typeof h> {
   }
   return h('span', { class: 'tree-node-label tree-node-label--missing-root' }, [
     h('span', { class: 'tree-node-label__name' }, label),
-    h(
-      NTag,
-      {
-        size: 'small',
-        type: 'warning',
-        round: true,
-        bordered: true,
-        class: 'tree-root-missing-tag'
-      },
-      () => '路径不存在'
-    )
+    tableStatusPill('路径不存在', 'warning', {
+      class: 'tree-root-missing-tag'
+    })
   ])
 }
 

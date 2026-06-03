@@ -6,7 +6,6 @@ import {
     NPopconfirm,
     NTabs,
     NTabPane,
-    NTag,
     useMessage,
     type DataTableColumns
 } from 'naive-ui'
@@ -41,6 +40,7 @@ import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import SourceLrcSelect from './SourceLrcSelect.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
+import { tableStatusPillFromNaiveType } from '@renderer/utils/tableStatusPill'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 
 const props = defineProps<{
@@ -504,11 +504,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
             render(row) {
                 const meta = audioStatusMeta[displayStatus(row)]
                 return h('div', { class: 'table-status-cell' }, [
-                    h(
-                        NTag,
-                        { type: meta.type, size: 'small', round: true },
-                        { default: () => meta.label }
-                    )
+                    tableStatusPillFromNaiveType(meta.label, meta.type)
                 ])
             }
         },

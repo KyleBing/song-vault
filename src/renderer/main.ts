@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
 import './styles/global.scss'
+import './styles/tableStatusPill.scss'
 import { loadAppConfigOnce, readThemeCache } from './lib/appConfigClient'
 import { useThemeStore } from './stores/theme'
 
