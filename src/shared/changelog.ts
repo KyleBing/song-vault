@@ -19,6 +19,30 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.2.6',
+    date: '2026-06-03',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '顶栏播放器：封面、进度与播放控制；乐库 / LRC / 解密列表双击播放明文音频；松手后再 seek',
+          '元数据编辑：MP3 / FLAC 可在侧栏编辑常见标签与封面；支持从文件名解析艺人 / 曲名'
+        ]
+      },
+      {
+        title: '变更',
+        items: [
+          '元数据面板：标签 Tab 间距收紧；封面细边框；批量删除按钮改为图标 + 数量（重复清理页仍保留「删除副本」）',
+          '编辑弹窗：输入框与布局略放大'
+        ]
+      },
+      {
+        title: '修复',
+        items: ['应用图标：修正 Windows 等平台图标显示']
+      }
+    ]
+  },
+  {
     version: '1.2.5',
     date: '2026-06-02',
     sections: [

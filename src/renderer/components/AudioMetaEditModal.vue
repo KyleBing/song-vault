@@ -11,6 +11,7 @@ import {
 } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
+import { plainForIpc } from '@renderer/utils/ipcPayload'
 import {
     AUDIO_META_EDIT_FIELDS,
     emptyAudioMetaEditForm,
@@ -139,11 +140,13 @@ async function onSave(): Promise<void> {
 
     saving.value = true
     try {
-        const result = await window.electronAPI.writeAudioMeta({
-            filePath: props.filePath,
-            form: form.value,
-            coverBase64: coverBase64.value
-        })
+        const result = await window.electronAPI.writeAudioMeta(
+            plainForIpc({
+                filePath: props.filePath,
+                form: form.value,
+                coverBase64: coverBase64.value
+            })
+        )
         if (!result.ok) {
             message.error(result.message ?? '保存失败')
             return

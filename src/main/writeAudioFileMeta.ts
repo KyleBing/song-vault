@@ -14,6 +14,14 @@ import {
 } from '../shared/audioMetaEdit'
 import { fileExtensionLower } from '../shared/pathLite'
 
+function pictureArrayBufferFromParsed(
+    parsed: Awaited<ReturnType<typeof parseFile>>
+): ArrayBuffer | undefined {
+    const data = parsed.common.picture?.[0]?.data
+    if (!data?.length) return undefined
+    return Uint8Array.from(data).buffer
+}
+
 function musicMetaFromJson(json: Record<string, unknown>): IMusicMeta {
     const pictureRaw = json.picture
     let picture: ArrayBuffer | undefined
@@ -100,8 +108,8 @@ export async function writeAudioFileMeta(params: {
         const metaJson = editFormToMusicMetaJson(params.form, params.coverBase64)
         const meta = musicMetaFromJson(metaJson)
 
-        if (params.coverBase64 === undefined && parsed.common.picture?.[0]?.data) {
-            meta.picture = Uint8Array.from(parsed.common.picture[0].data).buffer
+        if (params.coverBase64 === undefined) {
+            meta.picture = pictureArrayBufferFromParsed(parsed)
         }
 
         const tagged =

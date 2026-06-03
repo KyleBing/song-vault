@@ -383,20 +383,22 @@ export function WriteMetaToMp3(
   const meta = buildMusicMetaFromSources(info, original, replaceExisting);
   const writer = new ID3Writer(audioData);
 
-  const frames =
-    original.native['ID3v2.4'] ||
-    original.native['ID3v2.3'] ||
-    original.native['ID3v2.2'] ||
-    [];
-  frames.forEach((frame) => {
-    if (!MP3_META_FRAME_IDS.has(frame.id)) {
-      try {
-        writer.setFrame(frame.id, frame.value);
-      } catch {
-        /* 保留其它原生帧 */
+  if (!replaceExisting) {
+    const frames =
+      original.native['ID3v2.4'] ||
+      original.native['ID3v2.3'] ||
+      original.native['ID3v2.2'] ||
+      [];
+    frames.forEach((frame) => {
+      if (!MP3_META_FRAME_IDS.has(frame.id)) {
+        try {
+          writer.setFrame(frame.id, frame.value);
+        } catch {
+          /* 保留其它原生帧 */
+        }
       }
-    }
-  });
+    });
+  }
 
   if (meta.artists?.length) writer.setFrame('TPE1', meta.artists);
   if (meta.title) writer.setFrame('TIT2', meta.title);
@@ -427,7 +429,7 @@ export function WriteMetaToMp3(
       language: 'eng'
     });
   }
-  if (meta.picture) {
+  if (meta.picture?.byteLength) {
     writer.setFrame('APIC', {
       type: 3,
       data: meta.picture,
