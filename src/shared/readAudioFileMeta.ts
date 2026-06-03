@@ -101,7 +101,9 @@ export async function readAudioFileMetaBatch(
     while (index < unique.length) {
       const i = index++
       const p = unique[i]!
-      out[p] = await readAudioFileMeta(p)
+      const meta = await readAudioFileMeta(p)
+      out[p] = meta
+      out[path.resolve(p)] = meta
     }
   }
 

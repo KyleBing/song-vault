@@ -5,6 +5,7 @@ export type AppNavigateTarget =
   | 'library'
   | 'sync'
   | 'duplicates'
+  | 'metaMismatch'
   | 'settings'
   | 'about'
 

@@ -55,6 +55,10 @@ import type {
   ScanLibraryDuplicatesParams,
   ScanLibraryDuplicatesResult
 } from '../shared/libraryDuplicateTypes'
+import type {
+  ScanMetaTagMismatchParams,
+  ScanMetaTagMismatchResult
+} from '../shared/metaTagMismatch'
 import { toIpcPlain } from '../shared/serialize'
 import {
   APP_NAVIGATE_CHANNEL,
@@ -251,6 +255,18 @@ const api = {
     return toIpcPlain(result)
   },
 
+  writeFilenameTags: async (params: {
+    filePath: string
+    artist: string
+    title: string
+  }): Promise<WriteAudioMetaResult> => {
+    const result = await ipcRenderer.invoke(
+      'write-filename-tags',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
   pickCoverImage: async (): Promise<PickCoverImageResult> => {
     const result = await ipcRenderer.invoke('pick-cover-image')
     return toIpcPlain(result)
@@ -331,6 +347,19 @@ const api = {
       toIpcPlain({
         root: params.root ?? '',
         relativePaths: params.relativePaths ?? []
+      })
+    )
+    return toIpcPlain(result)
+  },
+
+  scanMetaTagMismatches: async (
+    params: ScanMetaTagMismatchParams
+  ): Promise<ScanMetaTagMismatchResult> => {
+    const result = await ipcRenderer.invoke(
+      'scan-meta-tag-mismatches',
+      toIpcPlain({
+        root: params.root ?? '',
+        pathFilterRules: params.pathFilterRules ?? []
       })
     )
     return toIpcPlain(result)

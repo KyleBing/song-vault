@@ -23,6 +23,7 @@ const navItems = computed(() => {
     { id: 'library', label: '乐库管理' },
     { id: 'sync', label: '乐库同步' },
     { id: 'duplicates', label: '重复清理' },
+    { id: 'metaMismatch', label: '标签校准' },
     { id: 'settings', label: '设置' },
     { id: 'about', label: '关于' }
   ]

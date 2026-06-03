@@ -6,6 +6,8 @@ import {
   NMessageProvider,
   NSpin,
   darkTheme,
+  dateZhCN,
+  zhCN,
   type GlobalThemeOverrides
 } from 'naive-ui'
 import { Folder, Play, Search } from '@vicons/ionicons5'
@@ -22,6 +24,7 @@ import MusicDecodePage from '@renderer/pages/decode/MusicDecodePage.vue'
 import SourceFilesPage from '@renderer/pages/library/SourceFilesPage.vue'
 import LibrarySyncPage from '@renderer/pages/sync/LibrarySyncPage.vue'
 import LibraryDuplicatesPage from '@renderer/pages/duplicates/LibraryDuplicatesPage.vue'
+import MetaTagMismatchPage from '@renderer/pages/metaMismatch/MetaTagMismatchPage.vue'
 import {
   APP_CONFIG_VERSION,
   createDefaultAppConfig,
@@ -121,6 +124,7 @@ const syncLeftAlias = ref('')
 const syncRightDir = ref('')
 const syncRightAlias = ref('')
 const duplicateScanDir = ref('')
+const metaMismatchScanDir = ref('')
 const pathFilterRules = ref<PathFilterRule[]>([])
 const fileListColumns = ref<FileListColumnsSettings>(
   createDefaultAppConfig().fileListColumns
@@ -218,6 +222,7 @@ function buildAppConfig(): AppConfig {
     syncRightDir: syncRightDir.value.trim(),
     syncRightAlias: (syncRightAlias.value ?? '').trim(),
     duplicateScanDir: duplicateScanDir.value.trim(),
+    metaMismatchScanDir: metaMismatchScanDir.value.trim(),
     appearance: appearance.value,
     pathFilterRules: pathFilterRulesForSave(toRaw(pathFilterRules.value)),
     fileListColumns: {
@@ -257,6 +262,7 @@ onMounted(async () => {
     syncRightDir.value = config.syncRightDir
     syncRightAlias.value = config.syncRightAlias
     duplicateScanDir.value = config.duplicateScanDir
+    metaMismatchScanDir.value = config.metaMismatchScanDir
     pathFilterRules.value = [...config.pathFilterRules]
     fileListColumns.value = normalizeFileListColumns(config.fileListColumns)
     dataTableDisplay.value = normalizeDataTableDisplay(config.dataTableDisplay)
@@ -292,6 +298,7 @@ watch(
     syncRightDir,
     syncRightAlias,
     duplicateScanDir,
+    metaMismatchScanDir,
     pathFilterRules,
     fileListColumns,
     dataTableDisplay,
@@ -304,6 +311,8 @@ watch(
 
 <template>
   <NConfigProvider
+    :locale="zhCN"
+    :date-locale="dateZhCN"
     :theme="naiveTheme"
     :theme-overrides="themeOverrides"
   >
@@ -347,6 +356,17 @@ watch(
         <LibraryDuplicatesPage
           v-if="activeView === 'duplicates'"
           v-model:duplicate-scan-dir="duplicateScanDir"
+          :search-roots="searchRoots"
+          :sync-left-dir="syncLeftDir"
+          :sync-left-alias="syncLeftAlias"
+          :sync-right-dir="syncRightDir"
+          :sync-right-alias="syncRightAlias"
+          :path-filter-rules="pathFilterRules"
+          class="settings-layer"
+        />
+        <MetaTagMismatchPage
+          v-if="activeView === 'metaMismatch'"
+          v-model:meta-mismatch-scan-dir="metaMismatchScanDir"
           :search-roots="searchRoots"
           :sync-left-dir="syncLeftDir"
           :sync-left-alias="syncLeftAlias"

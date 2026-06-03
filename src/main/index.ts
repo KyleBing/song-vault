@@ -29,6 +29,10 @@ import {
   type DeleteDuplicateFilesParams,
   type ScanLibraryDuplicatesParams
 } from '../shared/libraryDuplicateJob'
+import {
+  scanMetaTagMismatches,
+  type ScanMetaTagMismatchParams
+} from '../shared/metaTagMismatchJob'
 import { isDecryptableExtension } from '../shared/musicFormats'
 import {
   readMusicFile,
@@ -58,7 +62,10 @@ import {
 } from '../shared/sourceDirBrowse'
 import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
 import { readAudioFileMeta } from '../shared/readAudioFileMeta'
-import { writeAudioFileMeta } from './writeAudioFileMeta'
+import {
+    writeAudioFileMeta,
+    writeFilenameTagsToFile
+} from './writeAudioFileMeta'
 import type { AudioMetaEditForm } from '../shared/audioMetaEdit'
 import { resolvePathToMediaUrl } from '../shared/pathToMediaUrl'
 import { toIpcPlain } from '../shared/serialize'
@@ -104,6 +111,7 @@ const IPC_CHANNELS = [
   'read-file-stats-batch',
   'read-audio-meta',
   'write-audio-meta',
+  'write-filename-tags',
   'pick-cover-image',
   'compare-library-sync',
   'validate-search-roots',
@@ -112,6 +120,7 @@ const IPC_CHANNELS = [
   'delete-sync-files',
   'scan-library-duplicates',
   'delete-duplicate-files',
+  'scan-meta-tag-mismatches',
   'path-to-media-url'
 ] as const
 
@@ -306,6 +315,28 @@ function registerIpcHandlers(): void {
     )
   })
 
+  ipcMain.handle('write-filename-tags', async (_, payload: unknown) => {
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {}
+    const filePath = typeof raw.filePath === 'string' ? raw.filePath : ''
+    const artist = typeof raw.artist === 'string' ? raw.artist : ''
+    const title = typeof raw.title === 'string' ? raw.title : ''
+
+    if (!filePath) {
+      return toIpcPlain({
+        ok: false,
+        filePath,
+        message: '参数无效'
+      })
+    }
+
+    return toIpcPlain(
+      await writeFilenameTagsToFile({ filePath, artist, title })
+    )
+  })
+
   ipcMain.handle('pick-cover-image', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -406,6 +437,32 @@ function registerIpcHandlers(): void {
             'pathFilterRules' in plain &&
             Array.isArray((plain as ScanLibraryDuplicatesParams).pathFilterRules)
               ? (plain as ScanLibraryDuplicatesParams).pathFilterRules
+              : []
+        })
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'scan-meta-tag-mismatches',
+    async (_, params: unknown) => {
+      const plain = toIpcPlain(params)
+      const root =
+        plain &&
+        typeof plain === 'object' &&
+        'root' in plain &&
+        typeof (plain as ScanMetaTagMismatchParams).root === 'string'
+          ? (plain as ScanMetaTagMismatchParams).root
+          : ''
+      return toIpcPlain(
+        await scanMetaTagMismatches({
+          root,
+          pathFilterRules:
+            plain &&
+            typeof plain === 'object' &&
+            'pathFilterRules' in plain &&
+            Array.isArray((plain as ScanMetaTagMismatchParams).pathFilterRules)
+              ? (plain as ScanMetaTagMismatchParams).pathFilterRules
               : []
         })
       )

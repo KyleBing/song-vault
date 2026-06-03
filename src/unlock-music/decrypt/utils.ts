@@ -374,6 +374,11 @@ function setFlacTag(writer: MetaFlac, key: string, value?: string): void {
   writer.setTag(`${key}=${value.trim()}`);
 }
 
+function nodeBufferToArrayBuffer(data: Buffer): ArrayBuffer {
+  const copy = Buffer.from(data);
+  return copy.buffer.slice(copy.byteOffset, copy.byteOffset + copy.byteLength);
+}
+
 export function WriteMetaToMp3(
   audioData: Buffer,
   info: IMusicMeta,
@@ -381,7 +386,7 @@ export function WriteMetaToMp3(
   replaceExisting = false
 ): Buffer {
   const meta = buildMusicMetaFromSources(info, original, replaceExisting);
-  const writer = new ID3Writer(audioData);
+  const writer = new ID3Writer(nodeBufferToArrayBuffer(audioData));
 
   if (!replaceExisting) {
     const frames =
@@ -436,7 +441,7 @@ export function WriteMetaToMp3(
       description: meta.picture_desc || ''
     });
   }
-  return writer.addTag();
+  return Buffer.from(writer.addTag());
 }
 
 export function WriteMetaToFlac(
