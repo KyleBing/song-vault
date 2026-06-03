@@ -49,6 +49,7 @@ import {
   useLazyDirTree
 } from '@renderer/composables/useLazyDirTree'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import { plainStringList } from '@renderer/utils/ipcPayload'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
@@ -84,6 +85,11 @@ const {
   onTableMouseDown,
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
+
+const fileTableRowPropsWithPlay = useAudioPlayRowProps(
+  fileRowProps,
+  (row) => (row as DirAudioFileItem).filePath
+)
 const deletingFiles = ref(false)
 const movingFiles = ref(false)
 const moveModalVisible = ref(false)
@@ -368,7 +374,7 @@ function onFileCheckedRowKeys(
 }
 
 function fileTableRowProps(row: DirAudioFileItem) {
-  return fileRowProps(row, orderedFileKeys)
+  return fileTableRowPropsWithPlay(row, orderedFileKeys)
 }
 
 function onDirFileSorterUpdate(

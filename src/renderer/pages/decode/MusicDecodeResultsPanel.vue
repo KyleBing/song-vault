@@ -23,6 +23,7 @@ import {
   type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
@@ -54,6 +55,16 @@ const {
   onTableMouseDown: onPlainTableMouseDown,
   rowProps: plainRowPropsFn
 } = useShiftRowSelection((row) => (row as PlainMp3Item).filePath)
+
+const encryptedTableRowPropsWithPlay = useAudioPlayRowProps(
+  encryptedRowPropsFn,
+  (row) => (row as EncryptedMusicItem).filePath
+)
+
+const plainTableRowPropsWithPlay = useAudioPlayRowProps(
+  plainRowPropsFn,
+  (row) => (row as PlainMp3Item).filePath
+)
 
 watch(activeTab, () => {
   clearEncryptedSelection()
@@ -296,11 +307,11 @@ function plainRowKey(row: PlainMp3Item): string {
 }
 
 function encryptedTableRowProps(row: EncryptedMusicItem) {
-  return encryptedRowPropsFn(row, orderedEncryptedKeys)
+  return encryptedTableRowPropsWithPlay(row, orderedEncryptedKeys)
 }
 
 function plainTableRowProps(row: PlainMp3Item) {
-  return plainRowPropsFn(row, orderedPlainKeys)
+  return plainTableRowPropsWithPlay(row, orderedPlainKeys)
 }
 </script>
 

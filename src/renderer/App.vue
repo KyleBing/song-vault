@@ -48,6 +48,7 @@ import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import AudioCoverLightbox from '@renderer/components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from '@renderer/pages/lrc/ScanAlertsPanel.vue'
 import AppTopNav from '@renderer/components/AppTopNav.vue'
+import { useAudioPlayerStore } from '@renderer/stores/audioPlayer'
 import AboutPage from '@renderer/pages/about/AboutPage.vue'
 import { useAdvancedUnlockStore } from '@renderer/stores/advancedUnlock'
 import styleTokens from './styles/variables.module.scss'
@@ -55,6 +56,7 @@ import styleTokens from './styles/variables.module.scss'
 const layoutStore = useLayoutStore()
 const themeStore = useThemeStore()
 const advancedUnlock = useAdvancedUnlockStore()
+const audioPlayerStore = useAudioPlayerStore()
 const { appearance } = storeToRefs(themeStore)
 const { unlocked: advancedUnlocked } = storeToRefs(advancedUnlock)
 
@@ -269,6 +271,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)
   unsubscribeAppNavigate?.()
+  audioPlayerStore.dispose()
 })
 
 watch(advancedUnlocked, (ok, prev) => {

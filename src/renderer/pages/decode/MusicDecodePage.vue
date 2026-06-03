@@ -50,6 +50,7 @@ import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import DecodeFileInfoPanel from './DecodeFileInfoPanel.vue'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import {
   applySortableHeaders,
   handleTableSorterUpdate,
@@ -124,6 +125,11 @@ const {
   onTableMouseDown,
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
+
+const fileTableRowPropsWithPlay = useAudioPlayRowProps(
+  fileRowProps,
+  (row) => (row as DirAudioFileItem).filePath
+)
 
 const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
@@ -277,7 +283,7 @@ function onFileCheckedRowKeys(
 }
 
 function fileTableRowProps(row: DirAudioFileItem) {
-  return fileRowProps(row, orderedFileKeys)
+  return fileTableRowPropsWithPlay(row, orderedFileKeys)
 }
 
 /** 删除文件列表中勾选的加密音乐文件 */

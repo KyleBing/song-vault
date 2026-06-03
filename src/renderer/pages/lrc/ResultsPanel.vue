@@ -38,6 +38,7 @@ import {
     type TableSortOrder
 } from '@renderer/composables/useTableHeaderSort'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import SourceLrcSelect from './SourceLrcSelect.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
@@ -90,6 +91,16 @@ const {
     onTableMouseDown: onAudioTableMouseDown,
     rowProps: audioRowPropsFn
 } = useShiftRowSelection((row) => (row as AudioJobItem).audioPath)
+
+const audioTableRowPropsWithPlay = useAudioPlayRowProps(
+    audioRowPropsFn,
+    (row) => (row as AudioJobItem).audioPath
+)
+
+const orphanAudioTableRowPropsWithPlay = useAudioPlayRowProps(
+    orphanAudioRowPropsFn,
+    (row) => (row as { key: string }).key
+)
 
 function syncShiftSelection(model: Ref<string[]>, shiftKeys: Ref<string[]>): void {
     watch(model, (v) => {
@@ -728,7 +739,7 @@ function onAudioCheckedRowKeys(
 }
 
 function audioTableRowProps(row: AudioJobItem) {
-    return audioRowPropsFn(row, orderedAudioKeys)
+    return audioTableRowPropsWithPlay(row, orderedAudioKeys)
 }
 
 function audioRowKey(row: AudioJobItem): string {
@@ -770,7 +781,7 @@ function orphanLrcTableRowProps(row: { key: string }) {
 }
 
 function orphanAudioTableRowProps(row: { key: string }) {
-    return orphanAudioRowPropsFn(row, orderedOrphanAudioKeys)
+    return orphanAudioTableRowPropsWithPlay(row, orderedOrphanAudioKeys)
 }
 
 /** 多余歌词表格行主键 */

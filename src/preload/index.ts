@@ -229,6 +229,9 @@ const api = {
     return toIpcPlain(result)
   },
 
+  pathToMediaUrl: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('path-to-media-url', filePath),
+
   readAudioMeta: async (filePath: string): Promise<AudioFileMetaInfo> => {
     const result = await ipcRenderer.invoke('read-audio-meta', filePath)
     return toIpcPlain(result)

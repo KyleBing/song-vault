@@ -58,6 +58,7 @@ import {
 } from '../shared/sourceDirBrowse'
 import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
 import { readAudioFileMeta } from '../shared/readAudioFileMeta'
+import { resolvePathToMediaUrl } from '../shared/pathToMediaUrl'
 import { toIpcPlain } from '../shared/serialize'
 import {
   getAppConfigPath,
@@ -67,6 +68,12 @@ import {
 } from './appConfigStore'
 import type { AppConfig } from '../shared/appConfig'
 import { registerAppNavShortcuts, setupApplicationMenu } from './appMenu'
+import {
+    registerMediaProtocolHandler,
+    registerMediaProtocolSchemes
+} from './mediaProtocol'
+
+registerMediaProtocolSchemes()
 
 /** 是否为开发模式（未打包） */
 const isDev = !app.isPackaged
@@ -100,7 +107,8 @@ const IPC_CHANNELS = [
   'move-sync-file',
   'delete-sync-files',
   'scan-library-duplicates',
-  'delete-duplicate-files'
+  'delete-duplicate-files',
+  'path-to-media-url'
 ] as const
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
@@ -264,6 +272,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle('read-audio-meta', async (_, filePath: unknown) => {
     const p = typeof filePath === 'string' ? filePath : ''
     return toIpcPlain(await readAudioFileMeta(p))
+  })
+
+  ipcMain.handle('path-to-media-url', async (_, filePath: unknown) => {
+    const p = typeof filePath === 'string' ? filePath : ''
+    return resolvePathToMediaUrl(p)
   })
 
   ipcMain.handle(
@@ -438,6 +451,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerMediaProtocolHandler()
   setupApplicationMenu()
   registerAppNavShortcuts()
   registerDevToolsShortcut()

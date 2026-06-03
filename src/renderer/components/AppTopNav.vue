@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import type { AppNavigateTarget } from '@shared/appNavigate'
 import { APP_VERSION } from '@shared/appInfo'
 import { useAdvancedUnlockStore } from '@renderer/stores/advancedUnlock'
+import AppAudioPlayer from '@renderer/components/AppAudioPlayer.vue'
 
 defineProps<{
   activeView: AppNavigateTarget
@@ -34,20 +35,23 @@ const navItems = computed(() => {
 
 <template>
   <nav class="app-top-nav" aria-label="主导航">
-    <button
-      v-for="item in navItems"
-      :key="item.id"
-      type="button"
-      class="app-top-nav__item"
-      :class="{ 'app-top-nav__item--active': activeView === item.id }"
-      @click="emit('navigate', item.id)"
-    >
-      <template v-if="item.id === 'about'">
-        关于
-        <span class="app-top-nav__version">v{{ APP_VERSION }}</span>
-      </template>
-      <template v-else>{{ item.label }}</template>
-    </button>
+    <div class="app-top-nav__tabs">
+      <button
+        v-for="item in navItems"
+        :key="item.id"
+        type="button"
+        class="app-top-nav__item"
+        :class="{ 'app-top-nav__item--active': activeView === item.id }"
+        @click="emit('navigate', item.id)"
+      >
+        <template v-if="item.id === 'about'">
+          关于
+          <span class="app-top-nav__version">v{{ APP_VERSION }}</span>
+        </template>
+        <template v-else>{{ item.label }}</template>
+      </button>
+    </div>
+    <AppAudioPlayer />
   </nav>
 </template>
 
@@ -58,12 +62,20 @@ const navItems = computed(() => {
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  flex-wrap: wrap;
   gap: 2px;
   padding: 0 12px;
   min-height: 40px;
   border-bottom: 1px solid $border-subtle;
   background: $surface-panel;
+}
+
+.app-top-nav__tabs {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .app-top-nav__item {
