@@ -482,6 +482,7 @@ const audioColumns = computed<DataTableColumns<AudioJobItem>>(() => {
                 return h('div', { class: 'table-status-cell' }, [
                     lrcPresenceCell({
                         hasLrc: row.hasLocalLrc,
+                        lrcPath: row.localLrcPath,
                         tooltipText: row.localLrcPath
                             ? shortAudio(row.localLrcPath)
                             : undefined

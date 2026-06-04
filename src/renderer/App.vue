@@ -49,6 +49,7 @@ import {
 import ResultsPanel from '@renderer/pages/lrc/ResultsPanel.vue'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import AudioFileContextMenuHost from '@renderer/components/AudioFileContextMenuHost.vue'
+import LyricsViewModalHost from '@renderer/components/LyricsViewModalHost.vue'
 import AudioCoverLightbox from '@renderer/components/AudioCoverLightbox.vue'
 import ScanAlertsPanel from '@renderer/pages/lrc/ScanAlertsPanel.vue'
 import AppTopNav from '@renderer/components/AppTopNav.vue'
@@ -320,6 +321,7 @@ watch(
     <NMessageProvider>
       <AudioCoverLightbox />
       <AudioFileContextMenuHost />
+      <LyricsViewModalHost />
       <div class="app-shell" :style="dataTableCssStyle">
         <AppTopNav
           :active-view="activeView"

@@ -60,6 +60,7 @@ import type {
   ScanMetaTagMismatchResult
 } from '../shared/metaTagMismatch'
 import { toIpcPlain } from '../shared/serialize'
+import type { ReadTextFileResult } from '../shared/readTextFile'
 import {
   APP_NAVIGATE_CHANNEL,
   type AppNavigateTarget
@@ -221,6 +222,11 @@ const api = {
   /** 在系统文件管理器中定位文件；成功返回空字符串，失败返回错误信息 */
   showItemInFolder: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('show-item-in-folder', filePath),
+
+  readTextFile: async (filePath: string): Promise<ReadTextFileResult> => {
+    const result = await ipcRenderer.invoke('read-text-file', filePath)
+    return toIpcPlain(result)
+  },
 
   readAudioMetricsBatch: async (
     filePaths: string[]

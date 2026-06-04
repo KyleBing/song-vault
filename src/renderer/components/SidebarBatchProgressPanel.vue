@@ -27,12 +27,12 @@ defineProps<{
 @use '../styles/variables' as *;
 
 .sidebar-batch-progress {
-    height: 200px;
+    height: 120px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 10px;
+    gap: 5px;
     padding: 14px 16px;
     border-top: 1px solid $border-subtle;
     background: $surface-sidebar;

@@ -98,6 +98,7 @@ function pathCell(full: string, short: string) {
 function lrcCell(row: { hasLrc: boolean; lrcPath?: string }) {
   return lrcPresenceCell({
     hasLrc: row.hasLrc,
+    lrcPath: row.lrcPath,
     tooltipText: row.lrcPath,
     noLabel: '无'
   })

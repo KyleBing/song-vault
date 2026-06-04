@@ -33,7 +33,7 @@ import {
   scanMetaTagMismatches,
   type ScanMetaTagMismatchParams
 } from '../shared/metaTagMismatchJob'
-import { isDecryptableExtension } from '../shared/musicFormats'
+import { readTextFile } from '../shared/readTextFile'
 import {
   readMusicFile,
   writeDecryptedMusic,
@@ -519,6 +519,13 @@ function registerIpcHandlers(): void {
     }
     shell.showItemInFolder(resolved)
     return ''
+  })
+
+  ipcMain.handle('read-text-file', (_, filePath: unknown) => {
+    if (typeof filePath !== 'string') {
+      return toIpcPlain({ ok: false, message: '无效路径' })
+    }
+    return toIpcPlain(readTextFile(filePath))
   })
 }
 

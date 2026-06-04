@@ -38,6 +38,15 @@
     background-color: rgba(32, 128, 240, 0.16);
 }
 
+.sv-pill--clickable {
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+        filter: brightness(1.08);
+    }
+}
+
 .sv-cell-empty {
     opacity: 0.4;
 }

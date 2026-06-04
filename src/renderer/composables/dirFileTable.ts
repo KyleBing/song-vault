@@ -121,10 +121,11 @@ function platformCell(row: DirAudioFileItem) {
 }
 
 function lrcCell(row: DirAudioFileItem) {
-  if (!row.hasLrc) {
-    return tableStatusPill('没有', 'default')
-  }
-  return tableStatusPill('有', 'success')
+  return lrcPresenceCell({
+    hasLrc: row.hasLrc,
+    lrcPath: row.lrcPath,
+    tooltipText: row.lrcPath
+  })
 }
 
 function inSearchTargetPathsContent(paths: string[]) {
