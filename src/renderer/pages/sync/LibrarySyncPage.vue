@@ -4,7 +4,6 @@ import {
     NCheckbox,
     NIcon,
     NPopconfirm,
-    NProgress,
     NSpin,
     NTooltip,
     useMessage
@@ -40,6 +39,8 @@ import {
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import { useLibrarySyncSessionStore } from '@renderer/stores/librarySyncSession'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import SidebarBatchProgressPanel from '@renderer/components/SidebarBatchProgressPanel.vue'
+import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
 
@@ -70,8 +71,23 @@ const syncTreeBusy = computed(
 )
 
 const metaPanelHidden = computed(
-    () => syncTreeBusy.value || copyingKeys.value.size > 0
+    () => copyingKeys.value.size > 0
 )
+
+const sidebarBatchProgressActive = computed(
+    () => batchCopying.value || deletingSelected.value
+)
+
+const batchCopyProgressTitle = computed(() => {
+    if (deletingSelected.value) return '正在删除选中项'
+    if (batchCopyActiveDirection.value === 'toRight') {
+        return '正在复制到右侧'
+    }
+    if (batchCopyActiveDirection.value === 'toLeft') {
+        return '正在复制到左侧'
+    }
+    return '正在处理'
+})
 const batchCopyProgress = ref({ done: 0, total: 0 })
 
 interface SyncToolbarResult {
@@ -85,7 +101,7 @@ interface SyncToolbarResult {
 }
 
 const batchCopyResult = ref<SyncToolbarResult | null>(null)
-const batchCopyTiming = ref({ lastFileMs: 0, elapsedMs: 0 })
+const batchCopyTiming = ref({ elapsedMs: 0 })
 const compareResult = ref<CompareLibrarySyncResult | null>(null)
 
 const SYNC_COPY_ETA_MIN_SAMPLES = 5
@@ -211,7 +227,7 @@ function syncDiffItemMetaFilePath(
 
 const metaPanelFilePath = computed((): string | null => {
     const result = compareResult.value
-    const key = selectedRowKeys.value[0]
+    const key = metaPanelPathFromSelection(selectedRowKeys.value)
     if (!result || !key) return null
     const item = resolveSyncDiffItemsByKeys(result.items, [key])[0]
     if (!item) return null
@@ -263,7 +279,6 @@ const batchCopyProgressDetailText = computed(() => {
     if (!batchCopying.value || total === 0) return ''
     const parts: string[] = [`${done} / ${total}`]
     if (done > 0) {
-        parts.push(`上个约 ${formatElapsedMs(batchCopyTiming.value.lastFileMs)}`)
         parts.push(`已用 ${formatElapsedMs(batchCopyTiming.value.elapsedMs)}`)
         const remainingMs = estimateBatchCopyRemainingMs(
             done,
@@ -734,9 +749,8 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
     batchCopyActiveDirection.value = direction
     const total = items.length
     batchCopyProgress.value = { done: 0, total }
-    batchCopyTiming.value = { lastFileMs: 0, elapsedMs: 0 }
+    batchCopyTiming.value = { elapsedMs: 0 }
     const operationStartedAt = performance.now()
-    let lastCheckpointAt = operationStartedAt
     let ok = 0
     let fail = 0
 
@@ -748,12 +762,9 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
             } catch {
                 fail += 1
             }
-            const now = performance.now()
             batchCopyTiming.value = {
-                lastFileMs: now - lastCheckpointAt,
-                elapsedMs: now - operationStartedAt
+                elapsedMs: performance.now() - operationStartedAt
             }
-            lastCheckpointAt = now
             batchCopyProgress.value = { done: ok + fail, total }
         }
     } finally {
@@ -1341,25 +1352,18 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                             确定删除选中的 {{ selectedItems.length }} 项？
                             将删除左右乐库中对应的音频与同名歌词，不可恢复。
                         </NPopconfirm>
-
-
-                        <NProgress
-                            v-if="batchCopying"
-                            type="line"
-                            :percentage="batchCopyProgressPercent"
-                            :show-indicator="true"
-                        />
-                        <p
-                            v-if="batchCopying && batchCopyProgressDetailText"
-                            class="sync-copy-progress-detail"
-                        >
-                            {{ batchCopyProgressDetailText }}
-                        </p>
                     </section>
                 </div>
 
+                <SidebarBatchProgressPanel
+                    v-if="sidebarBatchProgressActive"
+                    :title="batchCopyProgressTitle"
+                    :percentage="batchCopyProgressPercent"
+                    :detail="batchCopying ? batchCopyProgressDetailText : undefined"
+                    :indeterminate="deletingSelected"
+                />
                 <AudioMetaPanel
-                    v-if="!metaPanelHidden"
+                    v-else-if="!metaPanelHidden"
                     :file-path="metaPanelFilePath"
                 />
             </aside>
@@ -1440,6 +1444,8 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                                 :depth="0"
                                 :expanded-keys="expandedKeySet"
                                 :selected-keys="selectedKeySet"
+                                :left-root="compareResult?.leftRoot ?? ''"
+                                :right-root="compareResult?.rightRoot ?? ''"
                                 :loading="loading"
                                 :batch-copying="syncTreeBusy"
                                 :is-copying="isCopying"
@@ -1854,14 +1860,6 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     font-size: 12px;
     text-align: center;
     opacity: 0.55;
-}
-
-.sync-copy-progress-detail {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.4;
-    text-align: center;
-    opacity: 0.6;
 }
 
 .sync-result-bubble-wrap {

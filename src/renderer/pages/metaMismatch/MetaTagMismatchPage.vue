@@ -3,7 +3,6 @@ import {
     NButton,
     NIcon,
     NPopconfirm,
-    NProgress,
     NSelect,
     NSpin,
     useMessage,
@@ -13,11 +12,16 @@ import { Folder, FolderOpen, Refresh } from '@vicons/ionicons5'
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { PathFilterRule } from '@shared/appConfig'
-import type {
-    MetaTagMismatchItem,
-    MetaTagMismatchReason,
-    ScanMetaTagMismatchResult
+import {
+    countItemsByIssue,
+    META_TAG_MISMATCH_ISSUE_LABELS,
+    normalizeFilenameArtist,
+    tagArtistForMetaFromFilename,
+    type MetaTagMismatchIssue,
+    type MetaTagMismatchItem,
+    type ScanMetaTagMismatchResult
 } from '@shared/metaTagMismatch'
+import { rebuildFileNameWithArtist } from '@shared/audioMetaEdit'
 import type { SyncRootCheck } from '@shared/librarySyncJob'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
@@ -37,9 +41,55 @@ import { useLayoutStore } from '@renderer/stores/layout'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import SidebarBatchProgressPanel from '@renderer/components/SidebarBatchProgressPanel.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import { tableStatusPill } from '@renderer/utils/tableStatusPill'
+import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
+import type { VNode } from 'vue'
+
+type IssueFilterKey = 'all' | MetaTagMismatchIssue
+
+const ISSUE_FILTER_OPTIONS: {
+    key: MetaTagMismatchIssue
+    label: string
+    fixLabel: string
+    confirmAll: (count: number) => string
+    confirmSelected: (selectedCount: number, fixCount: number) => string
+}[] = [
+    {
+        key: 'tagArtistSep',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.tagArtistSep,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项的标签艺人改为「 & 」分隔？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「标签分隔」，确定修复标签艺人？`
+    },
+    {
+        key: 'fileArtistSep',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.fileArtistSep,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项重命名为规范艺人格式（逗号无空格）？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「文件名分隔」，确定重命名？`
+    },
+    {
+        key: 'artistContent',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.artistContent,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项的标签艺人改为与文件名一致？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「艺人内容」，确定修复标签艺人？`
+    },
+    {
+        key: 'titleContent',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.titleContent,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项的标签曲名改为与文件名一致？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「曲名」，确定修复标签曲名？`
+    }
+]
 
 /** 表格展示行：预计算文案，避免虚拟滚动时重复解析 */
 interface MetaTagMismatchDisplayRow extends MetaTagMismatchItem {
@@ -47,34 +97,97 @@ interface MetaTagMismatchDisplayRow extends MetaTagMismatchItem {
     tagTitleDisplay: string
     tagArtistIsEmpty: boolean
     tagTitleIsEmpty: boolean
-    mismatchLabel: string
+    issueSummary: string
+    targetTagArtistDisplay: string
+    targetTagArtistBlocked: boolean
     editableLabel: string
 }
 
-function mismatchLabelFromReasons(reasons: MetaTagMismatchReason[]): string {
-    if (reasons.includes('both')) return '艺人 + 曲名'
-    if (reasons.includes('artist')) return '艺人'
-    return '曲名'
+function issueSummaryFromIssues(issues: MetaTagMismatchIssue[]): string {
+    return issues.map((issue) => META_TAG_MISMATCH_ISSUE_LABELS[issue]).join(' · ')
+}
+
+function isBadFileArtistChar(text: string, index: number): boolean {
+    const ch = text[index]
+    if (ch === ';' || ch === '&') return true
+    if (ch === ',') {
+        return text[index + 1] === ' ' || text[index - 1] === ' '
+    }
+    return false
+}
+
+function isBadTagArtistChar(text: string, index: number): boolean {
+    const ch = text[index]
+    if (ch === ',' || ch === ';') return true
+    if (ch === '&') {
+        return !(text[index - 1] === ' ' && text[index + 1] === ' ')
+    }
+    return false
+}
+
+function renderArtistWithHighlights(
+    text: string,
+    kind: 'file' | 'tag',
+    isEmpty: boolean
+) {
+    if (isEmpty) {
+        return h('span', { class: 'sv-cell-empty' }, '（空）')
+    }
+    const isBad =
+        kind === 'file' ? isBadFileArtistChar : isBadTagArtistChar
+    const children: VNode[] = []
+    for (let i = 0; i < text.length; i += 1) {
+        const ch = text[i]
+        children.push(
+            h('span', isBad(text, i) ? { class: 'mtm-char-bad' } : undefined, ch)
+        )
+    }
+    return h('span', children)
 }
 
 function toDisplayRow(row: MetaTagMismatchItem): MetaTagMismatchDisplayRow {
+    const targetTagArtistBlocked = row.targetTagArtist === null
+    const targetTagArtistDisplay = targetTagArtistBlocked
+        ? '需先修正文件名'
+        : row.targetTagArtist || '（空）'
+
     return {
         ...row,
         tagArtistDisplay: row.tagArtist || '（空）',
         tagTitleDisplay: row.tagTitle || '（空）',
         tagArtistIsEmpty: !row.tagArtist,
         tagTitleIsEmpty: !row.tagTitle,
-        mismatchLabel: mismatchLabelFromReasons(row.reasons),
+        issueSummary: issueSummaryFromIssues(row.issues),
+        targetTagArtistDisplay,
+        targetTagArtistBlocked,
         editableLabel: row.editable ? '可写' : '只读'
     }
 }
 
-function renderTagArtistCell(row: MetaTagMismatchDisplayRow) {
-    return h(
-        'span',
-        { class: row.tagArtistIsEmpty ? 'sv-cell-empty' : undefined },
-        row.tagArtistDisplay
+function renderFileArtistCell(row: MetaTagMismatchDisplayRow) {
+    return renderArtistWithHighlights(
+        row.fileArtist,
+        'file',
+        !row.fileArtist
     )
+}
+
+function renderTagArtistCell(row: MetaTagMismatchDisplayRow) {
+    return renderArtistWithHighlights(
+        row.tagArtist,
+        'tag',
+        row.tagArtistIsEmpty
+    )
+}
+
+function renderTargetTagArtistCell(row: MetaTagMismatchDisplayRow) {
+    if (row.targetTagArtistBlocked) {
+        return tableStatusPill(row.targetTagArtistDisplay, 'error')
+    }
+    if (!row.targetTagArtist) {
+        return h('span', { class: 'sv-cell-empty' }, row.targetTagArtistDisplay)
+    }
+    return h('span', row.targetTagArtistDisplay)
 }
 
 function renderTagTitleCell(row: MetaTagMismatchDisplayRow) {
@@ -85,8 +198,18 @@ function renderTagTitleCell(row: MetaTagMismatchDisplayRow) {
     )
 }
 
-function renderMismatchCell(row: MetaTagMismatchDisplayRow) {
-    return tableStatusPill(row.mismatchLabel, 'warning')
+function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
+    return h(
+        'span',
+        { class: 'mtm-issues-cell' },
+        row.issues.map((issue) =>
+            tableStatusPill(
+                META_TAG_MISMATCH_ISSUE_LABELS[issue],
+                issue === 'fileArtistSep' ? 'error' : 'warning',
+                { class: 'mtm-issue-pill' }
+            )
+        )
+    )
 }
 
 function renderEditableCell(row: MetaTagMismatchDisplayRow) {
@@ -102,7 +225,8 @@ type MetaTagMismatchSortKey =
     | 'fileTitle'
     | 'tagArtistDisplay'
     | 'tagTitleDisplay'
-    | 'mismatchLabel'
+    | 'targetTagArtistDisplay'
+    | 'issueSummary'
     | 'editableLabel'
 
 const SORTABLE_META_MISMATCH_KEYS = new Set<string>([
@@ -111,14 +235,13 @@ const SORTABLE_META_MISMATCH_KEYS = new Set<string>([
     'fileTitle',
     'tagArtistDisplay',
     'tagTitleDisplay',
-    'mismatchLabel',
+    'targetTagArtistDisplay',
+    'issueSummary',
     'editableLabel'
 ])
 
-function mismatchReasonRank(reasons: MetaTagMismatchReason[]): number {
-    if (reasons.includes('both')) return 3
-    if (reasons.includes('artist')) return 2
-    return 1
+function issueRank(issues: MetaTagMismatchIssue[]): number {
+    return issues.length
 }
 
 function compareMetaTagMismatchRow(
@@ -147,10 +270,16 @@ function compareMetaTagMismatchRow(
             return a.tagTitle.localeCompare(b.tagTitle, undefined, {
                 sensitivity: 'base'
             })
-        case 'mismatchLabel':
+        case 'targetTagArtistDisplay':
+            return a.targetTagArtistDisplay.localeCompare(
+                b.targetTagArtistDisplay,
+                undefined,
+                { sensitivity: 'base' }
+            )
+        case 'issueSummary':
             return (
-                mismatchReasonRank(a.reasons) - mismatchReasonRank(b.reasons) ||
-                a.mismatchLabel.localeCompare(b.mismatchLabel, undefined, {
+                issueRank(a.issues) - issueRank(b.issues) ||
+                a.issueSummary.localeCompare(b.issueSummary, undefined, {
                     sensitivity: 'base'
                 })
             )
@@ -176,7 +305,8 @@ const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> =
             title: '文件名·艺人',
             key: 'fileArtist',
             width: 150,
-            ellipsis: { tooltip: false }
+            ellipsis: { tooltip: false },
+            render: renderFileArtistCell
         },
         {
             title: '文件名·曲名',
@@ -199,10 +329,17 @@ const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> =
             render: renderTagTitleCell
         },
         {
-            title: '不一致',
-            key: 'mismatchLabel',
-            width: 88,
-            render: renderMismatchCell
+            title: '写入·艺人',
+            key: 'targetTagArtistDisplay',
+            width: 120,
+            ellipsis: { tooltip: false },
+            render: renderTargetTagArtistCell
+        },
+        {
+            title: '问题',
+            key: 'issueSummary',
+            width: 168,
+            render: renderIssuesCell
         },
         {
             title: '写入',
@@ -233,10 +370,12 @@ const { invalidateMeta } = useAudioMetaCache()
 const loading = ref(false)
 const validatingDir = ref(false)
 const scanButtonLoading = ref(false)
-const applyingTags = ref(false)
+const applyingFixIssue = ref<MetaTagMismatchIssue | null>(null)
+const applyingFix = computed(() => applyingFixIssue.value !== null)
 const rootValidation = ref<SyncRootCheck | null>(null)
 const scanResult = ref<ScanMetaTagMismatchResult | null>(null)
 const filterTraditionalMeta = ref(false)
+const issueFilter = ref<IssueFilterKey>('all')
 
 const tableWrapRef = ref<HTMLElement | null>(null)
 const tableMaxHeight = ref(320)
@@ -318,10 +457,27 @@ const sourceSelectOptions = computed(() =>
 const tableRows = computed(() => scanResult.value?.items ?? [])
 
 const filteredTableRows = computed(() => {
-    if (!filterTraditionalMeta.value) return tableRows.value
-    return tableRows.value.filter((row) =>
-        metaTagFieldsHaveTraditionalChinese(row.tagArtist, row.tagTitle)
-    )
+    let rows = tableRows.value
+    if (filterTraditionalMeta.value) {
+        rows = rows.filter((row) =>
+            metaTagFieldsHaveTraditionalChinese(row.tagArtist, row.tagTitle)
+        )
+    }
+    if (issueFilter.value !== 'all') {
+        const key = issueFilter.value
+        rows = rows.filter((row) => row.issues.includes(key))
+    }
+    return rows
+})
+
+const issueFilterCounts = computed(() => {
+    const items = tableRows.value
+    return Object.fromEntries(
+        ISSUE_FILTER_OPTIONS.map(({ key }) => [
+            key,
+            countItemsByIssue(items, key)
+        ])
+    ) as Record<MetaTagMismatchIssue, number>
 })
 
 const traditionalMetaCount = computed(
@@ -373,6 +529,11 @@ watch(filterTraditionalMeta, () => {
     selectedRowKeys.value = selectedRowKeys.value.filter((key) => visible.has(key))
 })
 
+watch(issueFilter, () => {
+    const visible = new Set(filteredTableRows.value.map((row) => row.fullPath))
+    selectedRowKeys.value = selectedRowKeys.value.filter((key) => visible.has(key))
+})
+
 const tableRowProps = useAudioPlayRowProps(
     shiftRowProps,
     (row) => (row as MetaTagMismatchItem).fullPath
@@ -394,14 +555,32 @@ const selectedItems = computed(() => {
     return tableRows.value.filter((row) => set.has(row.fullPath))
 })
 
-const metaPanelFilePath = computed(() => selectedRowKeys.value[0] ?? null)
-
-const metaPanelHidden = computed(
-    () => applyingTags.value || loading.value
+const metaPanelFilePath = computed(() =>
+    metaPanelPathFromSelection(selectedRowKeys.value)
 )
+
+const metaPanelHidden = computed(() => loading.value)
+
+const applyFixProgressTitle = computed(() => {
+    const issue = applyingFixIssue.value
+    if (!issue) return '正在处理'
+    return `正在修复：${META_TAG_MISMATCH_ISSUE_LABELS[issue]}`
+})
 
 const selectedEditableCount = computed(() =>
     selectedItems.value.filter((row) => row.editable).length
+)
+
+const selectedWritableReadyCount = computed(() =>
+    selectedItems.value.filter(
+        (row) => row.editable && row.targetTagArtist !== null
+    ).length
+)
+
+const selectedFilenameBlockedCount = computed(() =>
+    selectedItems.value.filter(
+        (row) => row.editable && row.targetTagArtist === null
+    ).length
 )
 
 const applyResult = ref<{
@@ -411,7 +590,7 @@ const applyResult = ref<{
 } | null>(null)
 
 const applyTagsProgress = ref({ done: 0, total: 0 })
-const applyTagsTiming = ref({ lastFileMs: 0, elapsedMs: 0 })
+const applyTagsTiming = ref({ elapsedMs: 0 })
 
 const APPLY_TAGS_ETA_MIN_SAMPLES = 5
 
@@ -435,10 +614,9 @@ const applyTagsProgressPercent = computed(() => {
 
 const applyTagsProgressDetailText = computed(() => {
     const { done, total } = applyTagsProgress.value
-    if (!applyingTags.value || total === 0) return ''
+    if (!applyingFix.value || total === 0) return ''
     const parts: string[] = [`${done} / ${total}`]
     if (done > 0) {
-        parts.push(`上个约 ${formatElapsedMs(applyTagsTiming.value.lastFileMs)}`)
         parts.push(`已用 ${formatElapsedMs(applyTagsTiming.value.elapsedMs)}`)
         const remainingMs = estimateApplyTagsRemainingMs(
             done,
@@ -495,6 +673,7 @@ async function runScan(options?: {
         clearSelection()
         applyResult.value = null
         filterTraditionalMeta.value = false
+        issueFilter.value = 'all'
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!options?.silent) message.error(msg)
@@ -506,7 +685,7 @@ async function runScan(options?: {
 }
 
 async function tryAutoScan(): Promise<void> {
-    if (!canScan.value || loading.value || applyingTags.value) return
+    if (!canScan.value || loading.value || applyingFix.value) return
     const validation = rootValidation.value ?? (await validateScanRoot())
     if (!validation.ok) return
     await runScan()
@@ -543,37 +722,89 @@ async function onMetaPanelSaved(): Promise<void> {
     }
 }
 
-async function applyFilenameTagsToItems(
-    items: MetaTagMismatchItem[]
-): Promise<void> {
+function fixScopeItems(): MetaTagMismatchItem[] {
+    if (selectedItems.value.length > 0) {
+        return selectedItems.value
+    }
+    return scanResult.value?.items ?? []
+}
+
+function itemsWithIssue(issue: MetaTagMismatchIssue): MetaTagMismatchItem[] {
+    return fixScopeItems().filter((row) => row.issues.includes(issue))
+}
+
+function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
+    const items = itemsWithIssue(issue)
+    if (issue === 'fileArtistSep') return items.length
+    return items.filter((row) => row.editable).length
+}
+
+function fixConfirmMessage(issue: MetaTagMismatchIssue): string {
+    const opt = ISSUE_FILTER_OPTIONS.find((item) => item.key === issue)
+    if (!opt) return ''
+    const fixCount = fixableCountForIssue(issue)
+    const selectedCount = selectedItems.value.length
+    if (selectedCount > 0) {
+        return opt.confirmSelected(selectedCount, fixCount)
+    }
+    return opt.confirmAll(fixCount)
+}
+
+function canFixIssue(issue: MetaTagMismatchIssue): boolean {
+    return fixableCountForIssue(issue) > 0 && !applyingFix.value && !loading.value
+}
+
+function bumpApplyProgress(
+    ok: number,
+    fail: number,
+    total: number,
+    started: number
+): void {
+    applyTagsTiming.value = {
+        elapsedMs: performance.now() - started
+    }
+    applyTagsProgress.value = { done: ok + fail, total }
+}
+
+async function writeTagsForRow(
+    row: MetaTagMismatchItem,
+    artist: string,
+    title: string
+): Promise<{ ok: boolean; message?: string }> {
+    const res = await window.electronAPI.writeFilenameTags({
+        filePath: row.fullPath,
+        artist,
+        title
+    })
+    if (res.ok) {
+        invalidateMeta(row.fullPath)
+    }
+    return { ok: res.ok, message: res.message }
+}
+
+async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
         message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
         return
     }
 
-    applyingTags.value = true
+    applyingFixIssue.value = 'tagArtistSep'
     applyResult.value = null
     applyTagsProgress.value = { done: 0, total: targets.length }
-    applyTagsTiming.value = { lastFileMs: 0, elapsedMs: 0 }
+    applyTagsTiming.value = { elapsedMs: 0 }
     const started = performance.now()
-    let lastCheckpointAt = started
     let ok = 0
     let fail = 0
     const failSamples: string[] = []
 
     try {
         for (const row of targets) {
+            const artist = tagArtistForMetaFromFilename(row.fileArtist)
             try {
-                const res = await window.electronAPI.writeFilenameTags({
-                    filePath: row.fullPath,
-                    artist: row.fileArtist,
-                    title: row.fileTitle
-                })
-                if (res.ok) {
-                    ok += 1
-                    invalidateMeta(row.fullPath)
-                } else {
+                const res = await writeTagsForRow(row, artist, row.tagTitle)
+                if (res.ok) ok += 1
+                else {
                     fail += 1
                     if (res.message && failSamples.length < 3) {
                         failSamples.push(`${row.fileName}: ${res.message}`)
@@ -586,19 +817,173 @@ async function applyFilenameTagsToItems(
                     failSamples.push(`${row.fileName}: ${msg}`)
                 }
             }
-            const now = performance.now()
-            applyTagsTiming.value = {
-                lastFileMs: now - lastCheckpointAt,
-                elapsedMs: now - started
-            }
-            lastCheckpointAt = now
-            applyTagsProgress.value = { done: ok + fail, total: targets.length }
+            bumpApplyProgress(ok, fail, targets.length, started)
         }
     } finally {
-        applyingTags.value = false
+        applyingFixIssue.value = null
         applyTagsProgress.value = { done: 0, total: 0 }
     }
 
+    finishFixResult(ok, fail, started, failSamples, '标签艺人')
+}
+
+async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter((row) => row.editable)
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'artistContent'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            const artist = tagArtistForMetaFromFilename(row.fileArtist)
+            try {
+                const res = await writeTagsForRow(row, artist, row.tagTitle)
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '标签艺人')
+}
+
+async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter((row) => row.editable)
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'titleContent'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            const artist =
+                row.targetTagArtist ??
+                (tagArtistForMetaFromFilename(row.fileArtist) || row.tagArtist)
+            try {
+                const res = await writeTagsForRow(row, artist, row.fileTitle)
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '标签曲名')
+}
+
+async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void> {
+    if (!items.length) return
+
+    const root = (metaMismatchScanDir.value ?? '').trim()
+    if (!root) return
+
+    applyingFixIssue.value = 'fileArtistSep'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: items.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of items) {
+            const normalized = normalizeFilenameArtist(row.fileArtist)
+            const newName = rebuildFileNameWithArtist(row.fullPath, normalized)
+            if (!newName) {
+                fail += 1
+                if (failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: 无法解析文件名结构`)
+                }
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            if (newName === row.fileName) {
+                ok += 1
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            try {
+                await window.electronAPI.browseRenamePath({
+                    browseRoots: [root],
+                    targetPath: row.fullPath,
+                    newName,
+                    disambiguateIfExists: true
+                })
+                ok += 1
+                invalidateMeta(row.fullPath)
+            } catch (err) {
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, items.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '文件名')
+}
+
+function finishFixResult(
+    ok: number,
+    fail: number,
+    started: number,
+    failSamples: string[],
+    subject: string
+): void {
     applyResult.value = {
         ok,
         fail,
@@ -606,22 +991,36 @@ async function applyFilenameTagsToItems(
     }
 
     if (ok > 0) {
-        message.success(`已写入 ${ok} 个文件的标签`)
+        message.success(`已修复 ${ok} 个文件的${subject}`)
     }
     if (fail > 0) {
         const detail = failSamples.length ? `\n${failSamples.join('\n')}` : ''
-        message.warning(`${fail} 个文件未能写入${detail}`, { duration: 8000 })
+        message.warning(`${fail} 个文件未能修复${detail}`, { duration: 8000 })
     }
 
-    try {
-        await runScan({ silent: true })
-    } catch {
-        /* ignore */
-    }
+    void runScan({ silent: true }).catch(() => {
+        /* 扫描失败时保留列表 */
+    })
 }
 
-function applyFilenameToSelected(): void {
-    void applyFilenameTagsToItems(selectedItems.value)
+async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
+    const items = itemsWithIssue(issue)
+    if (!items.length) return
+
+    switch (issue) {
+        case 'tagArtistSep':
+            await fixTagArtistSepItems(items)
+            break
+        case 'fileArtistSep':
+            await fixFileArtistSepItems(items)
+            break
+        case 'artistContent':
+            await fixArtistContentItems(items)
+            break
+        case 'titleContent':
+            await fixTitleContentItems(items)
+            break
+    }
 }
 
 function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
@@ -718,36 +1117,11 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                         </p>
                     </section>
 
-                    <section v-if="scanResult" class="mtm-stats-panel">
-                        <div class="mtm-stats-grid">
-                            <div class="mtm-stats-grid__item">
-                                <span class="mtm-stats-grid__value">
-                                    {{ scanResult.stats.fileCount }}
-                                </span>
-                                <span class="mtm-stats-grid__label">音频文件</span>
-                            </div>
-                            <div class="mtm-stats-grid__item">
-                                <span class="mtm-stats-grid__value">
-                                    {{ scanResult.stats.parsedFilenameCount }}
-                                </span>
-                                <span class="mtm-stats-grid__label">可解析文件名</span>
-                            </div>
-                            <div class="mtm-stats-grid__item">
-                                <span
-                                    class="mtm-stats-grid__value mtm-stats-grid__value--warn"
-                                >
-                                    {{ scanResult.stats.mismatchCount }}
-                                </span>
-                                <span class="mtm-stats-grid__label">不一致</span>
-                            </div>
-                        </div>
-                    </section>
-
                     <section class="toolbar">
                         <NButton
                             block
                             type="primary"
-                            :disabled="applyingTags"
+                            :disabled="applyingFix"
                             :loading="scanButtonLoading"
                             @click="runScan({ scanLoading: true })"
                         >
@@ -756,12 +1130,111 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                             </template>
                             扫描不一致
                         </NButton>
+
+                        <section v-if="scanResult" class="mtm-stats-panel">
+                            <div class="mtm-stats-grid">
+                                <div class="mtm-stats-grid__item">
+                                    <span class="mtm-stats-grid__value">
+                                        {{ scanResult.stats.fileCount }}
+                                    </span>
+                                    <span class="mtm-stats-grid__label">音频文件</span>
+                                </div>
+                                <div class="mtm-stats-grid__item">
+                                    <span class="mtm-stats-grid__value">
+                                        {{ scanResult.stats.parsedFilenameCount }}
+                                    </span>
+                                    <span class="mtm-stats-grid__label">可解析文件名</span>
+                                </div>
+                                <div class="mtm-stats-grid__item">
+                                    <span
+                                        class="mtm-stats-grid__value mtm-stats-grid__value--warn"
+                                    >
+                                        {{ scanResult.stats.mismatchCount }}
+                                    </span>
+                                    <span class="mtm-stats-grid__label">待处理</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section v-if="scanResult" class="mtm-issue-filters">
+                            <p class="mtm-issue-filters__title">
+                                按问题筛选 / 执行
+                                <span
+                                    v-if="selectedItems.length > 0"
+                                    class="mtm-issue-filters__scope"
+                                >
+                                    · 已选 {{ selectedItems.length }} 条
+                                </span>
+                            </p>
+                            <p
+                                v-if="selectedItems.length > 0"
+                                class="mtm-issue-filters__hint"
+                            >
+                                执行时仅处理已选中且符合该项的记录
+                            </p>
+                            <div
+                                v-for="opt in ISSUE_FILTER_OPTIONS"
+                                :key="opt.key"
+                                class="mtm-issue-filter-row"
+                            >
+                                <NButton
+                                    class="mtm-issue-filter-row__filter"
+                                    quaternary
+                                    :type="issueFilter === opt.key ? 'primary' : 'default'"
+                                    :disabled="issueFilterCounts[opt.key] === 0"
+                                    @click="
+                                        issueFilter =
+                                            issueFilter === opt.key ? 'all' : opt.key
+                                    "
+                                >
+                                    {{
+                                        issueFilter === opt.key
+                                            ? `全部（${opt.label}）`
+                                            : `${opt.label} (${issueFilterCounts[opt.key]})`
+                                    }}
+                                </NButton>
+                                <NPopconfirm
+                                    :disabled="!canFixIssue(opt.key)"
+                                    @positive-click="fixIssue(opt.key)"
+                                >
+                                    <template #trigger>
+                                        <NButton
+                                            class="mtm-issue-filter-row__fix"
+                                            type="primary"
+                                            size="small"
+                                            :disabled="!canFixIssue(opt.key)"
+                                            :loading="applyingFixIssue === opt.key"
+                                        >
+                                            执行 ({{ fixableCountForIssue(opt.key) }})
+                                        </NButton>
+                                    </template>
+                                    {{ fixConfirmMessage(opt.key) }}
+                                </NPopconfirm>
+                            </div>
+                        </section>
+
                         <p v-if="scanResult" class="mtm-selected-count">
                             已选 {{ selectedItems.length }} 条
                             <template v-if="selectedEditableCount > 0">
                                 · 可写 {{ selectedEditableCount }}
                             </template>
+                            <template v-if="selectedWritableReadyCount > 0">
+                                · 可立即写入 {{ selectedWritableReadyCount }}
+                            </template>
                         </p>
+                        <p
+                            v-if="selectedFilenameBlockedCount > 0"
+                            class="mtm-selected-count mtm-selected-count--warn"
+                        >
+                            {{ selectedFilenameBlockedCount }} 条需先修正文件名艺人格式
+                        </p>
+                        <section v-if="scanResult" class="mtm-rules-panel">
+                            <p class="mtm-rules-panel__title">艺人分隔规范</p>
+                            <ul class="mtm-rules-panel__list">
+                                <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code></li>
+                                <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code></li>
+                            </ul>
+                        </section>
                         <NButton
                             v-if="scanResult && scanResult.items.length > 0"
                             block
@@ -777,54 +1250,16 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                             }}
                         </NButton>
                         <p
-                            v-if="scanResult && filterTraditionalMeta"
+                            v-if="scanResult && (filterTraditionalMeta || issueFilter !== 'all')"
                             class="mtm-selected-count"
                         >
                             显示 {{ displayRows.length }} / {{ scanResult.items.length }} 条
-                        </p>
-                        <NPopconfirm
-                            v-if="scanResult && scanResult.items.length > 0"
-                            :disabled="
-                                selectedEditableCount === 0
-                                    || applyingTags
-                                    || loading
-                            "
-                            @positive-click="applyFilenameToSelected"
-                        >
-                            <template #trigger>
-                                <NButton
-                                    block
-                                    type="primary"
-                                    secondary
-                                    :disabled="
-                                        selectedEditableCount === 0
-                                            || applyingTags
-                                            || loading
-                                    "
-                                    :loading="applyingTags"
-                                >
-                                    用文件名写入标签
-                                </NButton>
-                            </template>
-                            将选中文件的艺人 / 曲名标签改为与文件名一致？
-                        </NPopconfirm>
-                        <NProgress
-                            v-if="applyingTags"
-                            type="line"
-                            :percentage="applyTagsProgressPercent"
-                            :show-indicator="true"
-                        />
-                        <p
-                            v-if="applyingTags && applyTagsProgressDetailText"
-                            class="mtm-apply-progress-detail"
-                        >
-                            {{ applyTagsProgressDetailText }}
                         </p>
                         <NButton
                             v-if="scanResult && selectedItems.length > 0"
                             block
                             quaternary
-                            :disabled="applyingTags"
+                            :disabled="applyingFix"
                             @click="clearSelection"
                         >
                             取消选择
@@ -838,8 +1273,14 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                     </section>
                 </div>
 
+                <SidebarBatchProgressPanel
+                    v-if="applyingFix"
+                    :title="applyFixProgressTitle"
+                    :percentage="applyTagsProgressPercent"
+                    :detail="applyTagsProgressDetailText"
+                />
                 <AudioMetaPanel
-                    v-if="!metaPanelHidden"
+                    v-else-if="!metaPanelHidden"
                     :file-path="metaPanelFilePath"
                     @saved="onMetaPanelSaved"
                 />
@@ -872,7 +1313,7 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                     >
                         <p class="meta-mismatch-empty__title">无匹配项</p>
                         <p class="meta-mismatch-empty__desc">
-                            当前列表中没有标签含繁体字的记录。
+                            当前筛选条件下没有记录，可切换问题类型或显示全部。
                         </p>
                     </div>
                     <div
@@ -882,7 +1323,7 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                         <p class="meta-mismatch-empty__title">未发现不一致</p>
                         <p class="meta-mismatch-empty__desc">
                             在 {{ scanResult.stats.parsedFilenameCount }}
-                            个可解析文件名中，标签与文件名均已匹配。
+                            个可解析文件名中，标签内容与分隔符均已符合规范。
                         </p>
                     </div>
                     <div v-else class="meta-mismatch-empty">
@@ -1062,8 +1503,7 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
 }
 
 .mtm-selected-count,
-.mtm-apply-result,
-.mtm-apply-progress-detail {
+.mtm-apply-result {
     margin: 0;
     font-size: 12px;
     text-align: center;
@@ -1137,6 +1577,99 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
     opacity: 0.45;
     text-align: center;
     max-width: 360px;
+}
+
+.mtm-issue-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: $radius-panel;
+    border: 1px solid $border-subtle;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.mtm-issue-filters__title {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.65;
+}
+
+.mtm-issue-filters__scope {
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+.mtm-issue-filters__hint {
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.4;
+    opacity: 0.55;
+}
+
+.mtm-issue-filter-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.mtm-issue-filter-row__filter {
+    flex: 1;
+    min-width: 0;
+}
+
+.mtm-issue-filter-row__fix {
+    flex-shrink: 0;
+    min-width: 56px;
+}
+
+.mtm-rules-panel {
+    padding: 10px 12px;
+    border-radius: $radius-panel;
+    border: 1px solid $border-subtle;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.mtm-rules-panel__title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.65;
+}
+
+.mtm-rules-panel__list {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 11px;
+    line-height: 1.45;
+    opacity: 0.7;
+
+    code {
+        font-family: $font-mono;
+        font-size: 10px;
+    }
+}
+
+.mtm-selected-count--warn {
+    color: rgb(234, 88, 88);
+    opacity: 0.85;
+}
+
+:deep(.mtm-issues-cell) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+:deep(.mtm-issue-pill) {
+    font-size: 10px;
+}
+
+:deep(.mtm-char-bad) {
+    color: rgb(234, 88, 88);
+    font-weight: 600;
+    text-decoration: underline wavy rgba(234, 88, 88, 0.45);
 }
 
 </style>

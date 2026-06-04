@@ -6,7 +6,6 @@ import {
   NInput,
   NModal,
   NPopconfirm,
-  NProgress,
   NScrollbar,
   NSpin,
   NTooltip,
@@ -14,6 +13,7 @@ import {
   useMessage,
   type DataTableColumns
 } from 'naive-ui'
+import SidebarBatchProgressPanel from '@renderer/components/SidebarBatchProgressPanel.vue'
 import {
   FolderOpen,
   Key,
@@ -49,6 +49,7 @@ import { useDirFileNameFilter } from '@renderer/composables/useDirFileNameFilter
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import DecodeFileInfoPanel from './DecodeFileInfoPanel.vue'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
+import { attachAudioFileContextMenuToRowProps } from '@renderer/composables/useAudioFileContextMenu'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import {
   applySortableHeaders,
@@ -131,6 +132,10 @@ const fileTableRowPropsWithPlay = useAudioPlayRowProps(
   (row) => (row as DirAudioFileItem).filePath
 )
 
+function queueTableRowProps(row: { filePath: string }) {
+  return attachAudioFileContextMenuToRowProps({}, row.filePath)
+}
+
 const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
 const sortKey = ref<DirFileSortKey>('inSearchTarget')
@@ -152,7 +157,6 @@ const decryptQueue = ref<string[]>([])
 const decrypting = ref(false)
 const decryptProgress = ref({ done: 0, total: 0 })
 const decryptTiming = ref({
-  lastFileMs: 0,
   elapsedMs: 0
 })
 const lastResult = ref<MusicDecryptBatchResult | null>(null)
@@ -484,9 +488,8 @@ async function startDecrypt(): Promise<void> {
   lastResult.value = null
   const total = decryptQueue.value.length
   decryptProgress.value = { done: 0, total }
-  decryptTiming.value = { lastFileMs: 0, elapsedMs: 0 }
+  decryptTiming.value = { elapsedMs: 0 }
   const startedAt = performance.now()
-  let lastCheckpointAt = startedAt
   try {
     const config = await storage.getAll()
     const result = await decryptMusicBatch(
@@ -494,12 +497,9 @@ async function startDecrypt(): Promise<void> {
       decodeOutputDir.value.trim(),
       config,
       (done, batchTotal) => {
-        const now = performance.now()
         decryptTiming.value = {
-          lastFileMs: now - lastCheckpointAt,
-          elapsedMs: now - startedAt
+          elapsedMs: performance.now() - startedAt
         }
-        lastCheckpointAt = now
         decryptProgress.value = { done, total: batchTotal }
       }
     )
@@ -533,7 +533,6 @@ const decryptProgressDetailText = computed(() => {
   if (!decrypting.value || total === 0) return ''
   const parts: string[] = [`${done} / ${total}`]
   if (done > 0) {
-    parts.push(`本首约 ${formatElapsedMs(decryptTiming.value.lastFileMs)}`)
     parts.push(`已用 ${formatElapsedMs(decryptTiming.value.elapsedMs)}`)
     const remainingMs = estimateDecryptRemainingMs(
       done,
@@ -875,19 +874,6 @@ onMounted(() => {
               </template>
               开始解密 ({{ decryptQueue.length }})
             </NButton>
-            <NProgress
-              v-if="decrypting"
-              type="line"
-              :percentage="progressPercent"
-              :show-indicator="true"
-              style="margin-top: 8px"
-            />
-            <p
-              v-if="decrypting && decryptProgressDetailText"
-              class="decrypt-progress-detail"
-            >
-              {{ decryptProgressDetailText }}
-            </p>
           </section>
 
           <section
@@ -916,6 +902,7 @@ onMounted(() => {
               <VirtualDataTable
                 :columns="queueColumns"
                 :data="queueRows"
+                :row-props="queueTableRowProps"
                 :max-height="maxHeightForQueueTable"
                 size="small"
                 striped
@@ -942,6 +929,13 @@ onMounted(() => {
             </p>
           </section>
         </div>
+
+        <SidebarBatchProgressPanel
+          v-if="decrypting"
+          title="正在解密"
+          :percentage="progressPercent"
+          :detail="decryptProgressDetailText"
+        />
       </aside>
     </div>
   </div>
@@ -1027,13 +1021,6 @@ onMounted(() => {
 
 .toolbar {
   padding-top: 4px;
-}
-
-.decrypt-progress-detail {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  opacity: 0.65;
 }
 
 .queue-section {

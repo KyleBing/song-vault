@@ -3,9 +3,13 @@ import { NButton, NIcon } from 'naive-ui'
 import { ArrowBack, ArrowForward } from '@vicons/ionicons5'
 import { formatFileSize } from '@shared/formatAudioDisplay'
 import type { SyncDiffItem, SyncDiffKind, SyncFileEntry } from '@shared/librarySyncJob'
+import { joinUnderRoot } from '@shared/pathLite'
+import { openAudioFileContextMenu } from '@renderer/composables/useAudioFileContextMenu'
 
-defineProps<{
+const props = defineProps<{
     item: SyncDiffItem
+    leftRoot: string
+    rightRoot: string
     loading: boolean
     copyingLeft: boolean
     copyingRight: boolean
@@ -53,6 +57,16 @@ function moveToRightTitle(): string {
 function moveToLeftTitle(): string {
     return '在左侧乐库内移动到右侧路径'
 }
+
+function onSideContextMenu(
+    side: 'left' | 'right',
+    e: MouseEvent
+): void {
+    const entry = side === 'left' ? props.item.left : props.item.right
+    const root = side === 'left' ? props.leftRoot : props.rightRoot
+    if (!entry || !root.trim()) return
+    openAudioFileContextMenu(joinUnderRoot(root, entry.relativePath), e)
+}
 </script>
 
 <template>
@@ -62,6 +76,7 @@ function moveToLeftTitle(): string {
                 sidePaneTone('left', item.kind, !!item.left),
                 'left'
             )"
+            @contextmenu="onSideContextMenu('left', $event)"
         >
             <span v-if="item.left" class="sync-file-line">
                 {{ fileLine(item.left, item.kind === 'moved') }}
@@ -105,6 +120,7 @@ function moveToLeftTitle(): string {
                 sidePaneTone('right', item.kind, !!item.right),
                 'right'
             )"
+            @contextmenu="onSideContextMenu('right', $event)"
         >
             <span v-if="item.right" class="sync-file-line">
                 {{ fileLine(item.right, item.kind === 'moved') }}

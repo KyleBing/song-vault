@@ -12,6 +12,7 @@ import {
 import { storeToRefs } from 'pinia'
 import { computed, h, ref, watch, type Ref, type VNode } from 'vue'
 import { useLayoutStore } from '@renderer/stores/layout'
+import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
 import type {
     AudioJobItem,
     AudioItemStatus,
@@ -146,10 +147,10 @@ const listSelectionPath = computed(() => {
 
 const resolvedMetaPanelFilePath = computed(() => {
     if (activeTab.value === 'orphan' && orphanSubTab.value === 'audio') {
-        return orphanAudioSelectedKeys.value[0] ?? null
+        return metaPanelPathFromSelection(orphanAudioSelectedKeys.value)
     }
     if (activeTab.value !== 'orphan') {
-        return audioSelectedKeys.value[0] ?? null
+        return metaPanelPathFromSelection(audioSelectedKeys.value)
     }
     return null
 })

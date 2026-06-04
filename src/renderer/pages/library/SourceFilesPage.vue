@@ -53,6 +53,7 @@ import { plainStringList } from '@renderer/utils/ipcPayload'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
 import BrowseDirPickerModal from './BrowseDirPickerModal.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
@@ -71,7 +72,9 @@ const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 150)
 
 /** 元数据面板：多选时展示第一个选中文件 */
-const metaPanelFilePath = computed(() => selectedFileKeys.value[0] ?? null)
+const metaPanelFilePath = computed(() =>
+  metaPanelPathFromSelection(selectedFileKeys.value)
+)
 
 const selectedKeys = ref<string[]>([])
 const selectedDir = ref<string | null>(null)

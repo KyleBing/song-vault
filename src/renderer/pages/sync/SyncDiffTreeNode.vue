@@ -15,6 +15,8 @@ const props = defineProps<{
     depth: number
     expandedKeys: Set<string>
     selectedKeys: Set<string>
+    leftRoot: string
+    rightRoot: string
     loading: boolean
     batchCopying: boolean
     isCopying: (item: SyncDiffItem, direction: 'left' | 'right') => boolean
@@ -141,6 +143,8 @@ function onFolderCheckUpdate(row: SyncDiffTreeRow, checked: boolean): void {
                 <SyncDiffFileRow
                     v-else-if="node.diffItem"
                     :item="node.diffItem"
+                    :left-root="leftRoot"
+                    :right-root="rightRoot"
                     :loading="loading || batchCopying"
                     :copying-left="isCopying(node.diffItem, 'left')"
                     :copying-right="isCopying(node.diffItem, 'right')"
@@ -156,6 +160,8 @@ function onFolderCheckUpdate(row: SyncDiffTreeRow, checked: boolean): void {
             :depth="depth + 1"
             :expanded-keys="expandedKeys"
             :selected-keys="selectedKeys"
+            :left-root="leftRoot"
+            :right-root="rightRoot"
             :loading="loading"
             :batch-copying="batchCopying"
             :is-copying="isCopying"

@@ -3,7 +3,7 @@ import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 
 defineProps<{
-    /** 当前展示元数据的文件路径；多选时传第一个 */
+    /** 当前展示元数据的文件路径；仅单选时传入 */
     filePath: string | null
 }>()
 

@@ -218,6 +218,10 @@ const api = {
   openPathInFileManager: (dirPath: string): Promise<string> =>
     ipcRenderer.invoke('open-path-in-file-manager', dirPath),
 
+  /** 在系统文件管理器中定位文件；成功返回空字符串，失败返回错误信息 */
+  showItemInFolder: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('show-item-in-folder', filePath),
+
   readAudioMetricsBatch: async (
     filePaths: string[]
   ): Promise<Record<string, AudioFileMetrics>> => {

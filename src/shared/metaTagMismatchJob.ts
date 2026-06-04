@@ -17,13 +17,22 @@ import {
 
 export type {
     MetaTagMismatchItem,
+    MetaTagMismatchIssue,
     MetaTagMismatchReason,
     MetaTagMismatchScanStats,
     ScanMetaTagMismatchParams,
     ScanMetaTagMismatchResult
 } from './metaTagMismatch'
 
-export { analyzeMetaTagMismatch, artistTagMatchesFilename } from './metaTagMismatch'
+export {
+    analyzeMetaTagMismatch,
+    artistTagMatchesFilename,
+    countItemsByIssue,
+    META_TAG_MISMATCH_ISSUE_LABELS,
+    normalizeFilenameArtist,
+    tagArtistForMetaFromFilename,
+    tagArtistFromFilenameArtist
+} from './metaTagMismatch'
 
 /** 扫描目录内「文件名艺人 - 曲名」与内嵌标签不一致的音频 */
 export async function scanMetaTagMismatches(

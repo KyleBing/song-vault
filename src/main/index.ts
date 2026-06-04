@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
 import { existsSync, readFileSync } from 'fs'
-import { extname, join } from 'path'
+import { extname, join, resolve as pathResolve } from 'path'
 import { APP_DISPLAY_NAME } from '../shared/appInfo'
 import {
   copyLrcToAudio,
@@ -507,6 +507,18 @@ function registerIpcHandlers(): void {
       return '无效路径'
     }
     return shell.openPath(dirPath)
+  })
+
+  ipcMain.handle('show-item-in-folder', (_, filePath: string) => {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return '无效路径'
+    }
+    const resolved = pathResolve(filePath.trim())
+    if (!existsSync(resolved)) {
+      return '文件不存在'
+    }
+    shell.showItemInFolder(resolved)
+    return ''
   })
 }
 

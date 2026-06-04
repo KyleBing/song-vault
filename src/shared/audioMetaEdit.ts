@@ -192,6 +192,39 @@ export function parseArtistTitleFromFilePath(
     return { artist: '', title: stem, split: false }
 }
 
+/**
+ * 保留原有「艺人 - 曲名」分隔符，仅替换艺人段（用于文件名艺人规范化重命名）。
+ */
+export function rebuildFileNameWithArtist(
+    filePath: string,
+    newArtist: string
+): string | null {
+    const parsed = parseArtistTitleFromFilePath(filePath)
+    if (!parsed.split || !parsed.title) return null
+
+    const base = filePath.replace(/^.*[/\\]/, '')
+    const dot = base.lastIndexOf('.')
+    const ext = dot > 0 ? base.slice(dot) : ''
+    const stem = fileStemFromPath(filePath)
+
+    for (const sep of ARTIST_TITLE_SEPARATORS) {
+        const idx = stem.indexOf(sep)
+        if (idx > 0 && stem.slice(idx + sep.length).trim() === parsed.title) {
+            return `${newArtist}${sep}${parsed.title}${ext}`
+        }
+    }
+
+    const dash = stem.indexOf('-')
+    if (dash > 0 && stem.slice(dash + 1).trim() === parsed.title) {
+        if (stem.includes(' - ')) {
+            return `${newArtist} - ${parsed.title}${ext}`
+        }
+        return `${newArtist}-${parsed.title}${ext}`
+    }
+
+    return null
+}
+
 /** 从已读取的元数据填充编辑表单 */
 export function metaInfoToEditForm(meta: AudioFileMetaInfo): AudioMetaEditForm {
     const common = meta.common ?? {}

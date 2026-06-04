@@ -1,12 +1,25 @@
 import path from 'path'
-import { splitMetaDisplayValues, type AudioFileMetaInfo } from './audioFileMeta'
+import {
+    fileAndTagArtistsMatch,
+    fileArtistHasSeparatorIssues,
+    tagArtistFromFilenameArtist,
+    tagArtistHasSeparatorIssues
+} from './artistSeparatorRules'
+import type { AudioFileMetaInfo } from './audioFileMeta'
 import {
     isEditableAudioMetaPath,
     parseArtistTitleFromFilePath
 } from './audioMetaEdit'
 import type { PathFilterRule } from './pathFilters'
 
+/** @deprecated 保留兼容；请用 issues */
 export type MetaTagMismatchReason = 'artist' | 'title' | 'both'
+
+export type MetaTagMismatchIssue =
+    | 'artistContent'
+    | 'titleContent'
+    | 'fileArtistSep'
+    | 'tagArtistSep'
 
 export interface MetaTagMismatchItem {
     relativePath: string
@@ -18,7 +31,12 @@ export interface MetaTagMismatchItem {
     /** 文件内标签 */
     tagArtist: string
     tagTitle: string
+    /** 需处理的问题类型 */
+    issues: MetaTagMismatchIssue[]
+    /** @deprecated 由 issues 推导，供旧逻辑兼容 */
     reasons: MetaTagMismatchReason[]
+    /** 按规则写入标签时的目标艺人（文件名非法时为 null） */
+    targetTagArtist: string | null
     /** 是否可写入标签（mp3 / flac） */
     editable: boolean
 }
@@ -63,34 +81,53 @@ function stringsEqual(a: string, b: string): boolean {
     return normalizeMetaCompare(a) === normalizeMetaCompare(b)
 }
 
-/** 艺人是否一致（支持标签内多艺人「;」分隔） */
+/** 艺人内容是否一致（忽略分隔符写法差异） */
 export function artistTagMatchesFilename(
     filenameArtist: string,
     tagArtist: string
 ): boolean {
-    const fn = normalizeMetaCompare(filenameArtist)
-    if (!fn) return true
-    const tag = normalizeMetaCompare(tagArtist)
-    if (!tag) return false
-
-    if (fn === tag) return true
-
-    const parts = splitMetaDisplayValues(tagArtist).map(normalizeMetaCompare)
-    return parts.some((part) => part === fn)
+    return fileAndTagArtistsMatch(filenameArtist, tagArtist)
 }
 
-function buildReasons(
-    artistMismatch: boolean,
-    titleMismatch: boolean
+export const META_TAG_MISMATCH_ISSUE_LABELS: Record<MetaTagMismatchIssue, string> =
+    {
+        artistContent: '艺人内容',
+        titleContent: '曲名',
+        fileArtistSep: '文件名分隔',
+        tagArtistSep: '标签分隔'
+    }
+
+export function issuesToReasons(
+    issues: MetaTagMismatchIssue[]
 ): MetaTagMismatchReason[] {
-    if (artistMismatch && titleMismatch) return ['both']
-    if (artistMismatch) return ['artist']
-    return ['title']
+    const artist =
+        issues.includes('artistContent') ||
+        issues.includes('fileArtistSep') ||
+        issues.includes('tagArtistSep')
+    const title = issues.includes('titleContent')
+    if (artist && title) return ['both']
+    if (artist) return ['artist']
+    if (title) return ['title']
+    return []
+}
+
+function buildIssues(params: {
+    artistContentMismatch: boolean
+    titleMismatch: boolean
+    fileArtistSep: boolean
+    tagArtistSep: boolean
+}): MetaTagMismatchIssue[] {
+    const out: MetaTagMismatchIssue[] = []
+    if (params.artistContentMismatch) out.push('artistContent')
+    if (params.titleMismatch) out.push('titleContent')
+    if (params.fileArtistSep) out.push('fileArtistSep')
+    if (params.tagArtistSep) out.push('tagArtistSep')
+    return out
 }
 
 /**
- * 判断单文件是否为「文件名艺人/曲名」与内嵌标签不一致。
- * 仅当文件名可解析为「艺人 - 曲名」且至少一项与标签不同时返回条目。
+ * 判断单文件是否需要标签校准。
+ * 文件名须可解析为「艺人 - 曲名」；艺人/曲名内容不一致，或分隔符不符合规范时返回条目。
  */
 export function analyzeMetaTagMismatch(
     filePath: string,
@@ -102,10 +139,21 @@ export function analyzeMetaTagMismatch(
     const tagArtist = tagArtistFromCommon(meta.common)
     const tagTitle = tagTitleFromCommon(meta.common)
 
-    const artistMismatch = !artistTagMatchesFilename(parsed.artist, tagArtist)
+    const artistContentMismatch = !fileAndTagArtistsMatch(
+        parsed.artist,
+        tagArtist
+    )
     const titleMismatch = !stringsEqual(parsed.title, tagTitle)
+    const fileArtistSep = fileArtistHasSeparatorIssues(parsed.artist)
+    const tagArtistSep = tagArtistHasSeparatorIssues(tagArtist)
 
-    if (!artistMismatch && !titleMismatch) return null
+    const issues = buildIssues({
+        artistContentMismatch,
+        titleMismatch,
+        fileArtistSep,
+        tagArtistSep
+    })
+    if (issues.length === 0) return null
 
     const resolved = path.resolve(filePath)
 
@@ -114,7 +162,22 @@ export function analyzeMetaTagMismatch(
         fileTitle: parsed.title,
         tagArtist,
         tagTitle,
-        reasons: buildReasons(artistMismatch, titleMismatch),
+        issues,
+        reasons: issuesToReasons(issues),
+        targetTagArtist: tagArtistFromFilenameArtist(parsed.artist),
         editable: isEditableAudioMetaPath(resolved)
     }
 }
+
+export function countItemsByIssue(
+    items: MetaTagMismatchItem[],
+    issue: MetaTagMismatchIssue
+): number {
+    return items.filter((item) => item.issues.includes(issue)).length
+}
+
+export {
+    tagArtistFromFilenameArtist,
+    tagArtistForMetaFromFilename,
+    normalizeFilenameArtist
+} from './artistSeparatorRules'

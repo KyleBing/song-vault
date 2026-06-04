@@ -5,6 +5,7 @@ import { formatFileSize } from '@shared/formatAudioDisplay'
 import type { DuplicateGroup, DuplicateMember } from '@shared/libraryDuplicateTypes'
 import { duplicateMemberKey } from '@shared/libraryDuplicateTypes'
 import { joinUnderRoot } from '@shared/pathLite'
+import { openAudioFileContextMenu } from '@renderer/composables/useAudioFileContextMenu'
 import { useDuplicateCoverCompare } from '@renderer/composables/useDuplicateCoverCompare'
 import DuplicateMemberCoverThumb from './DuplicateMemberCoverThumb.vue'
 import { duplicateMemberMetricsLabel } from './duplicateMemberMetrics'
@@ -49,6 +50,10 @@ function openGroupCoverCompare(): void {
 function memberMetricsLabel(member: DuplicateMember): string {
     return duplicateMemberMetricsLabel(member)
 }
+
+function onMemberContextMenu(member: DuplicateMember, e: MouseEvent): void {
+    openAudioFileContextMenu(memberFullPath(member), e)
+}
 </script>
 
 <template>
@@ -69,7 +74,10 @@ function memberMetricsLabel(member: DuplicateMember): string {
                 class="dup-member-radio"
                 :value="duplicateMemberKey(member.relativePath)"
             >
-                <div class="dup-member-row">
+                <div
+                    class="dup-member-row"
+                    @contextmenu="onMemberContextMenu(member, $event)"
+                >
                     <DuplicateMemberCoverThumb
                         :file-path="memberFullPath(member)"
                         @compare="openGroupCoverCompare"

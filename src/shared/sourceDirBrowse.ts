@@ -155,6 +155,8 @@ export interface BrowseCreateDirParams extends BrowseRootsParams {
 export interface BrowseRenamePathParams extends BrowseRootsParams {
   targetPath: string
   newName: string
+  /** 目标名已存在时自动追加 (1)、(2)… 后缀 */
+  disambiguateIfExists?: boolean
 }
 
 export interface BrowseDeletePathParams extends BrowseRootsParams {
@@ -232,6 +234,35 @@ function assertValidEntryName(name: string): string {
     throw new Error('名称不能包含 \\ / : * ? " < > |')
   }
   return trimmed
+}
+
+/** 在目录内生成不冲突的条目名；excludePath 为正在重命名的原路径时可视为可用 */
+export function resolveUniqueEntryName(
+  parentDir: string,
+  desiredName: string,
+  excludePath?: string
+): string {
+  const excluded = excludePath ? path.resolve(excludePath) : null
+
+  function isAvailable(name: string): boolean {
+    const full = path.resolve(path.join(parentDir, name))
+    if (excluded && full === excluded) return true
+    return !fs.existsSync(full)
+  }
+
+  const baseName = assertValidEntryName(desiredName)
+  if (isAvailable(baseName)) return baseName
+
+  const parsed = path.parse(baseName)
+  const ext = parsed.ext
+  const stem = parsed.name
+
+  for (let i = 1; i < 10_000; i += 1) {
+    const candidate = assertValidEntryName(`${stem}(${i})${ext}`)
+    if (isAvailable(candidate)) return candidate
+  }
+
+  throw new Error('无法生成不冲突的文件名')
 }
 
 function dirHasSubdirs(dirPath: string): boolean {
@@ -519,8 +550,11 @@ export function browseRenamePath(
   const oldPath = path.resolve(params.targetPath)
   assertUnderBrowseRoots(oldPath, roots)
 
-  const newName = assertValidEntryName(params.newName)
+  const newNameInput = assertValidEntryName(params.newName)
   const parent = path.dirname(oldPath)
+  const newName = params.disambiguateIfExists
+    ? resolveUniqueEntryName(parent, newNameInput, oldPath)
+    : newNameInput
   const newPath = path.join(parent, newName)
 
   if (path.resolve(newPath) === oldPath) {

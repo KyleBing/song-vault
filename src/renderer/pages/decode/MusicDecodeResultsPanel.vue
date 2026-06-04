@@ -25,6 +25,7 @@ import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
 import AudioMetaPanelSection from '@renderer/components/AudioMetaPanelSection.vue'
+import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
@@ -76,10 +77,10 @@ const maxHeightForTable = computed(() => insets.value.windowHeight - 426)
 
 const metaPanelFilePath = computed(() => {
   if (activeTab.value === 'encrypted') {
-    return encryptedSelectedKeys.value[0] ?? null
+    return metaPanelPathFromSelection(encryptedSelectedKeys.value)
   }
   if (activeTab.value === 'plainMp3') {
-    return plainSelectedKeys.value[0] ?? null
+    return metaPanelPathFromSelection(plainSelectedKeys.value)
   }
   return null
 })
