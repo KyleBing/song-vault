@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import {
     NButton,
+    NCheckbox,
     NIcon,
     NPopconfirm,
     NProgress,
     NSpin,
+    NTooltip,
     useMessage
 } from 'naive-ui'
 import {
     ArrowBack,
     ArrowForward,
     Close,
+    ContractOutline,
     Folder,
     Refresh,
     Trash
@@ -23,6 +26,7 @@ import type {
     ValidateSyncRootsResult
 } from '@shared/librarySyncJob'
 import { normalizePathKey } from '@shared/pathKeys'
+import { joinUnderRoot } from '@shared/pathLite'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
@@ -35,6 +39,8 @@ import {
 } from '@renderer/utils/syncDiffTree'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import { useLibrarySyncSessionStore } from '@renderer/stores/librarySyncSession'
+import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
 
 const syncLeftDir = defineModel<string>('syncLeftDir', { required: true })
@@ -61,6 +67,10 @@ const deletingSelected = ref(false)
 const batchCopying = computed(() => batchCopyActiveDirection.value !== null)
 const syncTreeBusy = computed(
     () => batchCopying.value || deletingSelected.value
+)
+
+const metaPanelHidden = computed(
+    () => syncTreeBusy.value || copyingKeys.value.size > 0
 )
 const batchCopyProgress = ref({ done: 0, total: 0 })
 
@@ -186,6 +196,28 @@ const selectedItems = computed(() => {
     )
 })
 
+function syncDiffItemMetaFilePath(
+    item: SyncDiffItem,
+    result: CompareLibrarySyncResult
+): string | null {
+    if (item.left) {
+        return joinUnderRoot(result.leftRoot, item.left.relativePath)
+    }
+    if (item.right) {
+        return joinUnderRoot(result.rightRoot, item.right.relativePath)
+    }
+    return null
+}
+
+const metaPanelFilePath = computed((): string | null => {
+    const result = compareResult.value
+    const key = selectedRowKeys.value[0]
+    if (!result || !key) return null
+    const item = resolveSyncDiffItemsByKeys(result.items, [key])[0]
+    if (!item) return null
+    return syncDiffItemMetaFilePath(item, result)
+})
+
 const batchCopyRightCount = computed(
     () => selectedItems.value.filter((item) => item.left).length
 )
@@ -193,6 +225,32 @@ const batchCopyRightCount = computed(
 const batchCopyLeftCount = computed(
     () => selectedItems.value.filter((item) => item.right).length
 )
+
+const allFilesSelected = computed(() => {
+    const keys = orderedFileKeys.value
+    if (!keys.length) return false
+    const selected = selectedKeySet.value
+    return keys.every((key) => selected.has(key))
+})
+
+const someFilesSelected = computed(() => {
+    const keys = orderedFileKeys.value
+    if (!keys.length) return false
+    const selected = selectedKeySet.value
+    const count = keys.filter((key) => selected.has(key)).length
+    return count > 0 && count < keys.length
+})
+
+function toggleSelectAllFiles(checked: boolean): void {
+    onUpdateCheckedRowKeys(
+        checked ? [...orderedFileKeys.value] : [],
+        orderedFileKeys,
+        {
+            row: undefined,
+            action: checked ? 'checkAll' : 'uncheckAll'
+        }
+    )
+}
 
 const batchCopyProgressPercent = computed(() => {
     const { done, total } = batchCopyProgress.value
@@ -342,6 +400,12 @@ function toggleExpand(key: string): void {
     }
     expandedRowKeys.value = [...expandedRowKeys.value, key]
 }
+
+function collapseAllFolders(): void {
+    expandedRowKeys.value = []
+}
+
+const canCollapseAllFolders = computed(() => expandedRowKeys.value.length > 0)
 
 function toggleSelect(key: string, checked: boolean, shiftKey = false): void {
     const nextKeys = checked
@@ -1200,61 +1264,48 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                         >
                             已选 {{ selectedItems.length }} 项
                         </p>
-                        <NButton
+                        <div
                             v-if="compareResult && compareResult.items.length > 0"
-                            v-memo="[batchCopyActiveDirection, batchCopyRightCount]"
-                            block
-                            secondary
-                            type="primary"
-                            :disabled="
-                                batchCopyRightCount === 0
-                                    || batchCopying
-                                    || deletingSelected
-                                    || loading
-                            "
-                            :loading="batchCopyActiveDirection === 'toRight'"
-                            @click="batchCopy('toRight')"
+                            class="sync-copy-actions"
                         >
-                            <template #icon>
-                                <NIcon><ArrowForward /></NIcon>
-                            </template>
-                            复制到{{ syncRightLabel }}
-                            <span v-if="batchCopyRightCount > 0">({{ batchCopyRightCount }})</span>
-                        </NButton>
-                        <NButton
-                            v-if="compareResult && compareResult.items.length > 0"
-                            v-memo="[batchCopyActiveDirection, batchCopyLeftCount]"
-                            block
-                            secondary
-                            :disabled="
-                                batchCopyLeftCount === 0
-                                    || batchCopying
-                                    || deletingSelected
-                                    || loading
-                            "
-                            :loading="batchCopyActiveDirection === 'toLeft'"
-                            @click="batchCopy('toLeft')"
-                        >
-                            <template #icon>
-                                <NIcon><ArrowBack /></NIcon>
-                            </template>
-                            复制到{{ syncLeftLabel }}
-                            <span v-if="batchCopyLeftCount > 0">({{ batchCopyLeftCount }})</span>
-                        </NButton>
-                        <NButton
-                            v-if="compareResult && compareResult.items.length > 0"
-                            block
-                            quaternary
-                            :disabled="
-                                selectedItems.length === 0
-                                    || batchCopying
-                                    || deletingSelected
-                                    || loading
-                            "
-                            @click="clearSelection"
-                        >
-                            取消选择
-                        </NButton>
+                            <NButton
+                                v-memo="[batchCopyActiveDirection, batchCopyLeftCount]"
+                                secondary
+                                :disabled="
+                                    batchCopyLeftCount === 0
+                                        || batchCopying
+                                        || deletingSelected
+                                        || loading
+                                "
+                                :loading="batchCopyActiveDirection === 'toLeft'"
+                                @click="batchCopy('toLeft')"
+                            >
+                                <template #icon>
+                                    <NIcon><ArrowBack /></NIcon>
+                                </template>
+                                {{ syncLeftLabel }}
+                                <span v-if="batchCopyLeftCount > 0">({{ batchCopyLeftCount }})</span>
+                            </NButton>
+                            <NButton
+                                v-memo="[batchCopyActiveDirection, batchCopyRightCount]"
+                                secondary
+                                type="primary"
+                                :disabled="
+                                    batchCopyRightCount === 0
+                                        || batchCopying
+                                        || deletingSelected
+                                        || loading
+                                "
+                                :loading="batchCopyActiveDirection === 'toRight'"
+                                @click="batchCopy('toRight')"
+                            >
+                                <template #icon>
+                                    <NIcon><ArrowForward /></NIcon>
+                                </template>
+                                {{ syncRightLabel }}
+                                <span v-if="batchCopyRightCount > 0">({{ batchCopyRightCount }})</span>
+                            </NButton>
+                        </div>
                         <NPopconfirm
                             v-if="compareResult && compareResult.items.length > 0"
                             :disabled="
@@ -1281,7 +1332,10 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                                     <template #icon>
                                         <NIcon><Trash /></NIcon>
                                     </template>
-                                    {{ selectedItems.length }}
+                                    删除选中
+                                    <span v-if="selectedItems.length > 0">
+                                        ({{ selectedItems.length }})
+                                    </span>
                                 </NButton>
                             </template>
                             确定删除选中的 {{ selectedItems.length }} 项？
@@ -1304,12 +1358,10 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                     </section>
                 </div>
 
-                <section class="sync-usage-guide" aria-label="使用说明">
-                    <h3 class="sync-usage-guide__title">使用说明</h3>
-                    <p class="sync-usage-guide__text">
-                        复制或移动时，若目标乐库内已有同名、同大小的文件（如「已移动」），将优先在同一乐库内移动对齐路径，而不是从另一侧乐库复制。
-                    </p>
-                </section>
+                <AudioMetaPanel
+                    v-if="!metaPanelHidden"
+                    :file-path="metaPanelFilePath"
+                />
             </aside>
 
             <section class="sync-main-pane">
@@ -1331,7 +1383,42 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                         class="sync-tree-list"
                     >
                         <div class="sync-tree-list__head">
-                            <div class="sync-tree-list__head-check" />
+                            <div class="sync-tree-list__head-actions" @click.stop>
+                                <NCheckbox
+                                    :checked="allFilesSelected"
+                                    :indeterminate="someFilesSelected"
+                                    :disabled="
+                                        loading
+                                            || syncTreeBusy
+                                            || orderedFileKeys.length === 0
+                                    "
+                                    size="small"
+                                    @update:checked="toggleSelectAllFiles"
+                                />
+                                <NTooltip>
+                                    <template #trigger>
+                                        <NButton
+                                            quaternary
+                                            circle
+                                            size="tiny"
+                                            class="sync-tree-list__collapse-btn"
+                                            :disabled="
+                                                !canCollapseAllFolders
+                                                    || loading
+                                                    || syncTreeBusy
+                                            "
+                                            @click="collapseAllFolders"
+                                        >
+                                            <template #icon>
+                                                <NIcon :size="14">
+                                                    <ContractOutline />
+                                                </NIcon>
+                                            </template>
+                                        </NButton>
+                                    </template>
+                                    全折叠
+                                </NTooltip>
+                            </div>
                             <div class="sync-tree-head">
                                 <div class="sync-tree-head__side sync-tree-head__side--left">
                                     <span class="sync-tree-head__label">{{ syncLeftLabel }}</span>
@@ -1371,6 +1458,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                         <p class="library-sync-empty__desc">正在加载或请点击「扫描对比」</p>
                     </div>
                 </NSpin>
+                <SelectionPathFooter :path="metaPanelFilePath" />
             </section>
         </div>
     </div>
@@ -1454,27 +1542,6 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     display: flex;
     flex-direction: column;
     gap: 14px;
-}
-
-.sync-usage-guide {
-    flex-shrink: 0;
-    padding: 12px 16px 14px;
-    border-top: 1px solid $border-sidebar;
-    background: $surface-sidebar;
-}
-
-.sync-usage-guide__title {
-    margin: 0 0 6px;
-    font-size: 11px;
-    font-weight: 600;
-    opacity: 0.65;
-}
-
-.sync-usage-guide__text {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.5;
-    opacity: 0.5;
 }
 
 .sync-stats-panel {
@@ -1770,6 +1837,18 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     gap: 10px;
 }
 
+.sync-copy-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+
+    :deep(.n-button) {
+        width: 100%;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+}
+
 .sync-selected-count {
     margin: 0;
     font-size: 12px;
@@ -1906,9 +1985,24 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     background: var(--app-surface-raised);
 }
 
-.sync-tree-list__head-check {
-    width: 32px;
+.sync-tree-list__head-actions {
+    width: 56px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+
+    :deep(.n-checkbox) {
+        --n-size: 14px;
+    }
+}
+
+.sync-tree-list__collapse-btn {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    padding: 0;
 }
 
 .sync-tree-list__body {

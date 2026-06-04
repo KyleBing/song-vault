@@ -24,8 +24,7 @@ import {
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import { audioAwarePathCell } from '@renderer/utils/audioMetaPathCell'
-import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
-import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
+import AudioMetaPanelSection from '@renderer/components/AudioMetaPanelSection.vue'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
@@ -362,9 +361,8 @@ function plainTableRowProps(row: PlainMp3Item) {
         </div>
       </NTabPane>
     </NTabs>
-    <SelectionPathFooter :path="metaPanelFilePath" />
     </div>
-    <AudioMetaPanel :file-path="metaPanelFilePath" />
+    <AudioMetaPanelSection :file-path="metaPanelFilePath" />
   </div>
 </template>
 

@@ -3,12 +3,13 @@ import {
     NButton,
     NIcon,
     NPopconfirm,
+    NProgress,
     NSelect,
     NSpin,
     useMessage,
     type DataTableColumns
 } from 'naive-ui'
-import { CreateOutline, Folder, FolderOpen, Refresh } from '@vicons/ionicons5'
+import { Folder, FolderOpen, Refresh } from '@vicons/ionicons5'
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { PathFilterRule } from '@shared/appConfig'
@@ -23,7 +24,6 @@ import {
     buildDuplicateScanSourceGroups,
     hasDuplicateScanSourceOptions
 } from '@shared/duplicateScanSources'
-import { isEditableAudioMetaPath } from '@shared/audioMetaEdit'
 import { metaTagFieldsHaveTraditionalChinese } from '@shared/traditionalChinese'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
@@ -36,7 +36,8 @@ import { useAudioMetaCache } from '@renderer/composables/useAudioMetaCache'
 import { useLayoutStore } from '@renderer/stores/layout'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
-import AudioMetaEditModal from '@renderer/components/AudioMetaEditModal.vue'
+import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import { tableStatusPill } from '@renderer/utils/tableStatusPill'
 
@@ -227,7 +228,7 @@ const props = defineProps<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const { getMeta, invalidateMeta } = useAudioMetaCache()
+const { invalidateMeta } = useAudioMetaCache()
 
 const loading = ref(false)
 const validatingDir = ref(false)
@@ -236,10 +237,6 @@ const applyingTags = ref(false)
 const rootValidation = ref<SyncRootCheck | null>(null)
 const scanResult = ref<ScanMetaTagMismatchResult | null>(null)
 const filterTraditionalMeta = ref(false)
-
-const editModalShow = ref(false)
-const editFilePath = ref<string | null>(null)
-const editMeta = ref<Awaited<ReturnType<typeof getMeta>> | null>(null)
 
 const tableWrapRef = ref<HTMLElement | null>(null)
 const tableMaxHeight = ref(320)
@@ -397,6 +394,12 @@ const selectedItems = computed(() => {
     return tableRows.value.filter((row) => set.has(row.fullPath))
 })
 
+const metaPanelFilePath = computed(() => selectedRowKeys.value[0] ?? null)
+
+const metaPanelHidden = computed(
+    () => applyingTags.value || loading.value
+)
+
 const selectedEditableCount = computed(() =>
     selectedItems.value.filter((row) => row.editable).length
 )
@@ -406,6 +409,48 @@ const applyResult = ref<{
     fail: number
     elapsedMs: number
 } | null>(null)
+
+const applyTagsProgress = ref({ done: 0, total: 0 })
+const applyTagsTiming = ref({ lastFileMs: 0, elapsedMs: 0 })
+
+const APPLY_TAGS_ETA_MIN_SAMPLES = 5
+
+function estimateApplyTagsRemainingMs(
+    done: number,
+    total: number,
+    elapsedMs: number
+): number | null {
+    if (done < APPLY_TAGS_ETA_MIN_SAMPLES || done >= total || total <= 0) {
+        return null
+    }
+    const remaining = total - done
+    return (elapsedMs / done) * remaining
+}
+
+const applyTagsProgressPercent = computed(() => {
+    const { done, total } = applyTagsProgress.value
+    if (!total) return 0
+    return Math.round((done / total) * 100)
+})
+
+const applyTagsProgressDetailText = computed(() => {
+    const { done, total } = applyTagsProgress.value
+    if (!applyingTags.value || total === 0) return ''
+    const parts: string[] = [`${done} / ${total}`]
+    if (done > 0) {
+        parts.push(`上个约 ${formatElapsedMs(applyTagsTiming.value.lastFileMs)}`)
+        parts.push(`已用 ${formatElapsedMs(applyTagsTiming.value.elapsedMs)}`)
+        const remainingMs = estimateApplyTagsRemainingMs(
+            done,
+            total,
+            applyTagsTiming.value.elapsedMs
+        )
+        if (remainingMs != null) {
+            parts.push(`剩余 ${formatElapsedMs(remainingMs)}`)
+        }
+    }
+    return parts.join(' · ')
+})
 
 function mismatchRowKey(row: MetaTagMismatchDisplayRow): string {
     return row.fullPath
@@ -489,14 +534,8 @@ watch(metaMismatchScanDir, () => {
     })()
 })
 
-async function openEditModal(filePath: string): Promise<void> {
-    editFilePath.value = filePath
-    editMeta.value = await getMeta(filePath)
-    editModalShow.value = true
-}
-
-async function onEditSaved(): Promise<void> {
-    if (editFilePath.value) invalidateMeta(editFilePath.value)
+async function onMetaPanelSaved(): Promise<void> {
+    if (metaPanelFilePath.value) invalidateMeta(metaPanelFilePath.value)
     try {
         await runScan({ silent: true })
     } catch {
@@ -515,7 +554,10 @@ async function applyFilenameTagsToItems(
 
     applyingTags.value = true
     applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { lastFileMs: 0, elapsedMs: 0 }
     const started = performance.now()
+    let lastCheckpointAt = started
     let ok = 0
     let fail = 0
     const failSamples: string[] = []
@@ -544,9 +586,17 @@ async function applyFilenameTagsToItems(
                     failSamples.push(`${row.fileName}: ${msg}`)
                 }
             }
+            const now = performance.now()
+            applyTagsTiming.value = {
+                lastFileMs: now - lastCheckpointAt,
+                elapsedMs: now - started
+            }
+            lastCheckpointAt = now
+            applyTagsProgress.value = { done: ok + fail, total: targets.length }
         }
     } finally {
         applyingTags.value = false
+        applyTagsProgress.value = { done: 0, total: 0 }
     }
 
     applyResult.value = {
@@ -582,19 +632,6 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
         rowPropsCache.set(key, cached)
     }
     return cached
-}
-
-function editSelected(): void {
-    const first = selectedItems.value[0]
-    if (!first) {
-        message.info('请先选择一条记录')
-        return
-    }
-    if (!isEditableAudioMetaPath(first.fullPath)) {
-        message.warning('该格式不支持编辑标签')
-        return
-    }
-    void openEditModal(first.fullPath)
 }
 </script>
 
@@ -682,7 +719,6 @@ function editSelected(): void {
                     </section>
 
                     <section v-if="scanResult" class="mtm-stats-panel">
-                        <p class="mtm-stats-panel__path">{{ scanResult.root }}</p>
                         <div class="mtm-stats-grid">
                             <div class="mtm-stats-grid__item">
                                 <span class="mtm-stats-grid__value">
@@ -772,18 +808,18 @@ function editSelected(): void {
                             </template>
                             将选中文件的艺人 / 曲名标签改为与文件名一致？
                         </NPopconfirm>
-                        <NButton
-                            v-if="scanResult && scanResult.items.length > 0"
-                            block
-                            quaternary
-                            :disabled="selectedItems.length !== 1 || applyingTags"
-                            @click="editSelected"
+                        <NProgress
+                            v-if="applyingTags"
+                            type="line"
+                            :percentage="applyTagsProgressPercent"
+                            :show-indicator="true"
+                        />
+                        <p
+                            v-if="applyingTags && applyTagsProgressDetailText"
+                            class="mtm-apply-progress-detail"
                         >
-                            <template #icon>
-                                <NIcon><CreateOutline /></NIcon>
-                            </template>
-                            编辑选中标签
-                        </NButton>
+                            {{ applyTagsProgressDetailText }}
+                        </p>
                         <NButton
                             v-if="scanResult && selectedItems.length > 0"
                             block
@@ -802,12 +838,11 @@ function editSelected(): void {
                     </section>
                 </div>
 
-                <section class="mtm-usage-guide">
-                    <p class="mtm-usage-guide__title">说明</p>
-                    <p class="mtm-usage-guide__text">
-                        仅检测文件名含「艺人 - 曲名」等分隔格式的文件。双击行可试听。批量写入仅影响 MP3 / FLAC 的艺人、曲名字段，其他标签保留。
-                    </p>
-                </section>
+                <AudioMetaPanel
+                    v-if="!metaPanelHidden"
+                    :file-path="metaPanelFilePath"
+                    @saved="onMetaPanelSaved"
+                />
             </aside>
 
             <main class="mtm-main-pane">
@@ -857,15 +892,9 @@ function editSelected(): void {
                         </p>
                     </div>
                 </NSpin>
+                <SelectionPathFooter :path="metaPanelFilePath" />
             </main>
         </div>
-
-        <AudioMetaEditModal
-            v-model:show="editModalShow"
-            :file-path="editFilePath"
-            :meta="editMeta"
-            @saved="onEditSaved"
-        />
     </div>
 </template>
 
@@ -1033,32 +1062,12 @@ function editSelected(): void {
 }
 
 .mtm-selected-count,
-.mtm-apply-result {
+.mtm-apply-result,
+.mtm-apply-progress-detail {
     margin: 0;
     font-size: 12px;
     text-align: center;
     opacity: 0.55;
-}
-
-.mtm-usage-guide {
-    flex-shrink: 0;
-    padding: 12px 16px 14px;
-    border-top: 1px solid $border-sidebar;
-    background: $surface-sidebar;
-}
-
-.mtm-usage-guide__title {
-    margin: 0 0 6px;
-    font-size: 11px;
-    font-weight: 600;
-    opacity: 0.65;
-}
-
-.mtm-usage-guide__text {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.5;
-    opacity: 0.5;
 }
 
 .mtm-main-pane {

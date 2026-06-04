@@ -21,6 +21,10 @@ const props = defineProps<{
   filePath: string | null
 }>()
 
+const emit = defineEmits<{
+  saved: []
+}>()
+
 const activeTab = ref<'regular' | 'vorbis' | 'musicbrainz' | 'extended'>(
   'regular'
 )
@@ -78,6 +82,7 @@ async function reloadMeta(): Promise<void> {
 
 async function onMetaSaved(): Promise<void> {
   await reloadMeta()
+  emit('saved')
 }
 
 watch(
@@ -102,12 +107,8 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
 </script>
 
 <template>
-  <div class="audio-meta-panel">
-    <p v-if="!filePath" class="audio-meta-panel__empty-hint">
-      选中歌曲以查看元数据
-    </p>
-
-    <p v-else-if="!canLoadMeta" class="audio-meta-panel__empty-hint">
+  <div v-if="filePath" class="audio-meta-panel">
+    <p v-if="!canLoadMeta" class="audio-meta-panel__empty-hint">
       该文件类型不支持读取标签
     </p>
 

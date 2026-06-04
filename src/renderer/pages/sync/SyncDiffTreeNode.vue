@@ -188,7 +188,7 @@ function onFolderCheckUpdate(row: SyncDiffTreeRow, checked: boolean): void {
 }
 
 .sync-tree-row__check {
-    width: 32px;
+    width: 56px;
     flex-shrink: 0;
     display: flex;
     align-items: center;

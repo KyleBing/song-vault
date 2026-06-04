@@ -19,6 +19,28 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.2.7',
+    date: '2026-06-04',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '元数据面板：AudioMetaPanelSection 组合组件；标签校准、乐库同步选中音频后可在侧栏查看并编辑标签',
+          '标签校准：批量写入标签时显示进度条与耗时预估',
+          '乐库同步：差异列表头部增加全选与全折叠'
+        ]
+      },
+      {
+        title: '变更',
+        items: [
+          '元数据面板：未选中文件时不显示；扫描、写入或同步复制 / 删除过程中自动隐藏',
+          '乐库同步：复制到两侧按钮并排一行；移除「取消选择」与底部使用说明；恢复「删除选中」文案',
+          '音乐解密：结果区改用 AudioMetaPanelSection'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.2.6',
     date: '2026-06-03',
     sections: [
