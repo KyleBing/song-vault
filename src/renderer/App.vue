@@ -1,15 +1,5 @@
 <script setup lang="ts">
-import {
-  NButton,
-  NConfigProvider,
-  NIcon,
-  NMessageProvider,
-  NSpin,
-  darkTheme,
-  dateZhCN,
-  zhCN,
-  type GlobalThemeOverrides
-} from 'naive-ui'
+import { NButton, NIcon, NSpin } from 'naive-ui'
 import { Folder, Play, Search } from '@vicons/ionicons5'
 import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -56,18 +46,15 @@ import AppTopNav from '@renderer/components/AppTopNav.vue'
 import { useAudioPlayerStore } from '@renderer/stores/audioPlayer'
 import AboutPage from '@renderer/pages/about/AboutPage.vue'
 import { useAdvancedUnlockStore } from '@renderer/stores/advancedUnlock'
-import styleTokens from './styles/variables.module.scss'
-
+import GlobalBatchProgressBar from '@renderer/components/GlobalBatchProgressBar.vue'
+import { useBatchTask } from '@renderer/composables/useBatchTask'
+import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 const layoutStore = useLayoutStore()
 const themeStore = useThemeStore()
 const advancedUnlock = useAdvancedUnlockStore()
 const audioPlayerStore = useAudioPlayerStore()
 const { appearance } = storeToRefs(themeStore)
 const { unlocked: advancedUnlocked } = storeToRefs(advancedUnlock)
-
-const naiveTheme = computed(() =>
-  appearance.value === 'dark' ? darkTheme : null
-)
 
 type AppView = AppNavigateTarget
 
@@ -103,30 +90,6 @@ function onWindowResize(): void {
   layoutStore.updateInsets()
 }
 
-const themeOverrides: GlobalThemeOverrides = {
-  common: {
-    primaryColor: '#6ea8fe',
-    primaryColorHover: '#8bb9ff',
-    primaryColorPressed: '#5a94eb',
-    borderRadius: styleTokens.borderRadius,
-    fontFamily:
-      "'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
-  },
-  Card: {
-    color: 'transparent'
-  },
-  Popover: {
-    fontSize: '12px'
-  },
-  Tooltip: {
-    peers: {
-      Popover: {
-        fontSize: '12px'
-      }
-    }
-  }
-}
-
 const lrcDirs = ref<string[]>([])
 const searchRoots = ref<string[]>([])
 const decodeSourceDirs = ref<string[]>([])
@@ -150,6 +113,14 @@ provideDataTableDisplay(dataTableDisplay)
 /** 已完成启动配置加载，避免恢复时触发多余写入 */
 const configHydrated = ref(false)
 const loading = ref(false)
+const batchTask = useBatchTask()
+const lrcBatchTitle = ref('正在处理')
+
+syncGlobalBatchProgress(batchTask, {
+  active: () => batchTask.active,
+  title: () => lrcBatchTitle.value,
+  indeterminate: true
+})
 const result = ref<JobResult | null>(null)
 const lastPreview = ref<JobResult | null>(null)
 const sourceSelection = ref<SourceSelection>({ sourceOverrides: {} })
@@ -185,6 +156,8 @@ const showResults = computed(
 async function run(execute: boolean, refreshScan = false): Promise<void> {
   if (!canPreview.value) return
   loading.value = true
+  lrcBatchTitle.value = execute ? '正在执行复制' : '正在扫描匹配'
+  batchTask.begin()
   try {
     const jobResult = await window.electronAPI.runJob({
       lrcDirs: [...toRaw(lrcDirs.value)],
@@ -193,16 +166,19 @@ async function run(execute: boolean, refreshScan = false): Promise<void> {
       refreshScan: refreshScan || execute,
       sourceOverrides: { ...sourceSelection.value.sourceOverrides },
       preferredSourceDir: sourceSelection.value.preferredSourceDir,
-      pathFilterRules: pathFilterRulesForSave(pathFilterRules.value)
+      pathFilterRules: pathFilterRulesForSave(pathFilterRules.value),
+      jobId: batchTask.jobId ?? undefined
     })
     result.value = jobResult
     if (!execute) {
       lastPreview.value = jobResult
     }
   } catch (err) {
+    if (batchTask.notifyIfCancelled(err)) return
     const msg = err instanceof Error ? err.message : String(err)
     window.alert(`运行失败: ${msg}`)
   } finally {
+    batchTask.end()
     loading.value = false
   }
 }
@@ -322,14 +298,7 @@ watch(
 </script>
 
 <template>
-  <NConfigProvider
-    :locale="zhCN"
-    :date-locale="dateZhCN"
-    :theme="naiveTheme"
-    :theme-overrides="themeOverrides"
-  >
-    <NMessageProvider>
-      <AudioCoverLightbox />
+  <AudioCoverLightbox />
       <AudioFileContextMenuHost />
       <LyricsViewModalHost />
       <div class="app-shell" :style="dataTableCssStyle">
@@ -371,10 +340,6 @@ watch(
           v-if="activeView === 'duplicates'"
           v-model:duplicate-scan-dir="duplicateScanDir"
           :search-roots="searchRoots"
-          :sync-left-dir="syncLeftDir"
-          :sync-left-alias="syncLeftAlias"
-          :sync-right-dir="syncRightDir"
-          :sync-right-alias="syncRightAlias"
           :path-filter-rules="pathFilterRules"
           class="settings-layer"
         />
@@ -462,7 +427,10 @@ watch(
               />
             </div>
 
-            <AudioMetaPanel :file-path="metaPanelFilePath" />
+            <AudioMetaPanel
+              v-if="!batchTask.active"
+              :file-path="metaPanelFilePath"
+            />
           </aside>
 
           <section class="results-pane">
@@ -494,8 +462,7 @@ watch(
         </div>
         </div>
       </div>
-    </NMessageProvider>
-  </NConfigProvider>
+  <GlobalBatchProgressBar />
 </template>
 
 <style lang="scss" scoped>

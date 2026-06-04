@@ -9,9 +9,11 @@ import type { AudioFileMetaInfo } from './audioFileMeta'
 import {
     isEditableAudioMetaPath,
     filenameStemHasTrailingUnderscore,
+    fieldHasEdgeUnderscore,
     parseArtistTitleFromFilePath
 } from './audioMetaEdit'
 import type { PathFilterRule } from './pathFilters'
+import type { BatchJobParams } from './batchCancel'
 
 /** @deprecated 保留兼容；请用 issues */
 export type MetaTagMismatchReason = 'artist' | 'title' | 'both'
@@ -21,7 +23,8 @@ export type MetaTagMismatchIssue =
     | 'titleContent'
     | 'fileArtistSep'
     | 'tagArtistSep'
-    | 'fileNameTrailingUnderscore'
+    | 'fileUnderscore'
+    | 'tagUnderscore'
 
 export interface MetaTagMismatchItem {
     relativePath: string
@@ -54,7 +57,7 @@ export interface MetaTagMismatchScanStats {
     skippedCount: number
 }
 
-export interface ScanMetaTagMismatchParams {
+export interface ScanMetaTagMismatchParams extends BatchJobParams {
     root: string
     pathFilterRules: PathFilterRule[]
 }
@@ -97,7 +100,8 @@ export const META_TAG_MISMATCH_ISSUE_LABELS: Record<MetaTagMismatchIssue, string
         titleContent: '曲名',
         fileArtistSep: '文件名分隔',
         tagArtistSep: '标签分隔',
-        fileNameTrailingUnderscore: '尾下划线'
+        fileUnderscore: '文件名下划线',
+        tagUnderscore: '标签下划线'
     }
 
 export function issuesToReasons(
@@ -106,8 +110,13 @@ export function issuesToReasons(
     const artist =
         issues.includes('artistContent') ||
         issues.includes('fileArtistSep') ||
-        issues.includes('tagArtistSep')
-    const title = issues.includes('titleContent')
+        issues.includes('tagArtistSep') ||
+        issues.includes('fileUnderscore') ||
+        issues.includes('tagUnderscore')
+    const title =
+        issues.includes('titleContent') ||
+        issues.includes('fileUnderscore') ||
+        issues.includes('tagUnderscore')
     if (artist && title) return ['both']
     if (artist) return ['artist']
     if (title) return ['title']
@@ -119,14 +128,16 @@ function buildIssues(params: {
     titleMismatch: boolean
     fileArtistSep: boolean
     tagArtistSep: boolean
-    fileNameTrailingUnderscore: boolean
+    fileUnderscore: boolean
+    tagUnderscore: boolean
 }): MetaTagMismatchIssue[] {
     const out: MetaTagMismatchIssue[] = []
     if (params.artistContentMismatch) out.push('artistContent')
     if (params.titleMismatch) out.push('titleContent')
     if (params.fileArtistSep) out.push('fileArtistSep')
     if (params.tagArtistSep) out.push('tagArtistSep')
-    if (params.fileNameTrailingUnderscore) out.push('fileNameTrailingUnderscore')
+    if (params.fileUnderscore) out.push('fileUnderscore')
+    if (params.tagUnderscore) out.push('tagUnderscore')
     return out
 }
 
@@ -151,14 +162,20 @@ export function analyzeMetaTagMismatch(
     const titleMismatch = !stringsEqual(parsed.title, tagTitle)
     const fileArtistSep = fileArtistHasSeparatorIssues(parsed.artist)
     const tagArtistSep = tagArtistHasSeparatorIssues(tagArtist)
-    const fileNameTrailingUnderscore = filenameStemHasTrailingUnderscore(filePath)
+    const fileUnderscore =
+        filenameStemHasTrailingUnderscore(filePath) ||
+        fieldHasEdgeUnderscore(parsed.title) ||
+        fieldHasEdgeUnderscore(parsed.artist)
+    const tagUnderscore =
+        fieldHasEdgeUnderscore(tagTitle) || fieldHasEdgeUnderscore(tagArtist)
 
     const issues = buildIssues({
         artistContentMismatch,
         titleMismatch,
         fileArtistSep,
         tagArtistSep,
-        fileNameTrailingUnderscore
+        fileUnderscore,
+        tagUnderscore
     })
     if (issues.length === 0) return null
 

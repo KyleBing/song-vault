@@ -4,6 +4,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { checkBatchCancelled, type BatchJobParams } from './batchCancel'
 import { isPlainAudioFilePath } from './isAudioFilePath'
 import type { PathFilterRule } from './pathFilters'
 import { shouldFilterEntry } from './pathFilters'
@@ -27,7 +28,7 @@ export interface SyncDiffItem {
     right?: SyncFileEntry
 }
 
-export interface CompareLibrarySyncParams {
+export interface CompareLibrarySyncParams extends BatchJobParams {
     leftRoot: string
     rightRoot: string
     pathFilterRules: PathFilterRule[]
@@ -70,7 +71,7 @@ export interface DeleteSyncFileEntry {
     rightRelativePath?: string
 }
 
-export interface DeleteSyncFilesParams {
+export interface DeleteSyncFilesParams extends BatchJobParams {
     leftRoot: string
     rightRoot: string
     entries: DeleteSyncFileEntry[]
@@ -138,6 +139,7 @@ export function walkLibraryAudioFiles(
     const map = new Map<string, SyncFileEntry>()
 
     function walk(dir: string): void {
+        checkBatchCancelled()
         let entries: fs.Dirent[]
         try {
             entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -148,6 +150,7 @@ export function walkLibraryAudioFiles(
         }
 
         for (const ent of entries) {
+            checkBatchCancelled()
             if (shouldFilterEntry(ent.name, ent.isDirectory(), pathFilterRules)) {
                 continue
             }
@@ -259,6 +262,7 @@ export function compareLibrarySync(
     let sameCount = 0
 
     for (const relativePath of [...allPaths].sort((a, b) => a.localeCompare(b))) {
+        checkBatchCancelled()
         const left = leftMap.get(relativePath)
         const right = rightMap.get(relativePath)
 
@@ -478,6 +482,7 @@ export function deleteSyncFiles(params: DeleteSyncFilesParams): DeleteSyncFilesR
     }
 
     for (const entry of params.entries) {
+        checkBatchCancelled()
         deleteUnderRoot(leftRoot, entry.leftRelativePath)
         deleteUnderRoot(rightRoot, entry.rightRelativePath)
     }

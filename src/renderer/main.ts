@@ -1,7 +1,7 @@
 import './polyfills'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
-import App from './App.vue'
+import AppProviders from './AppProviders.vue'
 import './styles/global.scss'
 import './styles/tableStatusPill.scss'
 import { loadAppConfigOnce, readThemeCache } from './lib/appConfigClient'
@@ -23,7 +23,7 @@ async function bootstrap(): Promise<void> {
     console.error('启动时加载主题失败', err)
   }
 
-  const app = createApp(App)
+  const app = createApp(AppProviders)
   app.use(pinia)
   app.mount('#app')
 }

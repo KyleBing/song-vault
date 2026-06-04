@@ -1,8 +1,14 @@
 import { existsSync, statSync } from 'fs'
 import path from 'path'
 import { protocol } from 'electron'
-import { canPlayAudioFilePath } from '../shared/audioPlayback'
-import { SONGVAULT_MEDIA_SCHEME } from '../shared/mediaProtocolUrl'
+import {
+    audioMimeTypeForFilePath,
+    canPlayAudioFilePath
+} from '../shared/audioPlayback'
+import {
+    buildSongvaultMediaUrl,
+    SONGVAULT_MEDIA_SCHEME
+} from '../shared/mediaProtocolUrl'
 
 export { SONGVAULT_MEDIA_SCHEME }
 
@@ -40,7 +46,10 @@ export function registerMediaProtocolHandler(): void {
                 callback({ error: -10 })
                 return
             }
-            callback({ path: resolved })
+            callback({
+                path: resolved,
+                mimeType: audioMimeTypeForFilePath(resolved)
+            })
         } catch (err) {
             console.error('[media-protocol]', err)
             callback({ error: -2 })

@@ -367,13 +367,16 @@ const api = {
   ): Promise<ScanMetaTagMismatchResult> => {
     const result = await ipcRenderer.invoke(
       'scan-meta-tag-mismatches',
-      toIpcPlain({
-        root: params.root ?? '',
-        pathFilterRules: params.pathFilterRules ?? []
-      })
+      toIpcPlain(params)
     )
     return toIpcPlain(result)
   },
+
+  cancelBatchJob: (jobId: string): Promise<void> =>
+    ipcRenderer.invoke('cancel-batch-job', jobId),
+
+  clearBatchJob: (jobId: string): Promise<void> =>
+    ipcRenderer.invoke('clear-batch-job', jobId),
 
   /** 订阅主进程菜单栏导航；返回取消订阅函数 */
   onAppNavigate: (callback: (view: AppNavigateTarget) => void): (() => void) => {

@@ -5,6 +5,7 @@ import {
     validateSyncRoots,
     walkLibraryAudioFiles
 } from './librarySyncJob'
+import { checkBatchCancelled } from './batchCancel'
 import { readAudioFileMetaBatch } from './readAudioFileMeta'
 import { parseArtistTitleFromFilePath } from './audioMetaEdit'
 import {
@@ -70,6 +71,7 @@ export async function scanMetaTagMismatches(
     let skippedCount = 0
 
     for (const entry of entries) {
+        checkBatchCancelled()
         const fullPath = path.resolve(root, entry.relativePath)
         const meta =
             metaByPath[fullPath] ?? metaByResolved.get(fullPath)

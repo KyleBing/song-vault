@@ -36,6 +36,16 @@ function mediaErrorDetail(audio: HTMLAudioElement): string {
 
 /** 全局唯一 audio 实例，避免重复创建与事件重复绑定 */
 let audioEl: HTMLAudioElement | null = null
+/** 同一文件解码失败时仅自动重试一次 */
+let playRetryPath: string | null = null
+
+/** 切换曲目前重置解码器，避免 Chromium 在旧流上残留状态 */
+function assignAudioSource(audio: HTMLAudioElement, url: string): void {
+    audio.pause()
+    audio.removeAttribute('src')
+    audio.load()
+    audio.src = url
+}
 
 /**
  * 设置 src 后等待可播放；避免在未 canplay 时调用 play() 失败。
@@ -83,6 +93,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
     function ensureAudio(): HTMLAudioElement {
         if (audioEl) return audioEl
         const audio = new Audio()
+        audio.preload = 'auto'
         audio.addEventListener('loadedmetadata', () => {
             duration.value = Number.isFinite(audio.duration) ? audio.duration : 0
         })
@@ -113,12 +124,19 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
     }
 
     /** 播放指定路径；加密格式由 playBlockedReason 拦截 */
-    async function play(targetPath: string): Promise<void> {
+    async function play(
+        targetPath: string,
+        options?: { retry?: boolean }
+    ): Promise<void> {
         const resolved = targetPath.trim()
         const blocked = playBlockedReason(resolved)
         if (blocked) {
             lastError.value = blocked
             return
+        }
+
+        if (!options?.retry) {
+            playRetryPath = null
         }
 
         loading.value = true
@@ -127,9 +145,8 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
             const url = await window.electronAPI.pathToMediaUrl(resolved)
             const audio = ensureAudio()
 
-            if (audio.src !== url) {
-                audio.pause()
-                audio.src = url
+            if (options?.retry || audio.src !== url) {
+                assignAudioSource(audio, url)
                 filePath.value = resolved
                 title.value = fileBaseName(resolved)
                 currentTime.value = 0
@@ -138,7 +155,15 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
 
             await waitForCanPlay(audio)
             await audio.play()
+            playRetryPath = null
         } catch (err) {
+            const decodeFailed =
+                audioEl?.error?.code === MediaError.MEDIA_ERR_DECODE
+            if (!options?.retry && decodeFailed && playRetryPath !== resolved) {
+                playRetryPath = resolved
+                await play(resolved, { retry: true })
+                return
+            }
             lastError.value = toErrorMessage(err)
             playing.value = false
         } finally {

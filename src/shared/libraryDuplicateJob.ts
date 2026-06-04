@@ -4,6 +4,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { checkBatchCancelled } from './batchCancel'
 import type { PathFilterRule } from './pathFilters'
 import {
     type DeleteDuplicateFilesParams,
@@ -262,6 +263,7 @@ export function deleteDuplicateFiles(
     const seen = new Set<string>()
 
     for (const relativePath of params.relativePaths) {
+        checkBatchCancelled()
         const normalized = normalizeRelativePath(relativePath)
         const fullPath = path.resolve(path.join(root, ...normalized.split('/')))
         if (seen.has(fullPath)) continue

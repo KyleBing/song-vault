@@ -33,19 +33,19 @@ import {
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import DuplicateGroupTreeNode from './DuplicateGroupTreeNode.vue'
 import DuplicateGroupCoverCompare from './DuplicateGroupCoverCompare.vue'
+import BrowseDirPickerModal from '@renderer/pages/library/BrowseDirPickerModal.vue'
+import { useBatchTask } from '@renderer/composables/useBatchTask'
+import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 
 const duplicateScanDir = defineModel<string>('duplicateScanDir', { required: true })
 
 const props = defineProps<{
     pathFilterRules: PathFilterRule[]
     searchRoots: string[]
-    syncLeftDir: string
-    syncLeftAlias: string
-    syncRightDir: string
-    syncRightAlias: string
 }>()
 
 const message = useMessage()
+const batchTask = useBatchTask()
 const loading = ref(false)
 const validatingDir = ref(false)
 const rootValidation = ref<SyncRootCheck | null>(null)
@@ -64,6 +64,9 @@ interface DeleteToolbarResult {
 }
 
 const deleteResult = ref<DeleteToolbarResult | null>(null)
+const scanDirPickerVisible = ref(false)
+
+const browseRoots = computed(() => [...props.searchRoots])
 
 const {
     selectedKeys: selectedRowKeys,
@@ -91,11 +94,9 @@ const rootIssue = computed(() => {
 const sourceGroups = computed(() =>
     buildDuplicateScanSourceGroups({
         searchRoots: props.searchRoots,
-        syncLeftDir: props.syncLeftDir,
-        syncLeftAlias: props.syncLeftAlias,
-        syncRightDir: props.syncRightDir,
-        syncRightAlias: props.syncRightAlias,
-        duplicateScanDir: duplicateScanDir.value
+        duplicateScanDir: duplicateScanDir.value,
+        includeSyncSources: false,
+        libraryGroupLabel: '音乐源文件夹'
     })
 )
 
@@ -186,6 +187,18 @@ function dismissDeleteResult(): void {
     deleteResult.value = null
 }
 
+const batchProgressTitle = computed(() => {
+    if (deletingSelected.value) return '正在删除副本'
+    if (loading.value) return '正在扫描重复'
+    return '正在处理'
+})
+
+syncGlobalBatchProgress(batchTask, {
+    active: () => batchTask.active,
+    title: () => batchProgressTitle.value,
+    indeterminate: true
+})
+
 function initKeepKeys(groups: DuplicateGroup[]): void {
     const next: Record<string, string> = {}
     for (const group of groups) {
@@ -260,10 +273,15 @@ async function validateScanRoot(): Promise<SyncRootCheck> {
 }
 
 async function pickScanDir(): Promise<void> {
-    const picked = await window.electronAPI.pickDirectory()
-    if (picked) {
-        duplicateScanDir.value = picked
+    if (!props.searchRoots.length) {
+        message.warning('请先在「设置 → 路径」中添加音乐源文件夹')
+        return
     }
+    scanDirPickerVisible.value = true
+}
+
+function onScanDirPicked(path: string): void {
+    duplicateScanDir.value = path
 }
 
 async function runScan(options?: {
@@ -279,6 +297,7 @@ async function runScan(options?: {
 
     if (options?.scanLoading) scanButtonLoading.value = true
     loading.value = true
+    batchTask.begin()
     try {
         const root = (duplicateScanDir.value ?? '').trim()
         if (!root) {
@@ -286,15 +305,18 @@ async function runScan(options?: {
         }
         scanResult.value = await window.electronAPI.scanLibraryDuplicates({
             root,
-            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules)
+            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules),
+            jobId: batchTask.jobId ?? undefined
         })
     } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
         const msg = err instanceof Error ? err.message : String(err)
         if (!options?.silent) {
             message.error(msg)
         }
         throw err
     } finally {
+        batchTask.end()
         loading.value = false
         if (options?.scanLoading) scanButtonLoading.value = false
     }
@@ -368,19 +390,23 @@ async function deleteSelectedDuplicates(): Promise<void> {
     let deleted = 0
     let fail = 0
 
+    batchTask.begin()
     try {
         const res = await window.electronAPI.deleteDuplicateFiles({
             root,
-            relativePaths
+            relativePaths,
+            jobId: batchTask.jobId ?? undefined
         })
         deleted = res.deleted
         fail = res.errors.length
         clearSelection()
     } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
         const msg = err instanceof Error ? err.message : String(err)
         message.error(msg)
         return
     } finally {
+        batchTask.end()
         deletingSelected.value = false
     }
 
@@ -403,9 +429,23 @@ async function deleteSelectedDuplicates(): Promise<void> {
 
 <template>
     <div class="library-duplicates-page">
+        <BrowseDirPickerModal
+            v-model:show="scanDirPickerVisible"
+            :browse-roots="browseRoots"
+            :path-filter-rules="pathFilterRules"
+            :initial-dir="duplicateScanDir || null"
+            title="选择扫描文件夹"
+            positive-text="确定"
+            selected-hint-prefix="扫描目录："
+            pending-hint="请在音乐源文件夹中选择要扫描的目录"
+            empty-roots-description="请先在设置 → 路径 中添加音乐源文件夹"
+            :show-create-subdir="false"
+            @confirm="onScanDirPicked"
+        />
+
         <section v-if="!canScan" class="library-duplicates-hint">
             <p>
-                请从设置中的乐库目录或乐库同步目录选择扫描源，也可直接指定任意文件夹。
+                请从设置中的音乐源文件夹选择扫描目录，或在目录树中指定子文件夹。
             </p>
             <NSelect
                 v-if="hasConfiguredSources"
@@ -415,7 +455,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                 size="small"
                 filterable
                 :consistent-menu-width="false"
-                placeholder="从已配置的目录选择"
+                placeholder="从音乐源文件夹选择"
                 @update:value="
                     (value) => {
                         if (typeof value === 'string') {
@@ -428,7 +468,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                 <template #icon>
                     <NIcon><Folder /></NIcon>
                 </template>
-                选择目录
+                从音乐源选择…
             </NButton>
         </section>
 
@@ -496,7 +536,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                             size="small"
                             filterable
                             :consistent-menu-width="false"
-                            placeholder="从已配置的目录选择"
+                            placeholder="从音乐源文件夹选择"
                             @update:value="
                                 (value) => {
                                     if (typeof value === 'string') {
@@ -509,13 +549,13 @@ async function deleteSelectedDuplicates(): Promise<void> {
                             v-else
                             class="dup-source-panel__hint"
                         >
-                            设置中尚未配置乐库或同步目录，请直接选择文件夹。
+                            请先在设置 → 路径 中添加音乐源文件夹。
                         </p>
                         <NButton block size="small" secondary @click="pickScanDir">
                             <template #icon>
                                 <NIcon><FolderOpen /></NIcon>
                             </template>
-                            选择其他目录
+                            从音乐源选择…
                         </NButton>
                         <p v-if="duplicateScanDir" class="dup-source-panel__path">
                             {{ duplicateScanDir }}
@@ -617,14 +657,14 @@ async function deleteSelectedDuplicates(): Promise<void> {
                             每组将保留你选中的那一份，同名歌词会一并删除，不可恢复。
                         </NPopconfirm>
                     </section>
-                </div>
 
-                <section class="dup-usage-guide" aria-label="使用说明">
-                    <h3 class="dup-usage-guide__title">使用说明</h3>
-                    <p class="dup-usage-guide__text">
-                        扫描源可来自设置中的「乐库目录」或「乐库同步」左右目录（可只配置一侧），也可点击「选择其他目录」指定任意文件夹。勾选重复组后，用单选指定要保留的那一份，再点击「删除副本」清理其余副本。
-                    </p>
-                </section>
+                    <section class="dup-usage-guide" aria-label="使用说明">
+                        <h3 class="dup-usage-guide__title">使用说明</h3>
+                        <p class="dup-usage-guide__text">
+                            扫描源来自设置 → 路径 中的「你的乐库目录」（音乐源文件夹）：可在下拉框选根目录，或点击「从音乐源选择…」在目录树中指定子文件夹。勾选重复组后，用单选指定要保留的那一份，再点击「删除副本」清理其余副本。
+                        </p>
+                    </section>
+                </div>
             </aside>
 
             <section class="dup-main-pane">
@@ -788,6 +828,15 @@ async function deleteSelectedDuplicates(): Promise<void> {
     :deep(.n-base-selection-label) {
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+}
+
+.dup-source-panel .dup-source-select {
+    width: 100%;
+    min-width: 0;
+
+    :deep(.n-base-selection) {
+        width: 100%;
     }
 }
 

@@ -11,12 +11,16 @@ export interface DuplicateScanSourceGroup {
 
 export interface DuplicateScanSourceInput {
     searchRoots: string[]
-    syncLeftDir: string
-    syncLeftAlias: string
-    syncRightDir: string
-    syncRightAlias: string
-    /** 当前选用或上次保存的路径（可为设置外目录） */
+    syncLeftDir?: string
+    syncLeftAlias?: string
+    syncRightDir?: string
+    syncRightAlias?: string
+    /** 当前选用或上次保存的路径（可为根目录下的子文件夹） */
     duplicateScanDir: string
+    /** 是否包含乐库同步目录，默认 true */
+    includeSyncSources?: boolean
+    /** 根目录分组标签，默认「乐库目录」 */
+    libraryGroupLabel?: string
 }
 
 function normalizePath(value: string): string {
@@ -46,6 +50,8 @@ export function buildDuplicateScanSourceGroups(
 ): DuplicateScanSourceGroup[] {
     const seen = new Set<string>()
     const groups: DuplicateScanSourceGroup[] = []
+    const libraryGroupLabel = input.libraryGroupLabel?.trim() || '乐库目录'
+    const includeSyncSources = input.includeSyncSources !== false
 
     const libraryRoots = input.searchRoots
         .map(normalizePath)
@@ -63,37 +69,43 @@ export function buildDuplicateScanSourceGroups(
         if (options.length > 0) {
             groups.push({
                 key: 'library',
-                label: '乐库目录',
+                label: libraryGroupLabel,
                 options
             })
         }
     }
 
-    const syncOptions: DuplicateScanSourceOption[] = []
-    const left = normalizePath(input.syncLeftDir)
-    const right = normalizePath(input.syncRightDir)
+    if (includeSyncSources) {
+        const syncOptions: DuplicateScanSourceOption[] = []
+        const left = normalizePath(input.syncLeftDir ?? '')
+        const right = normalizePath(input.syncRightDir ?? '')
 
-    if (left) {
-        syncOptions.push({
-            label: syncOptionLabel(left, input.syncLeftAlias, '同步左侧'),
-            path: left
-        })
-        seen.add(left)
-    }
-    if (right && right !== left) {
-        syncOptions.push({
-            label: syncOptionLabel(right, input.syncRightAlias, '同步右侧'),
-            path: right
-        })
-        seen.add(right)
-    }
+        if (left) {
+            syncOptions.push({
+                label: syncOptionLabel(left, input.syncLeftAlias ?? '', '同步左侧'),
+                path: left
+            })
+            seen.add(left)
+        }
+        if (right && right !== left) {
+            syncOptions.push({
+                label: syncOptionLabel(
+                    right,
+                    input.syncRightAlias ?? '',
+                    '同步右侧'
+                ),
+                path: right
+            })
+            seen.add(right)
+        }
 
-    if (syncOptions.length > 0) {
-        groups.push({
-            key: 'sync',
-            label: '乐库同步',
-            options: syncOptions
-        })
+        if (syncOptions.length > 0) {
+            groups.push({
+                key: 'sync',
+                label: '乐库同步',
+                options: syncOptions
+            })
+        }
     }
 
     const current = normalizePath(input.duplicateScanDir)

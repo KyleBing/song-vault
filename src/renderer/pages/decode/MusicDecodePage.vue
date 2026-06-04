@@ -13,7 +13,6 @@ import {
   useMessage,
   type DataTableColumns
 } from 'naive-ui'
-import SidebarBatchProgressPanel from '@renderer/components/SidebarBatchProgressPanel.vue'
 import {
   FolderOpen,
   Key,
@@ -51,6 +50,8 @@ import DecodeFileInfoPanel from './DecodeFileInfoPanel.vue'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import { attachAudioFileContextMenuToRowProps } from '@renderer/composables/useAudioFileContextMenu'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
+import { useBatchTask } from '@renderer/composables/useBatchTask'
+import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 import {
   applySortableHeaders,
   handleTableSorterUpdate,
@@ -127,7 +128,7 @@ const {
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
 
-const fileTableRowPropsWithPlay = useAudioPlayRowProps(
+const { rowProps: fileTableRowPropsWithPlay } = useAudioPlayRowProps(
   fileRowProps,
   (row) => (row as DirAudioFileItem).filePath
 )
@@ -155,6 +156,7 @@ const tableColumns = useDirFileTableColumns(
 /** 待解密队列（可跨目录累积） */
 const decryptQueue = ref<string[]>([])
 const decrypting = ref(false)
+const batchTask = useBatchTask()
 const decryptProgress = ref({ done: 0, total: 0 })
 const decryptTiming = ref({
   elapsedMs: 0
@@ -485,6 +487,7 @@ function clearQueue(): void {
 async function startDecrypt(): Promise<void> {
   if (!canDecrypt.value) return
   decrypting.value = true
+  batchTask.begin({ useMainJob: false })
   lastResult.value = null
   const total = decryptQueue.value.length
   decryptProgress.value = { done: 0, total }
@@ -501,7 +504,8 @@ async function startDecrypt(): Promise<void> {
           elapsedMs: performance.now() - startedAt
         }
         decryptProgress.value = { done, total: batchTotal }
-      }
+      },
+      batchTask.createCheck()
     )
     lastResult.value = result
     if (result.failed === 0) {
@@ -512,9 +516,11 @@ async function startDecrypt(): Promise<void> {
       )
     }
   } catch (err) {
+    if (batchTask.notifyIfCancelled(err)) return
     const msg = err instanceof Error ? err.message : String(err)
     message.error(`解密失败: ${msg}`)
   } finally {
+    batchTask.end()
     decrypting.value = false
     if (selectedDir.value) {
       void loadDirFiles(selectedDir.value)
@@ -544,6 +550,14 @@ const decryptProgressDetailText = computed(() => {
     }
   }
   return parts.join(' · ')
+})
+
+syncGlobalBatchProgress(batchTask, {
+  active: () => decrypting.value,
+  title: () => '正在解密',
+  percentage: () => progressPercent.value,
+  detail: () => decryptProgressDetailText.value,
+  indeterminate: () => progressPercent.value === 0
 })
 
 const selectedDirStats = computed(() => {
@@ -929,13 +943,6 @@ onMounted(() => {
             </p>
           </section>
         </div>
-
-        <SidebarBatchProgressPanel
-          v-if="decrypting"
-          title="正在解密"
-          :percentage="progressPercent"
-          :detail="decryptProgressDetailText"
-        />
       </aside>
     </div>
   </div>

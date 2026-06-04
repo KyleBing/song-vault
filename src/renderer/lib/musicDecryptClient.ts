@@ -78,12 +78,14 @@ export async function decryptMusicBatch(
   filePaths: string[],
   outputDir: string,
   config: Record<string, unknown>,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  cancelCheck?: () => void
 ): Promise<MusicDecryptBatchResult> {
   const outcomes: MusicDecryptFileOutcome[] = []
   const total = filePaths.length
   let done = 0
   for (const filePath of filePaths) {
+    cancelCheck?.()
     outcomes.push(await decryptMusicFileToDir(filePath, outputDir, config))
     done++
     onProgress?.(done, total)

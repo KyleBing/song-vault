@@ -93,12 +93,12 @@ const {
     rowProps: audioRowPropsFn
 } = useShiftRowSelection((row) => (row as AudioJobItem).audioPath)
 
-const audioTableRowPropsWithPlay = useAudioPlayRowProps(
+const { rowProps: audioTableRowPropsWithPlay } = useAudioPlayRowProps(
     audioRowPropsFn,
     (row) => (row as AudioJobItem).audioPath
 )
 
-const orphanAudioTableRowPropsWithPlay = useAudioPlayRowProps(
+const { rowProps: orphanAudioTableRowPropsWithPlay } = useAudioPlayRowProps(
     orphanAudioRowPropsFn,
     (row) => (row as { key: string }).key
 )

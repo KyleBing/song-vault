@@ -153,6 +153,18 @@ export function filenameStemHasTrailingUnderscore(filePath: string): boolean {
     return stem.endsWith('_')
 }
 
+/** 字段首尾是否含多余下划线，如 `_曲名` 或 `艺人_` */
+export function fieldHasEdgeUnderscore(value: string): boolean {
+    const trimmed = value.trim()
+    if (!trimmed) return false
+    return trimmed.startsWith('_') || trimmed.endsWith('_')
+}
+
+/** 去掉字段首尾多余下划线，保留中间内容 */
+export function trimEdgeUnderscores(value: string): string {
+    return value.trim().replace(/^_+/, '').replace(/_+$/, '')
+}
+
 /** 去掉文件名末尾多余下划线，保留扩展名 */
 export function rebuildFileNameWithoutTrailingUnderscore(
     filePath: string
@@ -240,6 +252,77 @@ export function rebuildFileNameWithArtist(
             return `${newArtist} - ${parsed.title}${ext}`
         }
         return `${newArtist}-${parsed.title}${ext}`
+    }
+
+    return null
+}
+
+/** 保留原有「艺人 - 曲名」分隔符，仅替换曲名段 */
+export function rebuildFileNameWithTitle(
+    filePath: string,
+    newTitle: string
+): string | null {
+    const parsed = parseArtistTitleFromFilePath(filePath)
+    if (!parsed.split || !parsed.artist) return null
+
+    const base = filePath.replace(/^.*[/\\]/, '')
+    const dot = base.lastIndexOf('.')
+    const ext = dot > 0 ? base.slice(dot) : ''
+    const stem = fileStemFromPath(filePath)
+
+    for (const sep of ARTIST_TITLE_SEPARATORS) {
+        const idx = stem.indexOf(sep)
+        if (idx > 0 && stem.slice(0, idx).trim() === parsed.artist) {
+            return `${stem.slice(0, idx)}${sep}${newTitle}${ext}`
+        }
+    }
+
+    const dash = stem.indexOf('-')
+    if (dash > 0 && stem.slice(0, dash).trim() === parsed.artist) {
+        if (stem.includes(' - ')) {
+            return `${parsed.artist} - ${newTitle}${ext}`
+        }
+        return `${parsed.artist}-${newTitle}${ext}`
+    }
+
+    return null
+}
+
+/** 同时替换文件名中的艺人段与曲名段，保留原有分隔符 */
+export function rebuildFileNameWithArtistAndTitle(
+    filePath: string,
+    newArtist: string,
+    newTitle: string
+): string | null {
+    const parsed = parseArtistTitleFromFilePath(filePath)
+    if (!parsed.split || !parsed.artist) return null
+
+    const base = filePath.replace(/^.*[/\\]/, '')
+    const dot = base.lastIndexOf('.')
+    const ext = dot > 0 ? base.slice(dot) : ''
+    const stem = fileStemFromPath(filePath)
+
+    for (const sep of ARTIST_TITLE_SEPARATORS) {
+        const idx = stem.indexOf(sep)
+        if (
+            idx > 0 &&
+            stem.slice(0, idx).trim() === parsed.artist &&
+            stem.slice(idx + sep.length).trim() === parsed.title
+        ) {
+            return `${newArtist}${sep}${newTitle}${ext}`
+        }
+    }
+
+    const dash = stem.indexOf('-')
+    if (
+        dash > 0 &&
+        stem.slice(0, dash).trim() === parsed.artist &&
+        stem.slice(dash + 1).trim() === parsed.title
+    ) {
+        if (stem.includes(' - ')) {
+            return `${newArtist} - ${newTitle}${ext}`
+        }
+        return `${newArtist}-${newTitle}${ext}`
     }
 
     return null

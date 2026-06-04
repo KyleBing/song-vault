@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { checkBatchCancelled } from './batchCancel'
 import { parseFile, type IAudioMetadata } from 'music-metadata'
 import {
   emptyAudioFileMeta,
@@ -99,6 +100,7 @@ export async function readAudioFileMetaBatch(
   let index = 0
   async function worker(): Promise<void> {
     while (index < unique.length) {
+      checkBatchCancelled()
       const i = index++
       const p = unique[i]!
       const meta = await readAudioFileMeta(p)

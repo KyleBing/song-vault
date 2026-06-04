@@ -8,6 +8,7 @@ import path from 'path'
 import type { PathFilterRule } from './pathFilters'
 import { pathFilterRulesForSave, shouldFilterEntry } from './pathFilters'
 import { pickSourceLrc, type SourceSelection } from './sourcePick'
+import { checkBatchCancelled, type BatchJobParams } from './batchCancel'
 
 /** 参与匹配的音频文件扩展名（小写，不含点） */
 export const AUDIO_EXTENSIONS = new Set([
@@ -112,7 +113,7 @@ export interface JobResult {
 }
 
 /** runJob 入参 */
-export interface RunJobParams extends SourceSelection {
+export interface RunJobParams extends SourceSelection, BatchJobParams {
   lrcDirs: string[]
   searchRoots: string[]
   execute: boolean
@@ -134,12 +135,12 @@ export interface CopyLrcResult {
 }
 
 /** 删除多余歌词入参 */
-export interface DeleteOrphanParams {
+export interface DeleteOrphanParams extends BatchJobParams {
   lrcPaths: string[]
 }
 
 /** 删除多余音频入参 */
-export interface DeleteOrphanAudioParams {
+export interface DeleteOrphanAudioParams extends BatchJobParams {
   audioPaths: string[]
 }
 
@@ -405,6 +406,7 @@ function scanTargetTree(
   const audioKeysByDir = new Map<string, Set<string>>()
 
   function walk(dir: string): void {
+    checkBatchCancelled()
     const current = path.resolve(dir)
     if (isInsideAny(current, lrcResolved)) return
 
@@ -421,6 +423,7 @@ function scanTargetTree(
     const audioKeys = new Set<string>()
 
     for (const ent of entries) {
+      checkBatchCancelled()
       if (shouldFilterEntry(ent.name, ent.isDirectory(), pathFilterRules)) {
         continue
       }
@@ -692,6 +695,7 @@ export function runJob(params: RunJobParams): JobResult {
   const matchStart = performance.now()
 
   for (const audioPath of audioPaths) {
+    checkBatchCancelled()
     if (orphanAudioPaths.has(path.resolve(audioPath))) continue
     const audioName = path.basename(audioPath)
     const songKey = normName(path.parse(audioName).name)
@@ -843,6 +847,7 @@ function deleteOrphanFiles(filePaths: string[]): DeleteOrphanResult {
   const errors: Array<{ path: string; message: string }> = []
 
   for (const filePath of filePaths) {
+    checkBatchCancelled()
     try {
       if (!fs.existsSync(filePath)) {
         errors.push({ path: filePath, message: '文件不存在' })

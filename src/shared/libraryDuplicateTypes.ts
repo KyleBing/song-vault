@@ -1,5 +1,6 @@
 import type { PathFilterRule } from './pathFilters'
 import type { AudioFileMetrics } from './audioFileMetrics'
+import type { BatchJobParams } from './batchCancel'
 
 export interface DuplicateMember {
     relativePath: string
@@ -22,7 +23,7 @@ export interface DuplicateScanStats {
     extraCopyCount: number
 }
 
-export interface ScanLibraryDuplicatesParams {
+export interface ScanLibraryDuplicatesParams extends BatchJobParams {
     root: string
     pathFilterRules: PathFilterRule[]
 }
@@ -33,7 +34,7 @@ export interface ScanLibraryDuplicatesResult {
     groups: DuplicateGroup[]
 }
 
-export interface DeleteDuplicateFilesParams {
+export interface DeleteDuplicateFilesParams extends BatchJobParams {
     root: string
     relativePaths: string[]
 }

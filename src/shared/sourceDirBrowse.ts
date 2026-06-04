@@ -5,6 +5,7 @@
 import fs from 'fs'
 import fsPromises from 'fs/promises'
 import path from 'path'
+import { checkBatchCancelled, type BatchJobParams } from './batchCancel'
 import { emptyAudioFileMetrics, type AudioFileMetrics } from './audioFileMetrics'
 import { AUDIO_EXTENSIONS } from './lrcJob'
 import { isDecryptableExtension } from './musicFormats'
@@ -109,7 +110,7 @@ export interface BrowseRootCheck {
   error?: string
 }
 
-export interface BrowseRootsParams {
+export interface BrowseRootsParams extends BatchJobParams {
   browseRoots: string[]
 }
 
@@ -653,6 +654,7 @@ export function browseMoveFiles(
   let moved = 0
 
   for (const filePath of params.filePaths) {
+    checkBatchCancelled()
     const resolved = path.resolve(filePath)
     try {
       assertUnderBrowseRoots(resolved, roots)
@@ -716,6 +718,7 @@ export function browseDeleteFiles(
   let deleted = 0
 
   for (const filePath of params.filePaths) {
+    checkBatchCancelled()
     const resolved = path.resolve(filePath)
     try {
       assertUnderBrowseRoots(resolved, roots)

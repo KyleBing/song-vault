@@ -39,7 +39,8 @@ import {
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import { useLibrarySyncSessionStore } from '@renderer/stores/librarySyncSession'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
-import SidebarBatchProgressPanel from '@renderer/components/SidebarBatchProgressPanel.vue'
+import { useBatchTask } from '@renderer/composables/useBatchTask'
+import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import SyncDiffTreeNode from './SyncDiffTreeNode.vue'
@@ -59,6 +60,7 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const syncSession = useLibrarySyncSessionStore()
+const batchTask = useBatchTask()
 const loading = ref(false)
 const validatingDirs = ref(false)
 const syncDirsValidation = ref<ValidateSyncRootsResult | null>(null)
@@ -75,10 +77,26 @@ const metaPanelHidden = computed(
 )
 
 const sidebarBatchProgressActive = computed(
-    () => batchCopying.value || deletingSelected.value
+    () =>
+        batchTask.active ||
+        batchCopying.value ||
+        deletingSelected.value
 )
 
+syncGlobalBatchProgress(batchTask, {
+    active: () => sidebarBatchProgressActive.value,
+    title: () => batchCopyProgressTitle.value,
+    percentage: () => batchCopyProgressPercent.value,
+    detail: () =>
+        batchCopying.value ? batchCopyProgressDetailText.value : undefined,
+    indeterminate: () =>
+        !batchCopying.value || batchCopyProgressPercent.value === 0
+})
+
 const batchCopyProgressTitle = computed(() => {
+    if (loading.value && batchTask.active && !batchCopying.value) {
+        return '正在对比乐库'
+    }
     if (deletingSelected.value) return '正在删除选中项'
     if (batchCopyActiveDirection.value === 'toRight') {
         return '正在复制到右侧'
@@ -491,6 +509,7 @@ async function runCompare(options?: {
     if (showScanLoading) scanButtonLoading.value = true
     loading.value = true
     await flushLoadingPaint()
+    batchTask.begin()
 
     try {
         const validation = await validateSyncDirs({ background: true })
@@ -501,17 +520,20 @@ async function runCompare(options?: {
         const result = await window.electronAPI.compareLibrarySync({
             leftRoot: syncLeftDir.value.trim(),
             rightRoot: syncRightDir.value.trim(),
-            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules)
+            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules),
+            jobId: batchTask.jobId ?? undefined
         })
         await flushLoadingPaint()
         applyCompareSnapshot(result, validation)
     } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
         const msg = err instanceof Error ? err.message : String(err)
         if (!options?.silent) {
             message.error(msg)
         }
         throw err
     } finally {
+        batchTask.end()
         loading.value = false
         if (showScanLoading) scanButtonLoading.value = false
     }
@@ -711,15 +733,29 @@ async function copyItem(
     if (batchCopying.value || deletingSelected.value || loading.value) return
 
     batchCopyResult.value = null
+    batchCopyActiveDirection.value = direction
+    batchCopyProgress.value = { done: 0, total: 1 }
+    batchCopyTiming.value = { elapsedMs: 0 }
     const operationStartedAt = performance.now()
     let compareError: string | undefined
 
+    batchTask.begin({ useMainJob: false })
+    await flushLoadingPaint()
     try {
         await copyOne(item, direction)
+        batchCopyTiming.value = {
+            elapsedMs: performance.now() - operationStartedAt
+        }
+        batchCopyProgress.value = { done: 1, total: 1 }
     } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
         const msg = err instanceof Error ? err.message : String(err)
         message.error(msg)
         return
+    } finally {
+        batchTask.end()
+        batchCopyActiveDirection.value = null
+        batchCopyProgress.value = { done: 0, total: 0 }
     }
 
     try {
@@ -754,12 +790,16 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
     let ok = 0
     let fail = 0
 
+    batchTask.begin({ useMainJob: false })
+    await flushLoadingPaint()
     try {
         for (const item of items) {
+            batchTask.createCheck()()
             try {
                 await copyOne(item, direction)
                 ok += 1
-            } catch {
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
                 fail += 1
             }
             batchCopyTiming.value = {
@@ -767,7 +807,11 @@ async function batchCopy(direction: 'toRight' | 'toLeft'): Promise<void> {
             }
             batchCopyProgress.value = { done: ok + fail, total }
         }
+    } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
+        throw err
     } finally {
+        batchTask.end()
         batchCopyActiveDirection.value = null
         batchCopyProgress.value = { done: 0, total: 0 }
     }
@@ -810,20 +854,25 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     let deleted = 0
     let fail = 0
 
+    batchTask.begin()
+    await flushLoadingPaint()
     try {
         const res = await window.electronAPI.deleteSyncFiles({
             leftRoot,
             rightRoot,
-            entries: syncDeleteEntries(items)
+            entries: syncDeleteEntries(items),
+            jobId: batchTask.jobId ?? undefined
         })
         deleted = res.deleted
         fail = res.errors.length
         clearSelection()
     } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
         const msg = err instanceof Error ? err.message : String(err)
         message.error(msg)
         return
     } finally {
+        batchTask.end()
         deletingSelected.value = false
     }
 
@@ -1355,15 +1404,8 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                     </section>
                 </div>
 
-                <SidebarBatchProgressPanel
-                    v-if="sidebarBatchProgressActive"
-                    :title="batchCopyProgressTitle"
-                    :percentage="batchCopyProgressPercent"
-                    :detail="batchCopying ? batchCopyProgressDetailText : undefined"
-                    :indeterminate="deletingSelected"
-                />
                 <AudioMetaPanel
-                    v-else-if="!metaPanelHidden"
+                    v-if="!sidebarBatchProgressActive && !metaPanelHidden"
                     :file-path="metaPanelFilePath"
                 />
             </aside>

@@ -56,12 +56,12 @@ const {
   rowProps: plainRowPropsFn
 } = useShiftRowSelection((row) => (row as PlainMp3Item).filePath)
 
-const encryptedTableRowPropsWithPlay = useAudioPlayRowProps(
+const { rowProps: encryptedTableRowPropsWithPlay } = useAudioPlayRowProps(
   encryptedRowPropsFn,
   (row) => (row as EncryptedMusicItem).filePath
 )
 
-const plainTableRowPropsWithPlay = useAudioPlayRowProps(
+const { rowProps: plainTableRowPropsWithPlay } = useAudioPlayRowProps(
   plainRowPropsFn,
   (row) => (row as PlainMp3Item).filePath
 )

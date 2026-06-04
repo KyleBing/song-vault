@@ -16,15 +16,31 @@ import { pathFilterRulesForSave } from '@shared/pathFilters'
 import { useLazyDirTree } from '@renderer/composables/useLazyDirTree'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 
-const props = defineProps<{
-    show: boolean
-    browseRoots: string[]
-    pathFilterRules: PathFilterRule[]
-    /** 打开时默认选中的目录 */
-    initialDir?: string | null
-    title?: string
-    positiveText?: string
-}>()
+const props = withDefaults(
+    defineProps<{
+        show: boolean
+        browseRoots: string[]
+        pathFilterRules: PathFilterRule[]
+        /** 打开时默认选中的目录 */
+        initialDir?: string | null
+        title?: string
+        positiveText?: string
+        /** 已选中目录时的提示前缀 */
+        selectedHintPrefix?: string
+        /** 未选中目录时的提示 */
+        pendingHint?: string
+        /** 未配置 browseRoots 时的空状态文案 */
+        emptyRootsDescription?: string
+        /** 是否显示「新建子文件夹」 */
+        showCreateSubdir?: boolean
+    }>(),
+    {
+        selectedHintPrefix: '将移动到：',
+        pendingHint: '请在目录树中选择目标文件夹',
+        emptyRootsDescription: '未配置音频搜索目标',
+        showCreateSubdir: true
+    }
+)
 
 const message = useMessage()
 
@@ -200,12 +216,12 @@ watch(
         @close="close"
     >
         <p v-if="selectedDir" class="picker-hint">
-            将移动到：<strong>{{ selectedDirLabel }}</strong>
+            {{ selectedHintPrefix }}<strong>{{ selectedDirLabel }}</strong>
         </p>
         <p v-else class="picker-hint picker-hint--muted">
-            请在目录树中选择目标文件夹
+            {{ pendingHint }}
         </p>
-        <div v-if="browseRoots.length" class="picker-toolbar">
+        <div v-if="browseRoots.length && showCreateSubdir" class="picker-toolbar">
             <NTooltip>
                 <template #trigger>
                     <NButton
@@ -227,7 +243,7 @@ watch(
             <NEmpty
                 v-if="!browseRoots.length"
                 size="small"
-                description="未配置音频搜索目标"
+                :description="emptyRootsDescription"
             />
             <NTree
                 v-else

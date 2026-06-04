@@ -18,6 +18,12 @@ html:not([data-theme]) {
   --app-cover-placeholder-icon: rgba(28, 30, 36, 0.38);
   --app-surface-raised: rgba(255, 255, 255, 0.95);
   --app-surface-active: rgba(110, 168, 254, 0.12);
+  --app-row-playing-bg: linear-gradient(
+    90deg,
+    rgba(110, 168, 254, 0.34) 0%,
+    rgba(155, 126, 222, 0.2) 55%,
+    rgba(110, 168, 254, 0.16) 100%
+  );
   --app-glow-primary: rgba(110, 168, 254, 0.2);
   --app-glow-accent: rgba(155, 126, 222, 0.12);
   --app-placeholder-border: rgba(0, 0, 0, 0.12);
@@ -43,6 +49,12 @@ html[data-theme='dark'] {
   --app-cover-placeholder-icon: rgba(232, 234, 237, 0.42);
   --app-surface-raised: rgba(255, 255, 255, 0.02);
   --app-surface-active: rgba(110, 168, 254, 0.1);
+  --app-row-playing-bg: linear-gradient(
+    90deg,
+    rgba(110, 168, 254, 0.24) 0%,
+    rgba(155, 126, 222, 0.16) 55%,
+    rgba(110, 168, 254, 0.1) 100%
+  );
   --app-glow-primary: rgba(110, 168, 254, 0.14);
   --app-glow-accent: rgba(155, 126, 222, 0.08);
   --app-placeholder-border: rgba(255, 255, 255, 0.1);
@@ -95,6 +107,24 @@ body,
   li {
     word-break: break-all;
     white-space: normal;
+  }
+}
+
+/** 表格中当前正在播放的音频行（渐变画在整行上，避免每格各画一条） */
+.n-data-table-tr.audio-table-row--playing {
+  background: var(--app-row-playing-bg) !important;
+
+  .n-data-table-td {
+    background: transparent !important;
+  }
+
+  &:hover,
+  &.n-data-table-tr--hover {
+    background: var(--app-row-playing-bg) !important;
+
+    .n-data-table-td {
+      background: transparent !important;
+    }
   }
 }
 

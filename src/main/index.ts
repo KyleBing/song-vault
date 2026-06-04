@@ -81,6 +81,12 @@ import {
     registerMediaProtocolHandler,
     registerMediaProtocolSchemes
 } from './mediaProtocol'
+import {
+    registerBatchCancelIpc,
+    runWithBatchJob,
+    runWithBatchJobAsync
+} from './batchCancelRegistry'
+import { batchJobIdFromParams } from '../shared/batchCancel'
 
 registerMediaProtocolSchemes()
 
@@ -126,6 +132,7 @@ const IPC_CHANNELS = [
 
 /** 注册 IPC（顶层执行，避免 dev 热更新后 handler 丢失） */
 function registerIpcHandlers(): void {
+  registerBatchCancelIpc()
   for (const channel of IPC_CHANNELS) {
     ipcMain.removeHandler(channel)
   }
@@ -139,7 +146,9 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('run-job', async (_, params: RunJobParams) => {
-    return toIpcPlain(runJob(toIpcPlain(params)))
+    const plain = toIpcPlain(params)
+    const jobId = batchJobIdFromParams(plain)
+    return toIpcPlain(runWithBatchJob(jobId, () => runJob(plain)))
   })
 
   ipcMain.handle('read-music-file', async (_, filePath: string) => {
@@ -236,25 +245,35 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     'browse-delete-files',
     async (_, params: BrowseDeleteFilesParams) => {
-      return toIpcPlain(browseDeleteFiles(toIpcPlain(params)))
+      const plain = toIpcPlain(params)
+      const jobId = batchJobIdFromParams(plain)
+      return toIpcPlain(
+        runWithBatchJob(jobId, () => browseDeleteFiles(plain))
+      )
     }
   )
 
   ipcMain.handle(
     'browse-move-files',
     async (_, params: BrowseMoveFilesParams) => {
-      return toIpcPlain(browseMoveFiles(toIpcPlain(params)))
+      const plain = toIpcPlain(params)
+      const jobId = batchJobIdFromParams(plain)
+      return toIpcPlain(runWithBatchJob(jobId, () => browseMoveFiles(plain)))
     }
   )
 
   ipcMain.handle('delete-orphan-lrc', async (_, params: DeleteOrphanParams) => {
-    return toIpcPlain(deleteOrphanLrc(toIpcPlain(params)))
+    const plain = toIpcPlain(params)
+    const jobId = batchJobIdFromParams(plain)
+    return toIpcPlain(runWithBatchJob(jobId, () => deleteOrphanLrc(plain)))
   })
 
   ipcMain.handle(
     'delete-orphan-audio',
     async (_, params: DeleteOrphanAudioParams) => {
-      return toIpcPlain(deleteOrphanAudio(toIpcPlain(params)))
+      const plain = toIpcPlain(params)
+      const jobId = batchJobIdFromParams(plain)
+      return toIpcPlain(runWithBatchJob(jobId, () => deleteOrphanAudio(plain)))
     }
   )
 
@@ -385,7 +404,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     'compare-library-sync',
     async (_, params: CompareLibrarySyncParams) => {
-      return toIpcPlain(compareLibrarySync(toIpcPlain(params)))
+      const plain = toIpcPlain(params)
+      const jobId = batchJobIdFromParams(plain)
+      return toIpcPlain(
+        runWithBatchJob(jobId, () => compareLibrarySync(plain))
+      )
     }
   )
 
@@ -414,13 +437,16 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('delete-sync-files', async (_, params: DeleteSyncFilesParams) => {
-    return toIpcPlain(deleteSyncFiles(toIpcPlain(params)))
+    const plain = toIpcPlain(params)
+    const jobId = batchJobIdFromParams(plain)
+    return toIpcPlain(runWithBatchJob(jobId, () => deleteSyncFiles(plain)))
   })
 
   ipcMain.handle(
     'scan-library-duplicates',
     async (_, params: unknown) => {
       const plain = toIpcPlain(params)
+      const jobId = batchJobIdFromParams(plain)
       const root =
         plain &&
         typeof plain === 'object' &&
@@ -429,16 +455,20 @@ function registerIpcHandlers(): void {
           ? (plain as ScanLibraryDuplicatesParams).root
           : ''
       return toIpcPlain(
-        await scanLibraryDuplicates({
-          root,
-          pathFilterRules:
-            plain &&
-            typeof plain === 'object' &&
-            'pathFilterRules' in plain &&
-            Array.isArray((plain as ScanLibraryDuplicatesParams).pathFilterRules)
-              ? (plain as ScanLibraryDuplicatesParams).pathFilterRules
-              : []
-        })
+        await runWithBatchJobAsync(jobId, () =>
+          scanLibraryDuplicates({
+            root,
+            pathFilterRules:
+              plain &&
+              typeof plain === 'object' &&
+              'pathFilterRules' in plain &&
+              Array.isArray(
+                (plain as ScanLibraryDuplicatesParams).pathFilterRules
+              )
+                ? (plain as ScanLibraryDuplicatesParams).pathFilterRules
+                : []
+          })
+        )
       )
     }
   )
@@ -447,6 +477,7 @@ function registerIpcHandlers(): void {
     'scan-meta-tag-mismatches',
     async (_, params: unknown) => {
       const plain = toIpcPlain(params)
+      const jobId = batchJobIdFromParams(plain)
       const root =
         plain &&
         typeof plain === 'object' &&
@@ -455,16 +486,20 @@ function registerIpcHandlers(): void {
           ? (plain as ScanMetaTagMismatchParams).root
           : ''
       return toIpcPlain(
-        await scanMetaTagMismatches({
-          root,
-          pathFilterRules:
-            plain &&
-            typeof plain === 'object' &&
-            'pathFilterRules' in plain &&
-            Array.isArray((plain as ScanMetaTagMismatchParams).pathFilterRules)
-              ? (plain as ScanMetaTagMismatchParams).pathFilterRules
-              : []
-        })
+        await runWithBatchJobAsync(jobId, () =>
+          scanMetaTagMismatches({
+            root,
+            pathFilterRules:
+              plain &&
+              typeof plain === 'object' &&
+              'pathFilterRules' in plain &&
+              Array.isArray(
+                (plain as ScanMetaTagMismatchParams).pathFilterRules
+              )
+                ? (plain as ScanMetaTagMismatchParams).pathFilterRules
+                : []
+          })
+        )
       )
     }
   )
@@ -473,15 +508,18 @@ function registerIpcHandlers(): void {
     'delete-duplicate-files',
     async (_, params: unknown) => {
       const plain = toIpcPlain(params) as DeleteDuplicateFilesParams | undefined
+      const jobId = batchJobIdFromParams(plain)
       return toIpcPlain(
-        deleteDuplicateFiles({
-          root: typeof plain?.root === 'string' ? plain.root : '',
-          relativePaths: Array.isArray(plain?.relativePaths)
-            ? plain.relativePaths.filter(
-                (item): item is string => typeof item === 'string'
-              )
-            : []
-        })
+        runWithBatchJob(jobId, () =>
+          deleteDuplicateFiles({
+            root: typeof plain?.root === 'string' ? plain.root : '',
+            relativePaths: Array.isArray(plain?.relativePaths)
+              ? plain.relativePaths.filter(
+                  (item): item is string => typeof item === 'string'
+                )
+              : []
+          })
+        )
       )
     }
   )

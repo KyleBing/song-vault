@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NDataTable } from 'naive-ui'
+import { useAudioPlayRowHighlightKey } from '@renderer/composables/useAudioPlayRowProps'
 import { useDataTableDisplay } from '@renderer/composables/useDataTableDisplay'
 import {
     dataTableCellPadding,
@@ -11,6 +12,7 @@ import {
 } from '@shared/dataTableDisplay'
 
 const display = useDataTableDisplay()
+const playRowHighlightKey = useAudioPlayRowHighlightKey()
 const fontSizePx = computed(() => display.value.fontSizePx)
 const rowHeight = computed(() => dataTableRowHeight(fontSizePx.value))
 const headerHeight = computed(() => dataTableHeaderHeight(fontSizePx.value))
@@ -32,6 +34,7 @@ function heightForRow(): number {
 <template>
     <NDataTable
         class="virtual-data-table"
+        :data-audio-play-highlight="playRowHighlightKey"
         virtual-scroll
         :min-row-height="rowHeight"
         :header-height="headerHeight"

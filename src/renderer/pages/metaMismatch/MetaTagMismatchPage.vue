@@ -21,7 +21,13 @@ import {
     type MetaTagMismatchItem,
     type ScanMetaTagMismatchResult
 } from '@shared/metaTagMismatch'
-import { rebuildFileNameWithArtist, rebuildFileNameWithoutTrailingUnderscore } from '@shared/audioMetaEdit'
+import {
+    fieldHasEdgeUnderscore,
+    rebuildFileNameWithArtist,
+    rebuildFileNameWithArtistAndTitle,
+    rebuildFileNameWithoutTrailingUnderscore,
+    trimEdgeUnderscores
+} from '@shared/audioMetaEdit'
 import type { SyncRootCheck } from '@shared/librarySyncJob'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
@@ -41,7 +47,8 @@ import { useLayoutStore } from '@renderer/stores/layout'
 import { useAudioPlayRowProps } from '@renderer/composables/useAudioPlayRowProps'
 import VirtualDataTable from '@renderer/components/VirtualDataTable.vue'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
-import SidebarBatchProgressPanel from '@renderer/components/SidebarBatchProgressPanel.vue'
+import { useBatchTask } from '@renderer/composables/useBatchTask'
+import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import { tableStatusPill } from '@renderer/utils/tableStatusPill'
@@ -74,12 +81,22 @@ const ISSUE_FILTER_OPTIONS: {
             `已选 ${sel} 条，其中 ${n} 条符合「文件名分隔」，确定重命名？`
     },
     {
-        key: 'fileNameTrailingUnderscore',
-        label: META_TAG_MISMATCH_ISSUE_LABELS.fileNameTrailingUnderscore,
+        key: 'fileUnderscore',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.fileUnderscore,
         fixLabel: '执行',
-        confirmAll: (n) => `将全部 ${n} 个符合项去掉文件名末尾多余下划线？`,
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项去掉文件名中多余下划线（艺人/曲名首尾或文件名末尾）并重命名？`,
         confirmSelected: (sel, n) =>
-            `已选 ${sel} 条，其中 ${n} 条符合「尾下划线」，确定重命名？`
+            `已选 ${sel} 条，其中 ${n} 条符合「文件名下划线」，确定重命名？`
+    },
+    {
+        key: 'tagUnderscore',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.tagUnderscore,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项去掉标签艺人/曲名首尾多余下划线？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「标签下划线」，确定修复标签？`
     },
     {
         key: 'artistContent',
@@ -115,7 +132,28 @@ function issueSummaryFromIssues(issues: MetaTagMismatchIssue[]): string {
     return issues.map((issue) => META_TAG_MISMATCH_ISSUE_LABELS[issue]).join(' · ')
 }
 
+function edgeUnderscoreIndexes(text: string): Set<number> {
+    const indexes = new Set<number>()
+    if (!fieldHasEdgeUnderscore(text)) return indexes
+    const trimmed = text.trim()
+    if (!trimmed) return indexes
+    const start = text.indexOf(trimmed)
+    const end = start + trimmed.length - 1
+    for (let i = start; i <= end && text[i] === '_'; i += 1) {
+        indexes.add(i)
+    }
+    for (let i = end; i >= start && text[i] === '_'; i -= 1) {
+        indexes.add(i)
+    }
+    return indexes
+}
+
+function isBadEdgeUnderscoreChar(text: string, index: number): boolean {
+    return edgeUnderscoreIndexes(text).has(index)
+}
+
 function isBadFileArtistChar(text: string, index: number): boolean {
+    if (isBadEdgeUnderscoreChar(text, index)) return true
     const ch = text[index]
     if (ch === ';' || ch === '&') return true
     if (ch === ',') {
@@ -125,6 +163,7 @@ function isBadFileArtistChar(text: string, index: number): boolean {
 }
 
 function isBadTagArtistChar(text: string, index: number): boolean {
+    if (isBadEdgeUnderscoreChar(text, index)) return true
     const ch = text[index]
     if (ch === ',' || ch === ';') return true
     if (ch === '&') {
@@ -134,11 +173,7 @@ function isBadTagArtistChar(text: string, index: number): boolean {
 }
 
 function isBadFileTitleChar(text: string, index: number): boolean {
-    if (text[index] !== '_') return false
-    for (let i = index; i < text.length; i += 1) {
-        if (text[i] !== '_') return false
-    }
-    return true
+    return isBadEdgeUnderscoreChar(text, index)
 }
 
 function renderTextWithHighlights(
@@ -223,10 +258,10 @@ function renderTargetTagArtistCell(row: MetaTagMismatchDisplayRow) {
 }
 
 function renderTagTitleCell(row: MetaTagMismatchDisplayRow) {
-    return h(
-        'span',
-        { class: row.tagTitleIsEmpty ? 'sv-cell-empty' : undefined },
-        row.tagTitleDisplay
+    return renderTextWithHighlights(
+        row.tagTitle,
+        row.tagTitleIsEmpty,
+        isBadEdgeUnderscoreChar
     )
 }
 
@@ -237,7 +272,8 @@ function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
         row.issues.map((issue) =>
             tableStatusPill(
                 META_TAG_MISMATCH_ISSUE_LABELS[issue],
-                issue === 'fileArtistSep' || issue === 'fileNameTrailingUnderscore'
+                issue === 'fileArtistSep' ||
+                issue === 'fileUnderscore'
                     ? 'error'
                     : 'warning',
                 { class: 'mtm-issue-pill' }
@@ -398,6 +434,7 @@ const props = defineProps<{
 }>()
 
 const message = useMessage()
+const batchTask = useBatchTask()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const { invalidateMeta } = useAudioMetaCache()
@@ -569,10 +606,12 @@ watch(issueFilter, () => {
     selectedRowKeys.value = selectedRowKeys.value.filter((key) => visible.has(key))
 })
 
-const tableRowProps = useAudioPlayRowProps(
+const { rowProps: tableRowProps, playRowHighlightKey } = useAudioPlayRowProps(
     shiftRowProps,
     (row) => (row as MetaTagMismatchItem).fullPath
 )
+
+watch(playRowHighlightKey, () => rowPropsCache.clear())
 
 function onCheckedRowKeys(
     keys: Array<string | number>,
@@ -600,6 +639,13 @@ const applyFixProgressTitle = computed(() => {
     const issue = applyingFixIssue.value
     if (!issue) return '正在处理'
     return `正在修复：${META_TAG_MISMATCH_ISSUE_LABELS[issue]}`
+})
+
+const batchProgressTitle = computed(() => {
+    if (loading.value && batchTask.active && !applyingFix.value) {
+        return '正在扫描'
+    }
+    return applyFixProgressTitle.value
 })
 
 const selectedEditableCount = computed(() =>
@@ -665,6 +711,15 @@ const applyTagsProgressDetailText = computed(() => {
     return parts.join(' · ')
 })
 
+syncGlobalBatchProgress(batchTask, {
+    active: () => batchTask.active,
+    title: () => batchProgressTitle.value,
+    percentage: () => applyTagsProgressPercent.value,
+    detail: () =>
+        applyingFix.value ? applyTagsProgressDetailText.value : undefined,
+    indeterminate: () => loading.value && !applyingFix.value
+})
+
 function mismatchRowKey(row: MetaTagMismatchDisplayRow): string {
     return row.fullPath
 }
@@ -699,21 +754,25 @@ async function runScan(options?: {
 
     if (options?.scanLoading) scanButtonLoading.value = true
     loading.value = true
+    batchTask.begin()
     try {
         const root = (metaMismatchScanDir.value ?? '').trim()
         scanResult.value = await window.electronAPI.scanMetaTagMismatches({
             root,
-            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules)
+            pathFilterRules: pathFilterRulesForSave(props.pathFilterRules),
+            jobId: batchTask.jobId ?? undefined
         })
         clearSelection()
         applyResult.value = null
         filterTraditionalMeta.value = false
         issueFilter.value = 'all'
     } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
         const msg = err instanceof Error ? err.message : String(err)
         if (!options?.silent) message.error(msg)
         throw err
     } finally {
+        batchTask.end()
         loading.value = false
         if (options?.scanLoading) scanButtonLoading.value = false
     }
@@ -770,8 +829,16 @@ function itemsWithIssue(issue: MetaTagMismatchIssue): MetaTagMismatchItem[] {
 
 function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
     const items = itemsWithIssue(issue)
-    if (issue === 'fileArtistSep' || issue === 'fileNameTrailingUnderscore') {
+    if (issue === 'fileArtistSep' || issue === 'fileUnderscore') {
         return items.length
+    }
+    if (issue === 'tagUnderscore') {
+        return items.filter(
+            (row) =>
+                row.editable &&
+                (fieldHasEdgeUnderscore(row.tagArtist) ||
+                    fieldHasEdgeUnderscore(row.tagTitle))
+        ).length
     }
     return items.filter((row) => row.editable).length
 }
@@ -837,6 +904,7 @@ async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void>
 
     try {
         for (const row of targets) {
+            batchTask.createCheck()()
             const artist = tagArtistForMetaFromFilename(row.fileArtist)
             try {
                 const res = await writeTagsForRow(row, artist, row.tagTitle)
@@ -848,6 +916,7 @@ async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void>
                     }
                 }
             } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
                 fail += 1
                 const msg = err instanceof Error ? err.message : String(err)
                 if (msg && failSamples.length < 3) {
@@ -882,6 +951,7 @@ async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void
 
     try {
         for (const row of targets) {
+            batchTask.createCheck()()
             const artist = tagArtistForMetaFromFilename(row.fileArtist)
             try {
                 const res = await writeTagsForRow(row, artist, row.tagTitle)
@@ -893,6 +963,7 @@ async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void
                     }
                 }
             } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
                 fail += 1
                 const msg = err instanceof Error ? err.message : String(err)
                 if (msg && failSamples.length < 3) {
@@ -927,6 +998,7 @@ async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void>
 
     try {
         for (const row of targets) {
+            batchTask.createCheck()()
             const artist =
                 row.targetTagArtist ??
                 (tagArtistForMetaFromFilename(row.fileArtist) || row.tagArtist)
@@ -940,6 +1012,7 @@ async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void>
                     }
                 }
             } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
                 fail += 1
                 const msg = err instanceof Error ? err.message : String(err)
                 if (msg && failSamples.length < 3) {
@@ -973,6 +1046,7 @@ async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void
 
     try {
         for (const row of items) {
+            batchTask.createCheck()()
             const normalized = normalizeFilenameArtist(row.fileArtist)
             const newName = rebuildFileNameWithArtist(row.fullPath, normalized)
             if (!newName) {
@@ -998,6 +1072,7 @@ async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void
                 ok += 1
                 invalidateMeta(row.fullPath)
             } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
                 fail += 1
                 const msg = err instanceof Error ? err.message : String(err)
                 if (msg && failSamples.length < 3) {
@@ -1014,15 +1089,54 @@ async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void
     finishFixResult(ok, fail, started, failSamples, '文件名')
 }
 
-async function fixFileNameTrailingUnderscoreItems(
-    items: MetaTagMismatchItem[]
+async function renameFileInScanRoot(
+    row: MetaTagMismatchItem,
+    newName: string
 ): Promise<void> {
+    const root = (metaMismatchScanDir.value ?? '').trim()
+    if (!root) throw new Error('未选择扫描目录')
+    await window.electronAPI.browseRenamePath({
+        browseRoots: [root],
+        targetPath: row.fullPath,
+        newName,
+        disambiguateIfExists: true
+    })
+    invalidateMeta(row.fullPath)
+}
+
+function buildFixedFileName(row: MetaTagMismatchItem): string | null {
+    const artist = fieldHasEdgeUnderscore(row.fileArtist)
+        ? trimEdgeUnderscores(row.fileArtist)
+        : row.fileArtist
+    const title = fieldHasEdgeUnderscore(row.fileTitle)
+        ? trimEdgeUnderscores(row.fileTitle)
+        : row.fileTitle
+
+    let newName: string | null = row.fileName
+    if (artist !== row.fileArtist || title !== row.fileTitle) {
+        newName = rebuildFileNameWithArtistAndTitle(row.fullPath, artist, title)
+    } else {
+        newName = rebuildFileNameWithoutTrailingUnderscore(row.fullPath) ?? row.fileName
+    }
+    if (!newName) return null
+
+    const base = newName.replace(/^.*[/\\]/, '')
+    const dot = base.lastIndexOf('.')
+    const ext = dot > 0 ? base.slice(dot) : ''
+    const stem = dot > 0 ? base.slice(0, dot) : base
+    if (stem.trimEnd().endsWith('_')) {
+        const trimmedStem = stem.replace(/_+$/, '')
+        if (!trimmedStem) return null
+        newName = `${trimmedStem}${ext}`
+    }
+
+    return newName !== row.fileName ? newName : row.fileName
+}
+
+async function fixFileUnderscoreItems(items: MetaTagMismatchItem[]): Promise<void> {
     if (!items.length) return
 
-    const root = (metaMismatchScanDir.value ?? '').trim()
-    if (!root) return
-
-    applyingFixIssue.value = 'fileNameTrailingUnderscore'
+    applyingFixIssue.value = 'fileUnderscore'
     applyResult.value = null
     applyTagsProgress.value = { done: 0, total: items.length }
     applyTagsTiming.value = { elapsedMs: 0 }
@@ -1033,34 +1147,26 @@ async function fixFileNameTrailingUnderscoreItems(
 
     try {
         for (const row of items) {
-            const newName = rebuildFileNameWithoutTrailingUnderscore(row.fullPath)
+            batchTask.createCheck()()
+            const newName = buildFixedFileName(row)
             if (!newName) {
                 fail += 1
                 if (failSamples.length < 3) {
                     failSamples.push(`${row.fileName}: 无法解析文件名结构`)
                 }
-                bumpApplyProgress(ok, fail, items.length, started)
-                continue
-            }
-            if (newName === row.fileName) {
+            } else if (newName === row.fileName) {
                 ok += 1
-                bumpApplyProgress(ok, fail, items.length, started)
-                continue
-            }
-            try {
-                await window.electronAPI.browseRenamePath({
-                    browseRoots: [root],
-                    targetPath: row.fullPath,
-                    newName,
-                    disambiguateIfExists: true
-                })
-                ok += 1
-                invalidateMeta(row.fullPath)
-            } catch (err) {
-                fail += 1
-                const msg = err instanceof Error ? err.message : String(err)
-                if (msg && failSamples.length < 3) {
-                    failSamples.push(`${row.fileName}: ${msg}`)
+            } else {
+                try {
+                    await renameFileInScanRoot(row, newName)
+                    ok += 1
+                } catch (err) {
+                    if (batchTask.notifyIfCancelled(err)) throw err
+                    fail += 1
+                    const msg = err instanceof Error ? err.message : String(err)
+                    if (msg && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${msg}`)
+                    }
                 }
             }
             bumpApplyProgress(ok, fail, items.length, started)
@@ -1071,6 +1177,63 @@ async function fixFileNameTrailingUnderscoreItems(
     }
 
     finishFixResult(ok, fail, started, failSamples, '文件名')
+}
+
+async function fixTagUnderscoreItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter(
+        (row) =>
+            row.editable &&
+            (fieldHasEdgeUnderscore(row.tagArtist) ||
+                fieldHasEdgeUnderscore(row.tagTitle))
+    )
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'tagUnderscore'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            const artist = fieldHasEdgeUnderscore(row.tagArtist)
+                ? trimEdgeUnderscores(row.tagArtist)
+                : row.tagArtist
+            const title = fieldHasEdgeUnderscore(row.tagTitle)
+                ? trimEdgeUnderscores(row.tagTitle)
+                : row.tagTitle
+            try {
+                const res = await writeTagsForRow(row, artist, title)
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '标签')
 }
 
 function finishFixResult(
@@ -1103,22 +1266,33 @@ async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
     const items = itemsWithIssue(issue)
     if (!items.length) return
 
-    switch (issue) {
-        case 'tagArtistSep':
-            await fixTagArtistSepItems(items)
-            break
-        case 'fileArtistSep':
-            await fixFileArtistSepItems(items)
-            break
-        case 'fileNameTrailingUnderscore':
-            await fixFileNameTrailingUnderscoreItems(items)
-            break
-        case 'artistContent':
-            await fixArtistContentItems(items)
-            break
-        case 'titleContent':
-            await fixTitleContentItems(items)
-            break
+    batchTask.begin({ useMainJob: false })
+    try {
+        switch (issue) {
+            case 'tagArtistSep':
+                await fixTagArtistSepItems(items)
+                break
+            case 'fileArtistSep':
+                await fixFileArtistSepItems(items)
+                break
+            case 'fileUnderscore':
+                await fixFileUnderscoreItems(items)
+                break
+            case 'tagUnderscore':
+                await fixTagUnderscoreItems(items)
+                break
+            case 'artistContent':
+                await fixArtistContentItems(items)
+                break
+            case 'titleContent':
+                await fixTitleContentItems(items)
+                break
+        }
+    } catch (err) {
+        if (batchTask.notifyIfCancelled(err)) return
+        throw err
+    } finally {
+        batchTask.end()
     }
 }
 
@@ -1373,14 +1547,8 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                     </section>
                 </div>
 
-                <SidebarBatchProgressPanel
-                    v-if="applyingFix"
-                    :title="applyFixProgressTitle"
-                    :percentage="applyTagsProgressPercent"
-                    :detail="applyTagsProgressDetailText"
-                />
                 <AudioMetaPanel
-                    v-else-if="!metaPanelHidden"
+                    v-if="!batchTask.active && !metaPanelHidden"
                     :file-path="metaPanelFilePath"
                     @saved="onMetaPanelSaved"
                 />
@@ -1547,6 +1715,20 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
     width: fit-content;
     max-width: 100%;
     min-width: 160px;
+}
+
+.mtm-source-panel .mtm-source-select {
+    width: 100%;
+    min-width: 0;
+
+    :deep(.n-base-selection) {
+        width: 100%;
+    }
+
+    :deep(.n-base-selection-label) {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .mtm-stats-panel {

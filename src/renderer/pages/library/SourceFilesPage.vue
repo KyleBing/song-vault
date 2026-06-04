@@ -55,6 +55,8 @@ import { plainStringList } from '@renderer/utils/ipcPayload'
 import { relativeToRoots } from '@renderer/utils/displayPath'
 import { openDirInFileManager } from '@renderer/utils/openInFileManager'
 import AudioMetaPanel from '@renderer/components/AudioMetaPanel.vue'
+import { useBatchTask } from '@renderer/composables/useBatchTask'
+import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathFromSelection'
 import BrowseDirPickerModal from './BrowseDirPickerModal.vue'
 import SelectionPathFooter from '@renderer/components/SelectionPathFooter.vue'
@@ -69,6 +71,7 @@ const props = defineProps<{
 }>()
 
 const message = useMessage()
+const batchTask = useBatchTask()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 const maxHeightForTable = computed(() => insets.value.windowHeight - 150)
@@ -91,12 +94,24 @@ const {
   rowProps: fileRowProps
 } = useShiftRowSelection((row) => (row as DirAudioFileItem).filePath)
 
-const fileTableRowPropsWithPlay = useAudioPlayRowProps(
+const { rowProps: fileTableRowPropsWithPlay } = useAudioPlayRowProps(
   fileRowProps,
   (row) => (row as DirAudioFileItem).filePath
 )
 const deletingFiles = ref(false)
 const movingFiles = ref(false)
+
+const batchProgressTitle = computed(() => {
+  if (movingFiles.value) return '正在移动文件'
+  if (deletingFiles.value) return '正在删除文件'
+  return '正在处理'
+})
+
+syncGlobalBatchProgress(batchTask, {
+  active: () => batchTask.active,
+  title: () => batchProgressTitle.value,
+  indeterminate: true
+})
 const moveModalVisible = ref(false)
 const moveModalInitialDir = ref<string | null>(null)
 /** 移动弹窗内是否新建过文件夹（需在移动完成后同步左侧目录树） */
@@ -645,11 +660,13 @@ async function confirmMoveFiles(destDir: string): Promise<void> {
   )
 
   movingFiles.value = true
+  batchTask.begin()
   try {
     const res = await window.electronAPI.browseMoveFiles({
       filePaths: paths,
       destDir,
-      browseRoots: browseRoots.value
+      browseRoots: browseRoots.value,
+      jobId: batchTask.jobId ?? undefined
     })
     if (res.moved > 0) {
       message.success(`已移动 ${res.moved} 个文件`)
@@ -670,9 +687,11 @@ async function confirmMoveFiles(destDir: string): Promise<void> {
     }
     if (selectedDir.value) void loadAudioFiles(selectedDir.value)
   } catch (err) {
+    if (batchTask.notifyIfCancelled(err)) return
     const msg = err instanceof Error ? err.message : String(err)
     message.error(msg)
   } finally {
+    batchTask.end()
     movingFiles.value = false
     if (movePickerStructureChanged.value) {
       await syncMainTreeAfterFileMove(destDir, sourceDirs)
@@ -686,10 +705,12 @@ async function confirmMoveFiles(destDir: string): Promise<void> {
 async function deleteSelectedFiles(): Promise<void> {
   if (!selectedFileKeys.value.length) return
   deletingFiles.value = true
+  batchTask.begin()
   try {
     const res = await window.electronAPI.browseDeleteFiles({
       filePaths: [...selectedFileKeys.value],
-      browseRoots: browseRoots.value
+      browseRoots: browseRoots.value,
+      jobId: batchTask.jobId ?? undefined
     })
     if (res.deleted > 0) {
       message.success(`已删除 ${res.deleted} 个文件`)
@@ -702,9 +723,11 @@ async function deleteSelectedFiles(): Promise<void> {
     clearFileSelection()
     if (selectedDir.value) void loadAudioFiles(selectedDir.value)
   } catch (err) {
+    if (batchTask.notifyIfCancelled(err)) return
     const msg = err instanceof Error ? err.message : String(err)
     message.error(msg)
   } finally {
+    batchTask.end()
     deletingFiles.value = false
   }
 }
@@ -892,7 +915,7 @@ async function refreshLibraryTree(): Promise<void> {
             }}
           </NTooltip>
         </footer>
-        <AudioMetaPanel :file-path="metaPanelFilePath" />
+        <AudioMetaPanel v-if="!batchTask.active" :file-path="metaPanelFilePath" />
       </div>
 
       <section class="files-pane">
