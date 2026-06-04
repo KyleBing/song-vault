@@ -21,7 +21,7 @@ import {
     type MetaTagMismatchItem,
     type ScanMetaTagMismatchResult
 } from '@shared/metaTagMismatch'
-import { rebuildFileNameWithArtist } from '@shared/audioMetaEdit'
+import { rebuildFileNameWithArtist, rebuildFileNameWithoutTrailingUnderscore } from '@shared/audioMetaEdit'
 import type { SyncRootCheck } from '@shared/librarySyncJob'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
@@ -72,6 +72,14 @@ const ISSUE_FILTER_OPTIONS: {
         confirmAll: (n) => `将全部 ${n} 个符合项重命名为规范艺人格式（逗号无空格）？`,
         confirmSelected: (sel, n) =>
             `已选 ${sel} 条，其中 ${n} 条符合「文件名分隔」，确定重命名？`
+    },
+    {
+        key: 'fileNameTrailingUnderscore',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.fileNameTrailingUnderscore,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项去掉文件名末尾多余下划线？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「尾下划线」，确定重命名？`
     },
     {
         key: 'artistContent',
@@ -125,16 +133,22 @@ function isBadTagArtistChar(text: string, index: number): boolean {
     return false
 }
 
-function renderArtistWithHighlights(
+function isBadFileTitleChar(text: string, index: number): boolean {
+    if (text[index] !== '_') return false
+    for (let i = index; i < text.length; i += 1) {
+        if (text[i] !== '_') return false
+    }
+    return true
+}
+
+function renderTextWithHighlights(
     text: string,
-    kind: 'file' | 'tag',
-    isEmpty: boolean
+    isEmpty: boolean,
+    isBad: (text: string, index: number) => boolean
 ) {
     if (isEmpty) {
         return h('span', { class: 'sv-cell-empty' }, '（空）')
     }
-    const isBad =
-        kind === 'file' ? isBadFileArtistChar : isBadTagArtistChar
     const children: VNode[] = []
     for (let i = 0; i < text.length; i += 1) {
         const ch = text[i]
@@ -143,6 +157,16 @@ function renderArtistWithHighlights(
         )
     }
     return h('span', children)
+}
+
+function renderArtistWithHighlights(
+    text: string,
+    kind: 'file' | 'tag',
+    isEmpty: boolean
+) {
+    const isBad =
+        kind === 'file' ? isBadFileArtistChar : isBadTagArtistChar
+    return renderTextWithHighlights(text, isEmpty, isBad)
 }
 
 function toDisplayRow(row: MetaTagMismatchItem): MetaTagMismatchDisplayRow {
@@ -169,6 +193,14 @@ function renderFileArtistCell(row: MetaTagMismatchDisplayRow) {
         row.fileArtist,
         'file',
         !row.fileArtist
+    )
+}
+
+function renderFileTitleCell(row: MetaTagMismatchDisplayRow) {
+    return renderTextWithHighlights(
+        row.fileTitle,
+        !row.fileTitle,
+        isBadFileTitleChar
     )
 }
 
@@ -205,7 +237,9 @@ function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
         row.issues.map((issue) =>
             tableStatusPill(
                 META_TAG_MISMATCH_ISSUE_LABELS[issue],
-                issue === 'fileArtistSep' ? 'error' : 'warning',
+                issue === 'fileArtistSep' || issue === 'fileNameTrailingUnderscore'
+                    ? 'error'
+                    : 'warning',
                 { class: 'mtm-issue-pill' }
             )
         )
@@ -312,7 +346,8 @@ const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> =
             title: '文件名·曲名',
             key: 'fileTitle',
             width: 150,
-            ellipsis: { tooltip: false }
+            ellipsis: { tooltip: false },
+            render: renderFileTitleCell
         },
         {
             title: '标签·艺人',
@@ -735,7 +770,9 @@ function itemsWithIssue(issue: MetaTagMismatchIssue): MetaTagMismatchItem[] {
 
 function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
     const items = itemsWithIssue(issue)
-    if (issue === 'fileArtistSep') return items.length
+    if (issue === 'fileArtistSep' || issue === 'fileNameTrailingUnderscore') {
+        return items.length
+    }
     return items.filter((row) => row.editable).length
 }
 
@@ -977,6 +1014,65 @@ async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void
     finishFixResult(ok, fail, started, failSamples, '文件名')
 }
 
+async function fixFileNameTrailingUnderscoreItems(
+    items: MetaTagMismatchItem[]
+): Promise<void> {
+    if (!items.length) return
+
+    const root = (metaMismatchScanDir.value ?? '').trim()
+    if (!root) return
+
+    applyingFixIssue.value = 'fileNameTrailingUnderscore'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: items.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of items) {
+            const newName = rebuildFileNameWithoutTrailingUnderscore(row.fullPath)
+            if (!newName) {
+                fail += 1
+                if (failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: 无法解析文件名结构`)
+                }
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            if (newName === row.fileName) {
+                ok += 1
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            try {
+                await window.electronAPI.browseRenamePath({
+                    browseRoots: [root],
+                    targetPath: row.fullPath,
+                    newName,
+                    disambiguateIfExists: true
+                })
+                ok += 1
+                invalidateMeta(row.fullPath)
+            } catch (err) {
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, items.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '文件名')
+}
+
 function finishFixResult(
     ok: number,
     fail: number,
@@ -1013,6 +1109,9 @@ async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
             break
         case 'fileArtistSep':
             await fixFileArtistSepItems(items)
+            break
+        case 'fileNameTrailingUnderscore':
+            await fixFileNameTrailingUnderscoreItems(items)
             break
         case 'artistContent':
             await fixArtistContentItems(items)
@@ -1232,6 +1331,7 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                             <p class="mtm-rules-panel__title">艺人分隔规范</p>
                             <ul class="mtm-rules-panel__list">
                                 <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code></li>
+                                <li>文件名：扩展名前不得有多余 <code>_</code>（如 <code>曲名_.flac</code>）</li>
                                 <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code></li>
                             </ul>
                         </section>

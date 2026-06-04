@@ -147,6 +147,26 @@ export function fileStemFromPath(filePath: string): string {
     return dot > 0 ? base.slice(0, dot) : base
 }
 
+/** 文件名（不含扩展名）末尾是否含多余下划线，如 `曲名_.flac` */
+export function filenameStemHasTrailingUnderscore(filePath: string): boolean {
+    const stem = fileStemFromPath(filePath).trimEnd()
+    return stem.endsWith('_')
+}
+
+/** 去掉文件名末尾多余下划线，保留扩展名 */
+export function rebuildFileNameWithoutTrailingUnderscore(
+    filePath: string
+): string | null {
+    const base = filePath.replace(/^.*[/\\]/, '')
+    const dot = base.lastIndexOf('.')
+    const ext = dot > 0 ? base.slice(dot) : ''
+    const stem = fileStemFromPath(filePath)
+    if (!filenameStemHasTrailingUnderscore(filePath)) return null
+    const trimmedStem = stem.replace(/_+$/, '')
+    if (!trimmedStem) return null
+    return `${trimmedStem}${ext}`
+}
+
 /** 常见「艺人 - 曲名」分隔符（按优先级） */
 const ARTIST_TITLE_SEPARATORS = [' - ', ' – ', ' — ', ' | ', '·'] as const
 

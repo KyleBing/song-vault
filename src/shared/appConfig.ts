@@ -55,7 +55,7 @@ export interface AppConfig {
   syncRightAlias: string
   /** 重复清理：扫描源目录 */
   duplicateScanDir: string
-  /** 标签校准：扫描源目录 */
+  /** 文件名与标签：扫描源目录 */
   metaMismatchScanDir: string
   /** 界面外观：深色 / 浅色 */
   appearance: AppAppearance

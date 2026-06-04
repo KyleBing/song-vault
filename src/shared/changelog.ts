@@ -25,8 +25,8 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       {
         title: '新增',
         items: [
-          '元数据面板：AudioMetaPanelSection 组合组件；标签校准、乐库同步选中音频后可在侧栏查看并编辑标签',
-          '标签校准：批量写入标签时显示进度条与耗时预估',
+          '元数据面板：AudioMetaPanelSection 组合组件；文件名与标签、乐库同步选中音频后可在侧栏查看并编辑标签',
+          '文件名与标签：批量写入标签时显示进度条与耗时预估',
           '乐库同步：差异列表头部增加全选与全折叠'
         ]
       },
@@ -49,7 +49,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
         items: [
           '顶栏播放器：封面、进度与播放控制；乐库 / LRC / 解密列表双击播放明文音频；松手后再 seek',
           '元数据编辑：MP3 / FLAC 可在侧栏编辑常见标签与封面；支持从文件名解析艺人 / 曲名',
-          '标签校准：扫描「艺人 - 曲名」文件名与内嵌标签不一致的音频，支持批量用文件名写入标签'
+          '文件名与标签：扫描「艺人 - 曲名」文件名与内嵌标签不一致的音频，支持批量用文件名写入标签'
         ]
       },
       {
@@ -57,7 +57,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
         items: [
           '元数据面板：标签 Tab 间距收紧；封面细边框；批量删除按钮改为图标 + 数量（重复清理页仍保留「删除副本」）',
           '编辑弹窗：输入框与布局略放大',
-          '列表状态标签：乐库 / LRC / 解密 / 标签校准等页统一为圆角轻量标签（sv-pill），虚拟列表滚动更流畅',
+          '列表状态标签：乐库 / LRC / 解密 / 文件名与标签等页统一为圆角轻量标签（sv-pill），虚拟列表滚动更流畅',
           '界面：配置 Naive UI 中文 locale，确认框按钮显示「确定」/「取消」'
         ]
       },
@@ -65,7 +65,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
         title: '修复',
         items: [
           '应用图标：修正 Windows 等平台图标显示',
-          '标签校准：列表区域铺满可用高度；批量写入改为合并艺人/曲名且跳过过大封面，避免写入失败'
+          '文件名与标签：列表区域铺满可用高度；批量写入改为合并艺人/曲名且跳过过大封面，避免写入失败'
         ]
       }
     ]

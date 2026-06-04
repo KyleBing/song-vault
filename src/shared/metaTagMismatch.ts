@@ -8,6 +8,7 @@ import {
 import type { AudioFileMetaInfo } from './audioFileMeta'
 import {
     isEditableAudioMetaPath,
+    filenameStemHasTrailingUnderscore,
     parseArtistTitleFromFilePath
 } from './audioMetaEdit'
 import type { PathFilterRule } from './pathFilters'
@@ -20,6 +21,7 @@ export type MetaTagMismatchIssue =
     | 'titleContent'
     | 'fileArtistSep'
     | 'tagArtistSep'
+    | 'fileNameTrailingUnderscore'
 
 export interface MetaTagMismatchItem {
     relativePath: string
@@ -94,7 +96,8 @@ export const META_TAG_MISMATCH_ISSUE_LABELS: Record<MetaTagMismatchIssue, string
         artistContent: '艺人内容',
         titleContent: '曲名',
         fileArtistSep: '文件名分隔',
-        tagArtistSep: '标签分隔'
+        tagArtistSep: '标签分隔',
+        fileNameTrailingUnderscore: '尾下划线'
     }
 
 export function issuesToReasons(
@@ -116,17 +119,19 @@ function buildIssues(params: {
     titleMismatch: boolean
     fileArtistSep: boolean
     tagArtistSep: boolean
+    fileNameTrailingUnderscore: boolean
 }): MetaTagMismatchIssue[] {
     const out: MetaTagMismatchIssue[] = []
     if (params.artistContentMismatch) out.push('artistContent')
     if (params.titleMismatch) out.push('titleContent')
     if (params.fileArtistSep) out.push('fileArtistSep')
     if (params.tagArtistSep) out.push('tagArtistSep')
+    if (params.fileNameTrailingUnderscore) out.push('fileNameTrailingUnderscore')
     return out
 }
 
 /**
- * 判断单文件是否需要标签校准。
+ * 判断单文件是否需要文件名与标签对齐处理。
  * 文件名须可解析为「艺人 - 曲名」；艺人/曲名内容不一致，或分隔符不符合规范时返回条目。
  */
 export function analyzeMetaTagMismatch(
@@ -146,12 +151,14 @@ export function analyzeMetaTagMismatch(
     const titleMismatch = !stringsEqual(parsed.title, tagTitle)
     const fileArtistSep = fileArtistHasSeparatorIssues(parsed.artist)
     const tagArtistSep = tagArtistHasSeparatorIssues(tagArtist)
+    const fileNameTrailingUnderscore = filenameStemHasTrailingUnderscore(filePath)
 
     const issues = buildIssues({
         artistContentMismatch,
         titleMismatch,
         fileArtistSep,
-        tagArtistSep
+        tagArtistSep,
+        fileNameTrailingUnderscore
     })
     if (issues.length === 0) return null
 
