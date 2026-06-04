@@ -2,6 +2,7 @@
 import {
     NButton,
     NIcon,
+    NInput,
     NPopconfirm,
     NSelect,
     NSpin,
@@ -104,7 +105,16 @@ const ISSUE_FILTER_OPTIONS: {
         fixLabel: '执行',
         confirmAll: (n) => `将全部 ${n} 个符合项的标签艺人改为与文件名一致？`,
         confirmSelected: (sel, n) =>
-            `已选 ${sel} 条，其中 ${n} 条符合「艺人内容」，确定修复标签艺人？`
+            `已选 ${sel} 条，其中 ${n} 条符合「标签艺人」，确定修复？`
+    },
+    {
+        key: 'extArtistContent',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.extArtistContent,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的扩展艺人（Vorbis/ID3）改为与文件名一致？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「扩展艺人」，确定修复？`
     },
     {
         key: 'titleContent',
@@ -112,7 +122,16 @@ const ISSUE_FILTER_OPTIONS: {
         fixLabel: '执行',
         confirmAll: (n) => `将全部 ${n} 个符合项的标签曲名改为与文件名一致？`,
         confirmSelected: (sel, n) =>
-            `已选 ${sel} 条，其中 ${n} 条符合「曲名」，确定修复标签曲名？`
+            `已选 ${sel} 条，其中 ${n} 条符合「标签曲名」，确定修复？`
+    },
+    {
+        key: 'extTitleContent',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.extTitleContent,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的扩展曲名（Vorbis/ID3）改为与文件名一致？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「扩展曲名」，确定修复？`
     }
 ]
 
@@ -122,10 +141,25 @@ interface MetaTagMismatchDisplayRow extends MetaTagMismatchItem {
     tagTitleDisplay: string
     tagArtistIsEmpty: boolean
     tagTitleIsEmpty: boolean
+    extTagArtistDisplay: string
+    extTagTitleDisplay: string
+    extTagArtistIsEmpty: boolean
+    extTagTitleIsEmpty: boolean
+    extTagArtistDiffers: boolean
+    extTagTitleDiffers: boolean
     issueSummary: string
-    targetTagArtistDisplay: string
     targetTagArtistBlocked: boolean
     editableLabel: string
+}
+
+type MetaTagMismatchTableRow = MetaTagMismatchDisplayRow & {
+    writeTagArtist: string
+    writeTagTitle: string
+}
+
+interface WriteTargetOverride {
+    artist?: string
+    title?: string
 }
 
 function issueSummaryFromIssues(issues: MetaTagMismatchIssue[]): string {
@@ -204,11 +238,38 @@ function renderArtistWithHighlights(
     return renderTextWithHighlights(text, isEmpty, isBad)
 }
 
+interface StackedLineSpec {
+    label: string
+    content: VNode
+    lineClass?: string
+}
+
+function renderStackedCell(lines: StackedLineSpec[]): VNode {
+    return h(
+        'div',
+        { class: 'mtm-stack-cell' },
+        lines.map((line) =>
+            h(
+                'div',
+                {
+                    class: ['mtm-stack-line', line.lineClass].filter(Boolean)
+                },
+                [
+                    h('span', { class: 'mtm-stack-label' }, line.label),
+                    h('span', { class: 'mtm-stack-value' }, [line.content])
+                ]
+            )
+        )
+    )
+}
+
+function metaValuesDiffer(a: string, b: string): boolean {
+    if (!a.trim() && !b.trim()) return false
+    return a.trim().toLowerCase() !== b.trim().toLowerCase()
+}
+
 function toDisplayRow(row: MetaTagMismatchItem): MetaTagMismatchDisplayRow {
     const targetTagArtistBlocked = row.targetTagArtist === null
-    const targetTagArtistDisplay = targetTagArtistBlocked
-        ? '需先修正文件名'
-        : row.targetTagArtist || '（空）'
 
     return {
         ...row,
@@ -216,53 +277,16 @@ function toDisplayRow(row: MetaTagMismatchItem): MetaTagMismatchDisplayRow {
         tagTitleDisplay: row.tagTitle || '（空）',
         tagArtistIsEmpty: !row.tagArtist,
         tagTitleIsEmpty: !row.tagTitle,
+        extTagArtistDisplay: row.extTagArtist || '（空）',
+        extTagTitleDisplay: row.extTagTitle || '（空）',
+        extTagArtistIsEmpty: !row.extTagArtist,
+        extTagTitleIsEmpty: !row.extTagTitle,
+        extTagArtistDiffers: metaValuesDiffer(row.extTagArtist, row.tagArtist),
+        extTagTitleDiffers: metaValuesDiffer(row.extTagTitle, row.tagTitle),
         issueSummary: issueSummaryFromIssues(row.issues),
-        targetTagArtistDisplay,
         targetTagArtistBlocked,
         editableLabel: row.editable ? '可写' : '只读'
     }
-}
-
-function renderFileArtistCell(row: MetaTagMismatchDisplayRow) {
-    return renderArtistWithHighlights(
-        row.fileArtist,
-        'file',
-        !row.fileArtist
-    )
-}
-
-function renderFileTitleCell(row: MetaTagMismatchDisplayRow) {
-    return renderTextWithHighlights(
-        row.fileTitle,
-        !row.fileTitle,
-        isBadFileTitleChar
-    )
-}
-
-function renderTagArtistCell(row: MetaTagMismatchDisplayRow) {
-    return renderArtistWithHighlights(
-        row.tagArtist,
-        'tag',
-        row.tagArtistIsEmpty
-    )
-}
-
-function renderTargetTagArtistCell(row: MetaTagMismatchDisplayRow) {
-    if (row.targetTagArtistBlocked) {
-        return tableStatusPill(row.targetTagArtistDisplay, 'error')
-    }
-    if (!row.targetTagArtist) {
-        return h('span', { class: 'sv-cell-empty' }, row.targetTagArtistDisplay)
-    }
-    return h('span', row.targetTagArtistDisplay)
-}
-
-function renderTagTitleCell(row: MetaTagMismatchDisplayRow) {
-    return renderTextWithHighlights(
-        row.tagTitle,
-        row.tagTitleIsEmpty,
-        isBadEdgeUnderscoreChar
-    )
 }
 
 function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
@@ -273,7 +297,9 @@ function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
             tableStatusPill(
                 META_TAG_MISMATCH_ISSUE_LABELS[issue],
                 issue === 'fileArtistSep' ||
-                issue === 'fileUnderscore'
+                issue === 'fileUnderscore' ||
+                issue === 'extArtistContent' ||
+                issue === 'extTitleContent'
                     ? 'error'
                     : 'warning',
                 { class: 'mtm-issue-pill' }
@@ -293,9 +319,6 @@ type MetaTagMismatchSortKey =
     | 'relativePath'
     | 'fileArtist'
     | 'fileTitle'
-    | 'tagArtistDisplay'
-    | 'tagTitleDisplay'
-    | 'targetTagArtistDisplay'
     | 'issueSummary'
     | 'editableLabel'
 
@@ -303,9 +326,6 @@ const SORTABLE_META_MISMATCH_KEYS = new Set<string>([
     'relativePath',
     'fileArtist',
     'fileTitle',
-    'tagArtistDisplay',
-    'tagTitleDisplay',
-    'targetTagArtistDisplay',
     'issueSummary',
     'editableLabel'
 ])
@@ -315,8 +335,8 @@ function issueRank(issues: MetaTagMismatchIssue[]): number {
 }
 
 function compareMetaTagMismatchRow(
-    a: MetaTagMismatchDisplayRow,
-    b: MetaTagMismatchDisplayRow,
+    a: MetaTagMismatchTableRow,
+    b: MetaTagMismatchTableRow,
     key: string
 ): number {
     switch (key) {
@@ -332,20 +352,6 @@ function compareMetaTagMismatchRow(
             return a.fileTitle.localeCompare(b.fileTitle, undefined, {
                 sensitivity: 'base'
             })
-        case 'tagArtistDisplay':
-            return a.tagArtist.localeCompare(b.tagArtist, undefined, {
-                sensitivity: 'base'
-            })
-        case 'tagTitleDisplay':
-            return a.tagTitle.localeCompare(b.tagTitle, undefined, {
-                sensitivity: 'base'
-            })
-        case 'targetTagArtistDisplay':
-            return a.targetTagArtistDisplay.localeCompare(
-                b.targetTagArtistDisplay,
-                undefined,
-                { sensitivity: 'base' }
-            )
         case 'issueSummary':
             return (
                 issueRank(a.issues) - issueRank(b.issues) ||
@@ -362,49 +368,14 @@ function compareMetaTagMismatchRow(
     }
 }
 
-/** 列配置保持引用稳定，减轻虚拟列表滚动时的 diff */
-const META_MISMATCH_TABLE_COLUMNS: DataTableColumns<MetaTagMismatchDisplayRow> = [
+/** 列配置：艺人 / 曲名列为纵向堆叠展示 */
+const META_MISMATCH_TABLE_BASE_COLUMNS: DataTableColumns<MetaTagMismatchTableRow> = [
         { type: 'selection', fixed: 'left' },
         {
             title: '相对路径',
             key: 'relativePath',
             minWidth: 160,
             ellipsis: { tooltip: false }
-        },
-        {
-            title: '文件名·艺人',
-            key: 'fileArtist',
-            width: 150,
-            ellipsis: { tooltip: false },
-            render: renderFileArtistCell
-        },
-        {
-            title: '文件名·曲名',
-            key: 'fileTitle',
-            width: 150,
-            ellipsis: { tooltip: false },
-            render: renderFileTitleCell
-        },
-        {
-            title: '标签·艺人',
-            key: 'tagArtistDisplay',
-            width: 120,
-            ellipsis: { tooltip: false },
-            render: renderTagArtistCell
-        },
-        {
-            title: '标签·曲名',
-            key: 'tagTitleDisplay',
-            width: 120,
-            ellipsis: { tooltip: false },
-            render: renderTagTitleCell
-        },
-        {
-            title: '写入·艺人',
-            key: 'targetTagArtistDisplay',
-            width: 120,
-            ellipsis: { tooltip: false },
-            render: renderTargetTagArtistCell
         },
         {
             title: '问题',
@@ -532,7 +503,12 @@ const filteredTableRows = computed(() => {
     let rows = tableRows.value
     if (filterTraditionalMeta.value) {
         rows = rows.filter((row) =>
-            metaTagFieldsHaveTraditionalChinese(row.tagArtist, row.tagTitle)
+            metaTagFieldsHaveTraditionalChinese(
+                row.tagArtist,
+                row.tagTitle,
+                row.extTagArtist,
+                row.extTagTitle
+            )
         )
     }
     if (issueFilter.value !== 'all') {
@@ -555,28 +531,319 @@ const issueFilterCounts = computed(() => {
 const traditionalMetaCount = computed(
     () =>
         tableRows.value.filter((row) =>
-            metaTagFieldsHaveTraditionalChinese(row.tagArtist, row.tagTitle)
+            metaTagFieldsHaveTraditionalChinese(
+                row.tagArtist,
+                row.tagTitle,
+                row.extTagArtist,
+                row.extTagTitle
+            )
         ).length
 )
 
 const sortKey = ref<MetaTagMismatchSortKey>('relativePath')
 const sortOrder = ref<TableSortOrder>('asc')
 
+const writeTargetOverrides = ref(new Map<string, WriteTargetOverride>())
+
+function shouldShowExtArtistLine(row: MetaTagMismatchTableRow): boolean {
+    return (
+        Boolean(row.extTagArtist) ||
+        row.extArtistMismatchFilename ||
+        row.extTagArtistDiffers ||
+        row.issues.includes('extArtistContent')
+    )
+}
+
+function shouldShowExtTitleLine(row: MetaTagMismatchTableRow): boolean {
+    return (
+        Boolean(row.extTagTitle) ||
+        row.extTitleMismatchFilename ||
+        row.extTagTitleDiffers ||
+        row.issues.includes('extTitleContent')
+    )
+}
+
+function defaultWriteArtist(row: MetaTagMismatchItem): string {
+    if (row.targetTagArtist !== null) {
+        return row.targetTagArtist
+    }
+    const normalized = tagArtistForMetaFromFilename(row.fileArtist)
+    if (normalized) return normalized
+    if (fieldHasEdgeUnderscore(row.tagArtist)) {
+        return trimEdgeUnderscores(row.tagArtist)
+    }
+    if (fieldHasEdgeUnderscore(row.extTagArtist)) {
+        return trimEdgeUnderscores(row.extTagArtist)
+    }
+    return row.tagArtist
+}
+
+function defaultWriteTitle(row: MetaTagMismatchItem): string {
+    if (
+        row.issues.includes('titleContent') ||
+        row.issues.includes('extTitleContent')
+    ) {
+        return row.fileTitle
+    }
+    if (fieldHasEdgeUnderscore(row.tagTitle)) {
+        return trimEdgeUnderscores(row.tagTitle)
+    }
+    if (fieldHasEdgeUnderscore(row.extTagTitle)) {
+        return trimEdgeUnderscores(row.extTagTitle)
+    }
+    return row.tagTitle
+}
+
+function getWriteArtist(row: MetaTagMismatchItem): string {
+    return writeTargetOverrides.value.get(row.fullPath)?.artist ?? defaultWriteArtist(row)
+}
+
+function getWriteTitle(row: MetaTagMismatchItem): string {
+    return writeTargetOverrides.value.get(row.fullPath)?.title ?? defaultWriteTitle(row)
+}
+
+function setWriteTargetField(
+    fullPath: string,
+    field: 'artist' | 'title',
+    value: string
+): void {
+    const next = new Map(writeTargetOverrides.value)
+    const current = next.get(fullPath) ?? {}
+    next.set(fullPath, { ...current, [field]: value })
+    writeTargetOverrides.value = next
+}
+
+function pruneWriteTargetOverrides(items: MetaTagMismatchItem[]): void {
+    const valid = new Set(items.map((row) => row.fullPath))
+    const next = new Map<string, WriteTargetOverride>()
+    for (const [path, value] of writeTargetOverrides.value) {
+        if (valid.has(path)) next.set(path, value)
+    }
+    writeTargetOverrides.value = next
+}
+
+function renderExtArtistValue(row: MetaTagMismatchTableRow): VNode {
+    if (row.extTagArtistIsEmpty) {
+        return h('span', { class: 'sv-cell-empty' }, '（空）')
+    }
+    const highlighted = renderArtistWithHighlights(
+        row.extTagArtist,
+        'tag',
+        row.extTagArtistIsEmpty
+    )
+    if (!row.extArtistMismatchFilename && !row.extTagArtistDiffers) {
+        return highlighted
+    }
+    if (!row.editable) {
+        return highlighted
+    }
+    return h('span', { class: 'mtm-ext-diff' }, [
+        highlighted,
+        h(
+            'button',
+            {
+                type: 'button',
+                class: 'mtm-ext-adopt',
+                title: '填入写入',
+                onClick: (event: MouseEvent) => {
+                    event.stopPropagation()
+                    setWriteTargetField(row.fullPath, 'artist', row.extTagArtist)
+                }
+            },
+            '→'
+        )
+    ])
+}
+
+function renderExtTitleValue(row: MetaTagMismatchTableRow): VNode {
+    if (row.extTagTitleIsEmpty) {
+        return h('span', { class: 'sv-cell-empty' }, '（空）')
+    }
+    const highlighted = renderTextWithHighlights(
+        row.extTagTitle,
+        row.extTagTitleIsEmpty,
+        isBadEdgeUnderscoreChar
+    )
+    if (!row.extTitleMismatchFilename && !row.extTagTitleDiffers) {
+        return highlighted
+    }
+    if (!row.editable) {
+        return highlighted
+    }
+    return h('span', { class: 'mtm-ext-diff' }, [
+        highlighted,
+        h(
+            'button',
+            {
+                type: 'button',
+                class: 'mtm-ext-adopt',
+                title: '填入写入',
+                onClick: (event: MouseEvent) => {
+                    event.stopPropagation()
+                    setWriteTargetField(row.fullPath, 'title', row.extTagTitle)
+                }
+            },
+            '→'
+        )
+    ])
+}
+
+function renderWriteArtistInput(row: MetaTagMismatchTableRow): VNode {
+    if (!row.editable) {
+        return h('span', { class: 'sv-cell-empty' }, '只读')
+    }
+    if (row.targetTagArtistBlocked) {
+        return tableStatusPill('需先修正文件名', 'error')
+    }
+    return h(NInput, {
+        class: 'mtm-write-input',
+        size: 'tiny',
+        value: row.writeTagArtist,
+        placeholder: defaultWriteArtist(row) || '艺人',
+        onClick: (event: MouseEvent) => event.stopPropagation(),
+        onUpdateValue: (value: string) =>
+            setWriteTargetField(row.fullPath, 'artist', value)
+    })
+}
+
+function renderWriteTitleInput(row: MetaTagMismatchTableRow): VNode {
+    if (!row.editable) {
+        return h('span', { class: 'sv-cell-empty' }, '只读')
+    }
+    return h(NInput, {
+        class: 'mtm-write-input',
+        size: 'tiny',
+        value: row.writeTagTitle,
+        placeholder: defaultWriteTitle(row) || '曲名',
+        onClick: (event: MouseEvent) => event.stopPropagation(),
+        onUpdateValue: (value: string) =>
+            setWriteTargetField(row.fullPath, 'title', value)
+    })
+}
+
+function renderArtistStackCell(row: MetaTagMismatchTableRow): VNode {
+    const lines: StackedLineSpec[] = [
+        {
+            label: '文件名',
+            content: renderArtistWithHighlights(
+                row.fileArtist,
+                'file',
+                !row.fileArtist
+            )
+        },
+        {
+            label: '标签',
+            content: renderArtistWithHighlights(
+                row.tagArtist,
+                'tag',
+                row.tagArtistIsEmpty
+            )
+        }
+    ]
+    if (shouldShowExtArtistLine(row)) {
+        lines.push({
+            label: '扩展',
+            content: renderExtArtistValue(row),
+            lineClass: row.extArtistMismatchFilename
+                ? 'mtm-stack-line--mismatch'
+                : row.extTagArtistDiffers
+                  ? 'mtm-stack-line--warn'
+                  : undefined
+        })
+    }
+    if (row.editable) {
+        lines.push({
+            label: '写入',
+            content: renderWriteArtistInput(row),
+            lineClass: 'mtm-stack-line--write'
+        })
+    }
+    return renderStackedCell(lines)
+}
+
+function renderTitleStackCell(row: MetaTagMismatchTableRow): VNode {
+    const lines: StackedLineSpec[] = [
+        {
+            label: '文件名',
+            content: renderTextWithHighlights(
+                row.fileTitle,
+                !row.fileTitle,
+                isBadFileTitleChar
+            )
+        },
+        {
+            label: '标签',
+            content: renderTextWithHighlights(
+                row.tagTitle,
+                row.tagTitleIsEmpty,
+                isBadEdgeUnderscoreChar
+            )
+        }
+    ]
+    if (shouldShowExtTitleLine(row)) {
+        lines.push({
+            label: '扩展',
+            content: renderExtTitleValue(row),
+            lineClass: row.extTitleMismatchFilename
+                ? 'mtm-stack-line--mismatch'
+                : row.extTagTitleDiffers
+                  ? 'mtm-stack-line--warn'
+                  : undefined
+        })
+    }
+    if (row.editable) {
+        lines.push({
+            label: '写入',
+            content: renderWriteTitleInput(row),
+            lineClass: 'mtm-stack-line--write'
+        })
+    }
+    return renderStackedCell(lines)
+}
+
 const displayRows = computed(() => {
-    const rows = filteredTableRows.value.map(toDisplayRow)
+    const overrides = writeTargetOverrides.value
+    const rows = filteredTableRows.value.map((row) => {
+        const display = toDisplayRow(row)
+        const override = overrides.get(row.fullPath)
+        return {
+            ...display,
+            writeTagArtist: override?.artist ?? defaultWriteArtist(row),
+            writeTagTitle: override?.title ?? defaultWriteTitle(row)
+        }
+    })
     return sortRows(rows, sortKey.value, sortOrder.value, compareMetaTagMismatchRow)
 })
 
 const orderedRowKeys = computed(() => displayRows.value.map((row) => row.fullPath))
 
-const tableColumns = computed(() =>
-    applySortableHeaders(META_MISMATCH_TABLE_COLUMNS, {
+const tableColumns = computed(() => {
+    const cols: DataTableColumns<MetaTagMismatchTableRow> = [
+        ...META_MISMATCH_TABLE_BASE_COLUMNS.slice(0, 2),
+        {
+            title: '艺人',
+            key: 'fileArtist',
+            width: 220,
+            ellipsis: { tooltip: false },
+            render: renderArtistStackCell
+        },
+        {
+            title: '曲名',
+            key: 'fileTitle',
+            width: 220,
+            ellipsis: { tooltip: false },
+            render: renderTitleStackCell
+        },
+        ...META_MISMATCH_TABLE_BASE_COLUMNS.slice(2)
+    ]
+
+    return applySortableHeaders(cols, {
         sortKey: sortKey.value,
         sortOrder: sortOrder.value,
         isSortable: (key) => SORTABLE_META_MISMATCH_KEYS.has(key),
         compare: (key) => (a, b) => compareMetaTagMismatchRow(a, b, key)
     })
-)
+})
 
 function onSorterUpdate(
     sorter: Parameters<typeof handleTableSorterUpdate>[0]
@@ -720,7 +987,7 @@ syncGlobalBatchProgress(batchTask, {
     indeterminate: () => loading.value && !applyingFix.value
 })
 
-function mismatchRowKey(row: MetaTagMismatchDisplayRow): string {
+function mismatchRowKey(row: MetaTagMismatchTableRow): string {
     return row.fullPath
 }
 
@@ -762,6 +1029,9 @@ async function runScan(options?: {
             pathFilterRules: pathFilterRulesForSave(props.pathFilterRules),
             jobId: batchTask.jobId ?? undefined
         })
+        if (scanResult.value) {
+            pruneWriteTargetOverrides(scanResult.value.items)
+        }
         clearSelection()
         applyResult.value = null
         filterTraditionalMeta.value = false
@@ -837,7 +1107,9 @@ function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
             (row) =>
                 row.editable &&
                 (fieldHasEdgeUnderscore(row.tagArtist) ||
-                    fieldHasEdgeUnderscore(row.tagTitle))
+                    fieldHasEdgeUnderscore(row.tagTitle) ||
+                    fieldHasEdgeUnderscore(row.extTagArtist) ||
+                    fieldHasEdgeUnderscore(row.extTagTitle))
         ).length
     }
     return items.filter((row) => row.editable).length
@@ -872,13 +1144,15 @@ function bumpApplyProgress(
 
 async function writeTagsForRow(
     row: MetaTagMismatchItem,
-    artist: string,
-    title: string
+    artist?: string,
+    title?: string
 ): Promise<{ ok: boolean; message?: string }> {
+    const resolvedArtist = (artist ?? getWriteArtist(row)).trim()
+    const resolvedTitle = (title ?? getWriteTitle(row)).trim()
     const res = await window.electronAPI.writeFilenameTags({
         filePath: row.fullPath,
-        artist,
-        title
+        artist: resolvedArtist,
+        title: resolvedTitle
     })
     if (res.ok) {
         invalidateMeta(row.fullPath)
@@ -905,9 +1179,8 @@ async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void>
     try {
         for (const row of targets) {
             batchTask.createCheck()()
-            const artist = tagArtistForMetaFromFilename(row.fileArtist)
             try {
-                const res = await writeTagsForRow(row, artist, row.tagTitle)
+                const res = await writeTagsForRow(row)
                 if (res.ok) ok += 1
                 else {
                     fail += 1
@@ -952,9 +1225,8 @@ async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void
     try {
         for (const row of targets) {
             batchTask.createCheck()()
-            const artist = tagArtistForMetaFromFilename(row.fileArtist)
             try {
-                const res = await writeTagsForRow(row, artist, row.tagTitle)
+                const res = await writeTagsForRow(row)
                 if (res.ok) ok += 1
                 else {
                     fail += 1
@@ -999,11 +1271,8 @@ async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void>
     try {
         for (const row of targets) {
             batchTask.createCheck()()
-            const artist =
-                row.targetTagArtist ??
-                (tagArtistForMetaFromFilename(row.fileArtist) || row.tagArtist)
             try {
-                const res = await writeTagsForRow(row, artist, row.fileTitle)
+                const res = await writeTagsForRow(row)
                 if (res.ok) ok += 1
                 else {
                     fail += 1
@@ -1184,7 +1453,9 @@ async function fixTagUnderscoreItems(items: MetaTagMismatchItem[]): Promise<void
         (row) =>
             row.editable &&
             (fieldHasEdgeUnderscore(row.tagArtist) ||
-                fieldHasEdgeUnderscore(row.tagTitle))
+                fieldHasEdgeUnderscore(row.tagTitle) ||
+                fieldHasEdgeUnderscore(row.extTagArtist) ||
+                fieldHasEdgeUnderscore(row.extTagTitle))
     )
     if (!targets.length) {
         message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
@@ -1203,14 +1474,8 @@ async function fixTagUnderscoreItems(items: MetaTagMismatchItem[]): Promise<void
     try {
         for (const row of targets) {
             batchTask.createCheck()()
-            const artist = fieldHasEdgeUnderscore(row.tagArtist)
-                ? trimEdgeUnderscores(row.tagArtist)
-                : row.tagArtist
-            const title = fieldHasEdgeUnderscore(row.tagTitle)
-                ? trimEdgeUnderscores(row.tagTitle)
-                : row.tagTitle
             try {
-                const res = await writeTagsForRow(row, artist, title)
+                const res = await writeTagsForRow(row)
                 if (res.ok) ok += 1
                 else {
                     fail += 1
@@ -1282,9 +1547,11 @@ async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
                 await fixTagUnderscoreItems(items)
                 break
             case 'artistContent':
+            case 'extArtistContent':
                 await fixArtistContentItems(items)
                 break
             case 'titleContent':
+            case 'extTitleContent':
                 await fixTitleContentItems(items)
                 break
         }
@@ -1296,7 +1563,7 @@ async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
     }
 }
 
-function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
+function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     const key = row.fullPath
     let cached = rowPropsCache.get(key)
     if (!cached) {
@@ -1507,6 +1774,7 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
                                 <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code></li>
                                 <li>文件名：扩展名前不得有多余 <code>_</code>（如 <code>曲名_.flac</code>）</li>
                                 <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code></li>
+                                <li>列表：艺人 / 曲名列内纵向展示文件名、标签、扩展与写入；扩展≠文件名时标红并显示「扩展艺人/曲名」问题</li>
                             </ul>
                         </section>
                         <NButton
@@ -1952,6 +2220,81 @@ function mismatchTableRowProps(row: MetaTagMismatchDisplayRow) {
     color: rgb(234, 88, 88);
     font-weight: 600;
     text-decoration: underline wavy rgba(234, 88, 88, 0.45);
+}
+
+:deep(.mtm-write-input) {
+    width: 100%;
+}
+
+:deep(.mtm-stack-cell) {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 2px 0;
+}
+
+:deep(.mtm-stack-line) {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+:deep(.mtm-stack-line--warn .mtm-stack-value) {
+    padding: 0 2px;
+    border-radius: 3px;
+    background: rgba(255, 196, 64, 0.1);
+}
+
+:deep(.mtm-stack-line--mismatch .mtm-stack-value) {
+    padding: 0 2px;
+    border-radius: 3px;
+    background: rgba(234, 88, 88, 0.08);
+}
+
+:deep(.mtm-stack-line--write) {
+    align-items: center;
+}
+
+:deep(.mtm-stack-label) {
+    flex-shrink: 0;
+    width: 3.2em;
+    opacity: 0.5;
+}
+
+:deep(.mtm-stack-value) {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+    font-size: 11px;
+}
+
+:deep(.mtm-ext-diff) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+:deep(.mtm-ext-adopt) {
+    flex-shrink: 0;
+    padding: 0 4px;
+    border: none;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    font-size: 10px;
+    line-height: 1.4;
+    cursor: pointer;
+    opacity: 0.72;
+
+    &:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.12);
+    }
 }
 
 </style>

@@ -11,13 +11,17 @@ export function containsTraditionalChinese(text: string): boolean {
     return false
 }
 
-/** 内嵌标签艺人 / 曲名是否含繁体字 */
+/** 内嵌标签艺人 / 曲名是否含繁体字（含 common 与扩展 / Vorbis 原生字段） */
 export function metaTagFieldsHaveTraditionalChinese(
     tagArtist: string,
-    tagTitle: string
+    tagTitle: string,
+    extTagArtist = '',
+    extTagTitle = ''
 ): boolean {
     return (
         containsTraditionalChinese(tagArtist) ||
-        containsTraditionalChinese(tagTitle)
+        containsTraditionalChinese(tagTitle) ||
+        containsTraditionalChinese(extTagArtist) ||
+        containsTraditionalChinese(extTagTitle)
     )
 }

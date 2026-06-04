@@ -11,6 +11,10 @@ import {
 } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
+import {
+    nativeArtistTitleFromMeta,
+    nativeArtistTitleMatchesCommon
+} from '@shared/audioFileMeta'
 import { plainForIpc } from '@renderer/utils/ipcPayload'
 import {
     AUDIO_META_EDIT_FIELDS,
@@ -41,6 +45,24 @@ const pickingCover = ref(false)
 /** undefined = 未改动；null = 移除；string = 新封面 base64 */
 const coverBase64 = ref<string | null | undefined>(undefined)
 const coverPreviewUrl = ref<string | null>(null)
+
+const extNativeTags = computed(() => {
+    if (!props.meta?.ok) {
+        return { artist: '', title: '', artistDiffers: false, titleDiffers: false }
+    }
+    const native = nativeArtistTitleFromMeta(props.meta)
+    const matches = nativeArtistTitleMatchesCommon(props.meta)
+    return {
+        artist: native.artist,
+        title: native.title,
+        artistDiffers: Boolean(native.artist) && !matches.artistMatches,
+        titleDiffers: Boolean(native.title) && !matches.titleMatches
+    }
+})
+
+const showExtNativeSection = computed(
+    () => extNativeTags.value.artistDiffers || extNativeTags.value.titleDiffers
+)
 
 const HEAD_KEYS = new Set<keyof AudioMetaEditForm>([
     'title',
@@ -133,6 +155,18 @@ function onFillFromFilename(): void {
     } else {
         message.info('文件名未识别出「艺人 - 曲名」格式，已填入曲名')
     }
+}
+
+function onAdoptExtArtist(): void {
+    if (!extNativeTags.value.artist) return
+    form.value.artist = extNativeTags.value.artist
+    message.success('已采用扩展标签中的艺人')
+}
+
+function onAdoptExtTitle(): void {
+    if (!extNativeTags.value.title) return
+    form.value.title = extNativeTags.value.title
+    message.success('已采用扩展标签中的曲名')
 }
 
 async function onSave(): Promise<void> {
@@ -249,6 +283,47 @@ async function onSave(): Promise<void> {
                     </dl>
                 </div>
 
+                <section
+                    v-if="showExtNativeSection"
+                    class="audio-meta-edit-modal__ext"
+                >
+                    <p class="audio-meta-edit-modal__ext-title">
+                        扩展 / Vorbis 标签与上方常规字段不一致
+                    </p>
+                    <dl class="audio-meta-edit-modal__dl audio-meta-edit-modal__dl-ext">
+                        <template v-if="extNativeTags.artistDiffers">
+                            <dt>扩展·艺人</dt>
+                            <dd class="audio-meta-edit-modal__ext-row">
+                                <span class="audio-meta-edit-modal__ext-value">{{
+                                    extNativeTags.artist
+                                }}</span>
+                                <NButton
+                                    size="tiny"
+                                    quaternary
+                                    @click="onAdoptExtArtist"
+                                >
+                                    采用
+                                </NButton>
+                            </dd>
+                        </template>
+                        <template v-if="extNativeTags.titleDiffers">
+                            <dt>扩展·曲名</dt>
+                            <dd class="audio-meta-edit-modal__ext-row">
+                                <span class="audio-meta-edit-modal__ext-value">{{
+                                    extNativeTags.title
+                                }}</span>
+                                <NButton
+                                    size="tiny"
+                                    quaternary
+                                    @click="onAdoptExtTitle"
+                                >
+                                    采用
+                                </NButton>
+                            </dd>
+                        </template>
+                    </dl>
+                </section>
+
                 <dl class="audio-meta-edit-modal__dl">
                     <template v-for="field in gridFields" :key="field.key">
                         <dt>{{ field.label }}</dt>
@@ -356,6 +431,38 @@ async function onSave(): Promise<void> {
     align-items: flex-start;
     gap: 50px;
     margin-bottom: 6px;
+}
+
+.audio-meta-edit-modal__ext {
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid $border-subtle;
+    background: rgba(255, 196, 64, 0.06);
+}
+
+.audio-meta-edit-modal__ext-title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    opacity: 0.72;
+}
+
+.audio-meta-edit-modal__dl-ext {
+    grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.audio-meta-edit-modal__ext-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.audio-meta-edit-modal__ext-value {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
 }
 
 .audio-meta-edit-modal__cover-block {

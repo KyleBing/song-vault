@@ -5,7 +5,10 @@ import {
     tagArtistFromFilenameArtist,
     tagArtistHasSeparatorIssues
 } from './artistSeparatorRules'
-import type { AudioFileMetaInfo } from './audioFileMeta'
+import {
+    nativeArtistTitleFromMeta,
+    type AudioFileMetaInfo
+} from './audioFileMeta'
 import {
     isEditableAudioMetaPath,
     filenameStemHasTrailingUnderscore,
@@ -21,6 +24,8 @@ export type MetaTagMismatchReason = 'artist' | 'title' | 'both'
 export type MetaTagMismatchIssue =
     | 'artistContent'
     | 'titleContent'
+    | 'extArtistContent'
+    | 'extTitleContent'
     | 'fileArtistSep'
     | 'tagArtistSep'
     | 'fileUnderscore'
@@ -33,9 +38,15 @@ export interface MetaTagMismatchItem {
     /** 从文件名解析 */
     fileArtist: string
     fileTitle: string
-    /** 文件内标签 */
+    /** 文件内标签（common 层） */
     tagArtist: string
     tagTitle: string
+    /** Vorbis / ID3 原生标签中的艺人、标题 */
+    extTagArtist: string
+    extTagTitle: string
+    /** 扩展艺人 / 曲名是否与文件名不一致（扫描时单独判定） */
+    extArtistMismatchFilename: boolean
+    extTitleMismatchFilename: boolean
     /** 需处理的问题类型 */
     issues: MetaTagMismatchIssue[]
     /** @deprecated 由 issues 推导，供旧逻辑兼容 */
@@ -94,10 +105,30 @@ export function artistTagMatchesFilename(
     return fileAndTagArtistsMatch(filenameArtist, tagArtist)
 }
 
+/** 扩展 / Vorbis 原生艺人是否与文件名一致（空扩展视为不参与比较） */
+export function extArtistMatchesFilename(
+    filenameArtist: string,
+    extTagArtist: string
+): boolean {
+    if (!extTagArtist.trim()) return true
+    return fileAndTagArtistsMatch(filenameArtist, extTagArtist)
+}
+
+/** 扩展 / Vorbis 原生曲名是否与文件名一致（空扩展视为不参与比较） */
+export function extTitleMatchesFilename(
+    filenameTitle: string,
+    extTagTitle: string
+): boolean {
+    if (!extTagTitle.trim()) return true
+    return stringsEqual(filenameTitle, extTagTitle)
+}
+
 export const META_TAG_MISMATCH_ISSUE_LABELS: Record<MetaTagMismatchIssue, string> =
     {
-        artistContent: '艺人内容',
-        titleContent: '曲名',
+        artistContent: '标签艺人',
+        titleContent: '标签曲名',
+        extArtistContent: '扩展艺人',
+        extTitleContent: '扩展曲名',
         fileArtistSep: '文件名分隔',
         tagArtistSep: '标签分隔',
         fileUnderscore: '文件名下划线',
@@ -109,12 +140,14 @@ export function issuesToReasons(
 ): MetaTagMismatchReason[] {
     const artist =
         issues.includes('artistContent') ||
+        issues.includes('extArtistContent') ||
         issues.includes('fileArtistSep') ||
         issues.includes('tagArtistSep') ||
         issues.includes('fileUnderscore') ||
         issues.includes('tagUnderscore')
     const title =
         issues.includes('titleContent') ||
+        issues.includes('extTitleContent') ||
         issues.includes('fileUnderscore') ||
         issues.includes('tagUnderscore')
     if (artist && title) return ['both']
@@ -125,7 +158,9 @@ export function issuesToReasons(
 
 function buildIssues(params: {
     artistContentMismatch: boolean
+    extArtistContentMismatch: boolean
     titleMismatch: boolean
+    extTitleContentMismatch: boolean
     fileArtistSep: boolean
     tagArtistSep: boolean
     fileUnderscore: boolean
@@ -133,7 +168,9 @@ function buildIssues(params: {
 }): MetaTagMismatchIssue[] {
     const out: MetaTagMismatchIssue[] = []
     if (params.artistContentMismatch) out.push('artistContent')
+    if (params.extArtistContentMismatch) out.push('extArtistContent')
     if (params.titleMismatch) out.push('titleContent')
+    if (params.extTitleContentMismatch) out.push('extTitleContent')
     if (params.fileArtistSep) out.push('fileArtistSep')
     if (params.tagArtistSep) out.push('tagArtistSep')
     if (params.fileUnderscore) out.push('fileUnderscore')
@@ -154,24 +191,46 @@ export function analyzeMetaTagMismatch(
 
     const tagArtist = tagArtistFromCommon(meta.common)
     const tagTitle = tagTitleFromCommon(meta.common)
+    const { artist: extTagArtist, title: extTagTitle } =
+        nativeArtistTitleFromMeta(meta)
 
-    const artistContentMismatch = !fileAndTagArtistsMatch(
+    const tagArtistContentMismatch = !fileAndTagArtistsMatch(
         parsed.artist,
         tagArtist
     )
-    const titleMismatch = !stringsEqual(parsed.title, tagTitle)
+    const extArtistMismatchFilename = !extArtistMatchesFilename(
+        parsed.artist,
+        extTagArtist
+    )
+    const extArtistContentMismatch =
+        Boolean(extTagArtist.trim()) && extArtistMismatchFilename
+    const tagTitleMismatch = !stringsEqual(parsed.title, tagTitle)
+    const extTitleMismatchFilename = !extTitleMatchesFilename(
+        parsed.title,
+        extTagTitle
+    )
+    const extTitleContentMismatch =
+        Boolean(extTagTitle.trim()) && extTitleMismatchFilename
+
     const fileArtistSep = fileArtistHasSeparatorIssues(parsed.artist)
-    const tagArtistSep = tagArtistHasSeparatorIssues(tagArtist)
+    const tagArtistSep =
+        tagArtistHasSeparatorIssues(tagArtist) ||
+        Boolean(extTagArtist && tagArtistHasSeparatorIssues(extTagArtist))
     const fileUnderscore =
         filenameStemHasTrailingUnderscore(filePath) ||
         fieldHasEdgeUnderscore(parsed.title) ||
         fieldHasEdgeUnderscore(parsed.artist)
     const tagUnderscore =
-        fieldHasEdgeUnderscore(tagTitle) || fieldHasEdgeUnderscore(tagArtist)
+        fieldHasEdgeUnderscore(tagTitle) ||
+        fieldHasEdgeUnderscore(tagArtist) ||
+        Boolean(extTagTitle && fieldHasEdgeUnderscore(extTagTitle)) ||
+        Boolean(extTagArtist && fieldHasEdgeUnderscore(extTagArtist))
 
     const issues = buildIssues({
-        artistContentMismatch,
-        titleMismatch,
+        artistContentMismatch: tagArtistContentMismatch,
+        extArtistContentMismatch,
+        titleMismatch: tagTitleMismatch,
+        extTitleContentMismatch,
         fileArtistSep,
         tagArtistSep,
         fileUnderscore,
@@ -186,6 +245,10 @@ export function analyzeMetaTagMismatch(
         fileTitle: parsed.title,
         tagArtist,
         tagTitle,
+        extTagArtist,
+        extTagTitle,
+        extArtistMismatchFilename,
+        extTitleMismatchFilename,
         issues,
         reasons: issuesToReasons(issues),
         targetTagArtist: tagArtistFromFilenameArtist(parsed.artist),

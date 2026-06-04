@@ -28,6 +28,8 @@ export type {
 export {
     analyzeMetaTagMismatch,
     artistTagMatchesFilename,
+    extArtistMatchesFilename,
+    extTitleMatchesFilename,
     countItemsByIssue,
     META_TAG_MISMATCH_ISSUE_LABELS,
     normalizeFilenameArtist,

@@ -153,3 +153,68 @@ export function recordFromMetaObject(
   }
   return out
 }
+
+/** 原生标签完整 ID（如 vorbis:ARTIST）→ 键名部分 */
+export function nativeTagIdFromFullId(fullId: string): string {
+  const sep = fullId.indexOf(':')
+  return sep >= 0 ? fullId.slice(sep + 1) : fullId
+}
+
+const NATIVE_ARTIST_TAG_IDS = new Set(['ARTIST', 'ARTISTS', 'TPE1'])
+const NATIVE_TITLE_TAG_IDS = new Set(['TITLE', 'TIT2'])
+
+/** 从 Vorbis / ID3 等原生标签读取艺人、标题（`; ` 连接多值 ARTIST） */
+export function nativeArtistTitleFromMeta(meta: AudioFileMetaInfo): {
+  artist: string
+  title: string
+} {
+  const artistParts: string[] = []
+  const artistSeen = new Set<string>()
+  let title = ''
+  for (const row of meta.native ?? []) {
+    const tagId = nativeTagIdFromFullId(row.id).toUpperCase()
+    const value = row.value.trim()
+    if (!value) continue
+    if (NATIVE_ARTIST_TAG_IDS.has(tagId)) {
+      for (const part of splitMetaDisplayValues(value)) {
+        const trimmed = part.trim()
+        if (!trimmed) continue
+        const key = trimmed.toLowerCase()
+        if (artistSeen.has(key)) continue
+        artistSeen.add(key)
+        artistParts.push(trimmed)
+      }
+    } else if (!title && NATIVE_TITLE_TAG_IDS.has(tagId)) {
+      title = value
+    }
+  }
+  return {
+    artist: artistParts.length > 0 ? artistParts.join(META_MULTI_VALUE_SEP) : '',
+    title
+  }
+}
+
+function normalizeMetaCompare(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/** 原生与 common 层艺人 / 标题是否实质相同 */
+export function nativeArtistTitleMatchesCommon(meta: AudioFileMetaInfo): {
+  artistMatches: boolean
+  titleMatches: boolean
+} {
+  const common = meta.common ?? {}
+  const native = nativeArtistTitleFromMeta(meta)
+  const commonArtist = (common.artist || common.artists || '').trim()
+  const commonTitle = (common.title || '').trim()
+  return {
+    artistMatches:
+      !native.artist ||
+      !commonArtist ||
+      normalizeMetaCompare(native.artist) === normalizeMetaCompare(commonArtist),
+    titleMatches:
+      !native.title ||
+      !commonTitle ||
+      normalizeMetaCompare(native.title) === normalizeMetaCompare(commonTitle)
+  }
+}
