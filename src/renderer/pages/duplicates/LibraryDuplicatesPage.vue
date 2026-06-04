@@ -635,7 +635,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                     >
                         <p class="library-duplicates-empty__title">未发现重复</p>
                         <p class="library-duplicates-empty__desc">
-                            该目录内没有同名且路径不同的音频
+                            该目录内没有同名、编号副本（如 A 与 A(1)）且路径不同的重复音频
                         </p>
                     </div>
 

@@ -67,7 +67,11 @@ function onMemberContextMenu(member: DuplicateMember, e: MouseEvent): void {
     </div>
 
     <div class="dup-members" @click.stop>
-        <NRadioGroup :value="keepKey" @update:value="onKeepKeyUpdate">
+        <NRadioGroup
+            class="dup-member-radio-group"
+            :value="keepKey"
+            @update:value="onKeepKeyUpdate"
+        >
             <NRadio
                 v-for="member in group.members"
                 :key="duplicateMemberKey(member.relativePath)"
@@ -133,16 +137,32 @@ function onMemberContextMenu(member: DuplicateMember, e: MouseEvent): void {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 6px 8px 8px 40px;
+    padding: 6px 8px 8px 12px;
     border-bottom: 1px solid $border-subtle;
     background: var(--app-surface-raised);
 }
 
+.dup-member-radio-group {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+}
+
 .dup-member-radio {
     align-items: flex-start;
+    width: 100%;
+    margin: 0;
+
+    :deep(.n-radio) {
+        width: 100%;
+        align-items: flex-start;
+    }
 
     :deep(.n-radio__label) {
         min-width: 0;
+        flex: 1;
     }
 }
 
@@ -151,6 +171,7 @@ function onMemberContextMenu(member: DuplicateMember, e: MouseEvent): void {
     align-items: flex-start;
     gap: 8px;
     min-width: 0;
+    width: 100%;
 }
 
 .dup-member-radio__label {

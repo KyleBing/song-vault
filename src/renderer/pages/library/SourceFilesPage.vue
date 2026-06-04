@@ -16,6 +16,8 @@ import {
   ArrowForwardOutline,
   CreateOutline,
   FolderOpen,
+  LayersOutline,
+  ListOutline,
   Refresh,
   SearchOutline,
   TrashOutline
@@ -104,6 +106,8 @@ const { fileNameFilter, filterByFileName } = useDirFileNameFilter()
 
 const sortKey = ref<DirFileSortKey>('fileName')
 const sortOrder = ref<DirFileSortOrder>('asc')
+/** 文件列表是否包含选中目录下全部子文件夹中的音频 */
+const includeSubdirs = ref(false)
 
 const sortKeyOptions = computed(() =>
   buildSortKeyOptions('source', props.fileListColumns)
@@ -296,7 +300,8 @@ async function loadAudioFiles(dirPath: string): Promise<void> {
     const items = await window.electronAPI.listDirAudioFiles({
       dirPath,
       browseRoots: browseRoots.value,
-      pathFilterRules: filtersForApi.value
+      pathFilterRules: filtersForApi.value,
+      includeSubdirs: includeSubdirs.value
     })
     let normalized = items.map(normalizeDirAudioFileItem)
     const columnIds = columnsForKind(props.fileListColumns, 'source')
@@ -415,6 +420,13 @@ const selectedDirStatsText = computed(() => {
 const canManageDir = computed(
   () => !!selectedDir.value && dirAccessible(selectedDir.value)
 )
+
+function toggleIncludeSubdirs(): void {
+  includeSubdirs.value = !includeSubdirs.value
+  if (selectedDir.value && dirAccessible(selectedDir.value)) {
+    void loadAudioFiles(selectedDir.value)
+  }
+}
 
 function openSelectedDirInFileManager(): void {
   void openDirInFileManager(selectedDir.value, message)
@@ -751,6 +763,29 @@ async function refreshLibraryTree(): Promise<void> {
           <div class="head-actions">
             <NTooltip>
               <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :disabled="!selectedDir"
+                  :class="{ 'head-action--active': includeSubdirs }"
+                  @click="toggleIncludeSubdirs"
+                >
+                  <template #icon>
+                    <NIcon :size="16">
+                      <LayersOutline v-if="includeSubdirs" />
+                      <ListOutline v-else />
+                    </NIcon>
+                  </template>
+                </NButton>
+              </template>
+              {{
+                includeSubdirs
+                  ? '含全部子文件夹（点击切换为仅当前目录）'
+                  : '仅当前目录（点击切换为含全部子文件夹）'
+              }}
+            </NTooltip>
+            <NTooltip>
+              <template #trigger>
                 <NButton quaternary size="tiny" @click="refreshAll">
                   <template #icon>
                     <NIcon :size="16"><Refresh /></NIcon>
@@ -850,9 +885,11 @@ async function refreshLibraryTree(): Promise<void> {
             <template #trigger>
               <p class="dir-stats">{{ selectedDirStatsText }}</p>
             </template>
-            当前目录（不含子文件夹）：{{ selectedDirStats.count }} 个音频，
-            合计 {{ selectedDirStats.sizeLabel }}，
-            {{ selectedDirStats.lrcCount }} 个有同级歌词
+            {{
+              includeSubdirs
+                ? `当前目录及全部子文件夹：${selectedDirStats.count} 个音频，合计 ${selectedDirStats.sizeLabel}，${selectedDirStats.lrcCount} 个有同级歌词`
+                : `当前目录（不含子文件夹）：${selectedDirStats.count} 个音频，合计 ${selectedDirStats.sizeLabel}，${selectedDirStats.lrcCount} 个有同级歌词`
+            }}
           </NTooltip>
         </footer>
         <AudioMetaPanel :file-path="metaPanelFilePath" />
@@ -1069,6 +1106,11 @@ async function refreshLibraryTree(): Promise<void> {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.head-action--active {
+  color: var(--n-primary-color);
+  background: rgba(110, 168, 254, 0.14);
 }
 
 .files-table-wrap {

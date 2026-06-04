@@ -114,6 +114,16 @@ const themeOverrides: GlobalThemeOverrides = {
   },
   Card: {
     color: 'transparent'
+  },
+  Popover: {
+    fontSize: '12px'
+  },
+  Tooltip: {
+    peers: {
+      Popover: {
+        fontSize: '12px'
+      }
+    }
   }
 }
 

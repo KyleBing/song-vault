@@ -1,5 +1,5 @@
 /**
- * 乐库内重复音频扫描与删除（同名、不同相对路径；大小可相同或不同）。
+ * 乐库内重复音频扫描与删除（同名或 Windows/macOS 编号副本如 A(1)；不同相对路径；大小可相同或不同）。
  */
 
 import fs from 'fs'
@@ -41,14 +41,20 @@ function resolveRoot(root: string): string {
     return check.path
 }
 
-function fileNameKey(entry: SyncFileEntry): string {
-    return entry.fileName.toLowerCase()
-}
-
 function parseMacOsDuplicateBase(basename: string): string | null {
     const m = basename.match(/^(.+)\((\d+)\)$/i)
     if (!m) return null
     return m[1].toLowerCase()
+}
+
+function canonicalFileBaseName(basename: string): string {
+    return parseMacOsDuplicateBase(basename) ?? basename.toLowerCase()
+}
+
+function duplicateGroupKey(entry: SyncFileEntry): string {
+    const parsed = path.parse(entry.fileName)
+    const ext = parsed.ext.replace(/^\./, '').toLowerCase()
+    return `${ext}:${canonicalFileBaseName(parsed.name)}`
 }
 
 function pickSuggestedKeep(members: DuplicateMember[]): DuplicateMember {
@@ -69,7 +75,7 @@ function findDuplicateGroups(fileMap: Map<string, SyncFileEntry>): DuplicateGrou
     const byFileName = new Map<string, SyncFileEntry[]>()
 
     for (const entry of fileMap.values()) {
-        const key = fileNameKey(entry)
+        const key = duplicateGroupKey(entry)
         const list = byFileName.get(key) ?? []
         list.push(entry)
         byFileName.set(key, list)
@@ -90,7 +96,7 @@ function findDuplicateGroups(fileMap: Map<string, SyncFileEntry>): DuplicateGrou
 
         groups.push({
             id: key,
-            fileName: entries[0].fileName,
+            fileName: suggested.fileName,
             size: suggested.size,
             members,
             suggestedKeepKey: duplicateMemberKey(suggested.relativePath)
@@ -147,7 +153,7 @@ function buildStats(
     }
 }
 
-/** 扫描乐库内的重复音频（同名、相对路径不同；大小可相同或不同） */
+/** 扫描乐库内的重复音频（同名或 A / A(1) 编号副本；相对路径不同；大小可相同或不同） */
 export async function scanLibraryDuplicates(
     params: ScanLibraryDuplicatesParams
 ): Promise<ScanLibraryDuplicatesResult> {

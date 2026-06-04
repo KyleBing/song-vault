@@ -145,6 +145,8 @@ export interface ListSourceDirChildrenParams extends BrowseListParams {
 
 export interface ListDirAudioFilesParams extends BrowseListParams {
   dirPath: string
+  /** 为 true 时列出全部子目录中的音频；默认仅当前目录 */
+  includeSubdirs?: boolean
 }
 
 export interface BrowseCreateDirParams extends BrowseRootsParams {
@@ -326,7 +328,8 @@ function scanDirAudioFiles(
   dirPath: string,
   pathFilterRules: PathFilterRule[],
   items: DirAudioFileItem[],
-  isRoot: boolean
+  isRoot: boolean,
+  includeSubdirs: boolean
 ): void {
   let entries: fs.Dirent[]
   try {
@@ -385,12 +388,14 @@ function scanDirAudioFiles(
     })
   )
 
-  for (const sub of subdirs) {
-    scanDirAudioFiles(sub, pathFilterRules, items, false)
+  if (includeSubdirs) {
+    for (const sub of subdirs) {
+      scanDirAudioFiles(sub, pathFilterRules, items, false, includeSubdirs)
+    }
   }
 }
 
-/** 列出目录及其子目录下的全部音频文件（仅 readdir，不 stat；同级 LRC 按各目录内匹配） */
+/** 列出目录下的音频文件（可选包含全部子目录；同级 LRC 按各目录内匹配） */
 export function listDirAudioFiles(
   params: ListDirAudioFilesParams
 ): DirAudioFileItem[] {
@@ -403,7 +408,13 @@ export function listDirAudioFiles(
   }
 
   const items: DirAudioFileItem[] = []
-  scanDirAudioFiles(dirPath, params.pathFilterRules, items, true)
+  scanDirAudioFiles(
+    dirPath,
+    params.pathFilterRules,
+    items,
+    true,
+    params.includeSubdirs === true
+  )
   return items
 }
 

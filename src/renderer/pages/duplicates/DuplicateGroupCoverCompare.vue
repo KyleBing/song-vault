@@ -42,6 +42,14 @@ const keepKey = computed(() => {
     )
 })
 
+function memberKey(member: { relativePath: string }): string {
+    return duplicateMemberKey(member.relativePath)
+}
+
+function isKeepMember(member: { relativePath: string }): boolean {
+    return memberKey(member) === keepKey.value
+}
+
 async function loadCovers(): Promise<void> {
     const current = payload.value
     if (!current) {
@@ -135,7 +143,7 @@ onUnmounted(() => {
                     <div class="dup-cover-compare-head__text">
                         <h2 class="dup-cover-compare-title">{{ title }}</h2>
                         <p class="dup-cover-compare-subtitle">
-                            {{ members.length }} 份重复 · 点击卡片选择要保留的一份
+                            {{ members.length }} 份重复 · 并排对比封面与参数，点击选择要保留的一份
                         </p>
                     </div>
                     <button
@@ -148,25 +156,37 @@ onUnmounted(() => {
                     </button>
                 </header>
 
-                <div class="dup-cover-compare-scroll" role="listbox" aria-label="选择要保留的副本">
+                <div
+                    class="dup-cover-compare-scroll"
+                    :class="{
+                        'dup-cover-compare-scroll--few': members.length <= 2
+                    }"
+                    role="listbox"
+                    aria-label="选择要保留的副本"
+                >
                     <button
                         v-for="member in members"
-                        :key="duplicateMemberKey(member.relativePath)"
+                        :key="memberKey(member)"
                         type="button"
                         class="dup-cover-compare-card-btn"
                         :class="{
-                            'dup-cover-compare-card-btn--keep':
-                                duplicateMemberKey(member.relativePath) === keepKey
+                            'dup-cover-compare-card-btn--keep': isKeepMember(member)
                         }"
                         role="option"
-                        :aria-selected="
-                            duplicateMemberKey(member.relativePath) === keepKey
-                        "
-                        @click="
-                            selectKeep(duplicateMemberKey(member.relativePath))
-                        "
+                        :aria-selected="isKeepMember(member)"
+                        @click="selectKeep(memberKey(member))"
                     >
                         <article class="dup-cover-compare-card">
+                            <div class="dup-cover-compare-card__head">
+                                <span
+                                    class="dup-cover-compare-card__badge dup-cover-compare-card__badge--keep"
+                                    :class="{
+                                        'dup-cover-compare-card__badge--hidden': !isKeepMember(member)
+                                    }"
+                                    aria-hidden="true"
+                                >保留</span>
+                            </div>
+
                             <div class="dup-cover-compare-card__cover-wrap">
                                 <img
                                     v-if="coverByPath[member.relativePath]"
@@ -190,15 +210,17 @@ onUnmounted(() => {
                                 </p>
                             </div>
 
-                            <p
-                                class="dup-cover-compare-card__path"
-                                :title="member.relativePath"
-                            >
-                                {{ member.relativePath }}
-                            </p>
-                            <p class="dup-cover-compare-card__metrics">
-                                {{ duplicateMemberMetricsLabel(member) }}
-                            </p>
+                            <div class="dup-cover-compare-card__info">
+                                <p
+                                    class="dup-cover-compare-card__path"
+                                    :title="member.relativePath"
+                                >
+                                    {{ member.relativePath }}
+                                </p>
+                                <p class="dup-cover-compare-card__metrics">
+                                    {{ duplicateMemberMetricsLabel(member) }}
+                                </p>
+                            </div>
                         </article>
                     </button>
                 </div>
@@ -300,20 +322,28 @@ onUnmounted(() => {
 
 .dup-cover-compare-scroll {
     display: flex;
+    flex-direction: row;
     flex-wrap: nowrap;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 18px;
-    padding: 18px 20px 20px;
-    overflow-x: hidden;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px 20px 20px;
+    overflow-x: auto;
     overflow-y: auto;
     min-width: 0;
+    scroll-snap-type: x proximity;
+
+    &--few {
+        justify-content: center;
+    }
 }
 
 .dup-cover-compare-card-btn {
-    flex: 0 1 248px;
-    min-width: 0;
+    flex: 0 0 auto;
+    width: 248px;
+    min-width: 248px;
     max-width: 248px;
+    scroll-snap-align: start;
     margin: 0;
     padding: 0;
     border: none;
@@ -324,30 +354,59 @@ onUnmounted(() => {
     cursor: pointer;
 
     &--keep .dup-cover-compare-card {
-        border-color: rgba(34, 197, 94, 0.45);
-        background: rgba(34, 197, 94, 0.08);
+        border-color: rgba(34, 197, 94, 0.55);
+        background: rgba(34, 197, 94, 0.1);
+        box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.18);
     }
 
     &:hover:not(.dup-cover-compare-card-btn--keep) .dup-cover-compare-card {
-        border-color: rgba(110, 168, 254, 0.35);
+        border-color: rgba(110, 168, 254, 0.4);
     }
 
     &--keep:hover .dup-cover-compare-card {
-        border-color: rgba(34, 197, 94, 0.55);
+        border-color: rgba(34, 197, 94, 0.65);
     }
 }
 
 .dup-cover-compare-card {
     width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px 12px 12px;
     border-radius: 8px;
     border: 1px solid $border-subtle;
     background: var(--app-surface-raised);
     box-sizing: border-box;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dup-cover-compare-card__head {
+    display: flex;
+    align-items: center;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.dup-cover-compare-card__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+
+    &--keep {
+        color: rgb(22, 163, 74);
+        background: rgba(34, 197, 94, 0.16);
+    }
+
+    &--hidden {
+        visibility: hidden;
+    }
 }
 
 .dup-cover-compare-card__cover-wrap {
@@ -359,10 +418,12 @@ onUnmounted(() => {
 }
 
 .dup-cover-compare-card__cover {
-    width: 100%;
+    width: 220px;
     max-width: 220px;
+    min-width: 220px;
     aspect-ratio: 1;
     height: auto;
+    flex-shrink: 0;
     object-fit: cover;
     border-radius: 8px;
     background: rgba(128, 128, 128, 0.12);
@@ -382,9 +443,21 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 220px;
+    max-width: 220px;
+    min-width: 220px;
+    aspect-ratio: 1;
+    flex-shrink: 0;
     background: var(--app-cover-placeholder-bg);
     border: 1px solid $border-subtle;
     color: var(--app-cover-placeholder-icon);
+}
+
+.dup-cover-compare-card__info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
 }
 
 .dup-cover-compare-card__path {
@@ -394,6 +467,10 @@ onUnmounted(() => {
     line-height: 1.35;
     word-break: break-all;
     opacity: 0.9;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
 }
 
 .dup-cover-compare-card__metrics {
