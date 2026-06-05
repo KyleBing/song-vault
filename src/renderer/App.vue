@@ -58,7 +58,7 @@ const { unlocked: advancedUnlocked } = storeToRefs(advancedUnlock)
 
 type AppView = AppNavigateTarget
 
-const activeView = ref<AppView>('lrc')
+const activeView = ref<AppView>('library')
 
 /** 从设置页等跳转到工作台 */
 function openView(view: 'lrc' | 'decode' | 'library'): void {
@@ -271,7 +271,7 @@ onUnmounted(() => {
 watch(advancedUnlocked, (ok, prev) => {
   if (ok && prev === false) onAdvancedUnlocked()
   else if (!ok && activeView.value === 'decode') {
-    activeView.value = 'lrc'
+    activeView.value = 'library'
   }
 })
 
@@ -395,7 +395,7 @@ watch(
                 <NButton
                   block
                   size="large"
-                  type="success"
+                  type="default"
                   :disabled="!canPreview || loading"
                   @click="preview"
                 >
@@ -416,6 +416,25 @@ watch(
                   </template>
                   执行复制
                 </NButton>
+
+                <section
+                  v-if="!result && !loading"
+                  class="lrc-usage-guide"
+                  aria-label="使用说明"
+                >
+                  <h3 class="lrc-usage-guide__title">用途</h3>
+                  <p class="lrc-usage-guide__text">
+                    将 LRC 源文件夹中的歌词匹配并复制到乐库音频所在目录（与音频同级同名），实现歌词「归位」。还可发现无对应音频的多余歌词，以及 macOS 编号重复的冗余音频。
+                  </p>
+                  <h3 class="lrc-usage-guide__title">使用说明</h3>
+                  <ol class="lrc-usage-guide__list">
+                    <li>在「设置 → 路径」中配置「音频搜索目标」（乐库目录）与「LRC 源文件夹」。</li>
+                    <li>点击「预览匹配」扫描目标目录中的音频与 LRC 源的对应关系；大库扫描需一些时间，进度见左下角全局进度条。</li>
+                    <li>扫描完成后，右侧列表按状态分类：已匹配、待复制、缺源、待选源等；「待选源」需在列表中为每首选择具体源歌词。</li>
+                    <li>确认无误后点击「执行复制」，将歌词复制到音频同级目录（不删除 LRC 源文件）。</li>
+                    <li>「多余」页可勾选并删除无对应音频的歌词或重复音频副本。</li>
+                  </ol>
+                </section>
               </section>
 
               <ScanAlertsPanel
@@ -452,9 +471,9 @@ watch(
                 <p class="placeholder-desc">请检查搜索目标文件夹是否正确</p>
               </div>
               <div v-else class="pane-placeholder">
-                <p class="placeholder-title">扫描结果</p>
+                <p class="placeholder-title">尚未扫描</p>
                 <p class="placeholder-desc">
-                  在「设置」中配置文件夹后，点击「预览匹配」在此查看列表
+                  请在左侧查看使用说明，配置文件夹后点击「预览匹配」
                 </p>
               </div>
             </NSpin>
@@ -531,6 +550,43 @@ watch(
   flex-direction: column;
   gap: 10px;
   padding-top: 4px;
+}
+
+.lrc-usage-guide {
+  padding: 12px 14px;
+  border-radius: $radius-panel;
+  border: 1px solid $border-subtle;
+  background: $surface-panel;
+}
+
+.lrc-usage-guide__title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.65;
+
+  &:not(:first-child) {
+    margin-top: 12px;
+  }
+}
+
+.lrc-usage-guide__text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.55;
+}
+
+.lrc-usage-guide__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.55;
+
+  li + li {
+    margin-top: 6px;
+  }
 }
 
 .app-main {

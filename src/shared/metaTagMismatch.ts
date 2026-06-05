@@ -63,7 +63,7 @@ export interface MetaTagMismatchItem {
     reasons: MetaTagMismatchReason[]
     /** 按规则写入标签时的目标艺人（文件名非法时为 null） */
     targetTagArtist: string | null
-    /** 是否可写入标签（mp3 / flac） */
+    /** 是否可写入标签（mp3 / flac / ogg / m4a 等） */
     editable: boolean
     /** 扩展原生层重复的标签键（如 ARTIST、ALBUM） */
     extDuplicateKeys: string[]

@@ -422,6 +422,11 @@ export function isVorbisNativeTag(fullId: string): boolean {
   return nativeTagFormatId(fullId) === 'vorbis'
 }
 
+export function isItunesNativeTag(fullId: string): boolean {
+  const formatId = nativeTagFormatId(fullId)
+  return formatId === 'itunes' || formatId === 'mp4'
+}
+
 /** Vorbis 专用 Tab：仅展示键名（不含「Vorbis ·」前缀） */
 export function labelForVorbisNativeTag(fullId: string): string {
   return labelForNativeTagId(nativeTagParts(fullId).tagId)

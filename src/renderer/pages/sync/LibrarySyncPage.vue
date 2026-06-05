@@ -1407,6 +1407,26 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                             </template>
                             扫描对比
                         </NButton>
+
+                        <section
+                            v-if="!compareResult && !loading"
+                            class="sync-usage-guide"
+                            aria-label="使用说明"
+                        >
+                            <h3 class="sync-usage-guide__title">用途</h3>
+                            <p class="sync-usage-guide__text">
+                                对比左右两个乐库目录中的音频差异（相同、仅一侧有、大小不同、已移动），并支持跨库复制或在同一乐库内移动对齐路径；同步时同名歌词会一并处理。
+                            </p>
+                            <h3 class="sync-usage-guide__title">使用说明</h3>
+                            <ol class="sync-usage-guide__list">
+                                <li>在「设置 → 同步」中指定左右两个乐库根目录（可设置别名便于识别）。</li>
+                                <li>点击「扫描对比」递归扫描两侧目录；大库扫描需一些时间，进度见左下角全局进度条。</li>
+                                <li>扫描完成后，左侧显示对比统计，右侧树形列表展示差异项；勾选后可用「复制到左侧 / 右侧」批量同步。</li>
+                                <li>「已移动」差异在同一乐库内移动文件对齐路径；「仅一侧有」则复制到另一侧同名位置。</li>
+                                <li>可勾选差异项后「删除选中」，将删除左右乐库中对应音频与同名歌词（不可恢复）。</li>
+                            </ol>
+                        </section>
+
                         <p
                             v-if="compareResult"
                             class="sync-selected-count"
@@ -1592,7 +1612,9 @@ async function deleteSelectedSyncFiles(): Promise<void> {
 
                     <div v-else-if="!loading" class="library-sync-empty">
                         <p class="library-sync-empty__title">尚未对比</p>
-                        <p class="library-sync-empty__desc">点击左侧「扫描对比」。</p>
+                        <p class="library-sync-empty__desc">
+                            请在左侧查看使用说明，配置乐库目录后点击「扫描对比」
+                        </p>
                     </div>
                 </NSpin>
                 <SelectionPathFooter :path="metaPanelFilePath" />
@@ -1972,6 +1994,43 @@ async function deleteSelectedSyncFiles(): Promise<void> {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.sync-usage-guide {
+    padding: 12px 14px;
+    border-radius: $radius-panel;
+    border: 1px solid $border-subtle;
+    background: $surface-panel;
+}
+
+.sync-usage-guide__title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.65;
+
+    &:not(:first-child) {
+        margin-top: 12px;
+    }
+}
+
+.sync-usage-guide__text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.55;
+    opacity: 0.55;
+}
+
+.sync-usage-guide__list {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 11px;
+    line-height: 1.55;
+    opacity: 0.55;
+
+    li + li {
+        margin-top: 6px;
+    }
 }
 
 .sync-copy-actions {

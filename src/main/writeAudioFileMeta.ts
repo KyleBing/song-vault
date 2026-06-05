@@ -4,13 +4,17 @@ import { parseFile } from 'music-metadata'
 import { parseAudioFileSafe } from '../shared/parseAudioFileSafe'
 import {
     WriteMetaToFlac,
+    WriteMetaToM4a,
     WriteMetaToMp3,
+    WriteMetaToOgg,
     buildMusicMetaFromSources,
     type ExtraNativeTagWriteEntry,
     type FlacCoverWriteMode,
     type IMusicMeta
 } from '../unlock-music/decrypt/utils'
 import { validateFlacBufferStructure, locateFlacInBuffer } from '../unlock-music/decrypt/flacRewrite'
+import { validateOggBufferStructure } from '../unlock-music/decrypt/oggRewrite'
+import { validateMp4BufferStructure } from '../unlock-music/decrypt/mp4Rewrite'
 import {
     applyExtensionRowsToMusicMeta,
     buildExtendedNativeEditRows,
@@ -34,6 +38,17 @@ import {
     type WriteAudioMetaResult
 } from '../shared/audioMetaEdit'
 import { fileExtensionLower } from '../shared/pathLite'
+
+const EDITABLE_META_UNSUPPORTED_MSG =
+    '当前仅支持编辑 MP3 / FLAC / OGG / M4A 文件的标签'
+
+function isOggWritableExt(ext: string): boolean {
+    return ext === 'ogg' || ext === 'opus'
+}
+
+function isMp4WritableExt(ext: string): boolean {
+    return ext === 'm4a' || ext === 'mp4' || ext === 'alac'
+}
 
 /** ID3/APIC 嵌入上限，过大时跳过封面避免写入失败 */
 const MAX_EMBED_PICTURE_BYTES = 512 * 1024
@@ -136,6 +151,17 @@ function assertTaggedBufferLooksValid(
         if (head !== 'ID3' && !frameSync) {
             throw new Error('MP3 写入结果无效（缺少 ID3 或音频帧）')
         }
+        return
+    }
+
+    if (isOggWritableExt(ext)) {
+        validateOggBufferStructure(tagged)
+        return
+    }
+
+    if (isMp4WritableExt(ext)) {
+        validateMp4BufferStructure(tagged)
+        return
     }
 
     const minBytes = Math.max(4096, Math.floor(original.length * 0.5))
@@ -162,14 +188,30 @@ function writeTaggedBuffer(
                   replaceExisting,
                   extraTags
               )
-            : WriteMetaToFlac(
-                  audioData,
-                  meta,
-                  parsed,
-                  replaceExisting,
-                  extraTags,
-                  flacCoverMode
-              )
+            : isOggWritableExt(ext)
+              ? WriteMetaToOgg(
+                    audioData,
+                    meta,
+                    parsed,
+                    replaceExisting,
+                    extraTags
+                )
+              : isMp4WritableExt(ext)
+                ? WriteMetaToM4a(
+                      audioData,
+                      meta,
+                      parsed,
+                      replaceExisting,
+                      extraTags
+                  )
+                : WriteMetaToFlac(
+                    audioData,
+                    meta,
+                    parsed,
+                    replaceExisting,
+                    extraTags,
+                    flacCoverMode
+                )
     assertTaggedBufferLooksValid(audioData, tagged, ext)
     return tagged
 }
@@ -276,7 +318,7 @@ export async function writeFilenameTagsToFile(params: {
         return {
             ok: false,
             filePath: resolved,
-            message: '当前仅支持编辑 MP3 / FLAC 文件的标签'
+            message: EDITABLE_META_UNSUPPORTED_MSG
         }
     }
 
@@ -324,7 +366,7 @@ export async function writeAudioFileMeta(params: {
         return {
             ok: false,
             filePath: resolved,
-            message: '当前仅支持编辑 MP3 / FLAC 文件的标签'
+            message: EDITABLE_META_UNSUPPORTED_MSG
         }
     }
 
@@ -344,6 +386,28 @@ export async function writeAudioFileMeta(params: {
                     filePath: resolved,
                     message:
                         '文件已损坏或无法识别为 FLAC，请从备份恢复后再编辑'
+                }
+            }
+        } else if (isOggWritableExt(ext)) {
+            try {
+                validateOggBufferStructure(audioData)
+            } catch {
+                return {
+                    ok: false,
+                    filePath: resolved,
+                    message:
+                        '文件已损坏或无法识别为 OGG，请从备份恢复后再编辑'
+                }
+            }
+        } else if (isMp4WritableExt(ext)) {
+            try {
+                validateMp4BufferStructure(audioData)
+            } catch {
+                return {
+                    ok: false,
+                    filePath: resolved,
+                    message:
+                        '文件已损坏或无法识别为 M4A，请从备份恢复后再编辑'
                 }
             }
         }
@@ -391,7 +455,7 @@ export async function writeAudioFileMeta(params: {
             if (typeof meta.picture === 'object' && meta.picture) {
                 meta.picture = normalizeEmbedPicture(meta.picture)
             }
-        } else if (ext === 'flac') {
+        } else if (ext === 'flac' || isOggWritableExt(ext) || isMp4WritableExt(ext)) {
             meta = { ...meta, picture: undefined }
         } else if (params.coverBase64 === undefined) {
             meta.picture = normalizeEmbedPicture(
@@ -404,7 +468,7 @@ export async function writeAudioFileMeta(params: {
         const extraRows = collectPersistedExtraTagRows(
             preparedExtended,
             params.otherExtra ?? [],
-            ext as 'mp3' | 'flac'
+            ext as 'mp3' | 'flac' | 'ogg' | 'opus' | 'm4a' | 'mp4' | 'alac'
         )
         const extraTags = extraTagEntriesFromRows(extraRows)
 
@@ -449,7 +513,7 @@ export async function cleanupDuplicateExtendedTagsToFile(params: {
         return {
             ok: false,
             filePath: resolved,
-            message: '当前仅支持编辑 MP3 / FLAC 文件的标签'
+            message: EDITABLE_META_UNSUPPORTED_MSG
         }
     }
 
@@ -496,7 +560,7 @@ export async function convertTraditionalExtendedTagsToFile(params: {
         return {
             ok: false,
             filePath: resolved,
-            message: '当前仅支持编辑 MP3 / FLAC 文件的标签'
+            message: EDITABLE_META_UNSUPPORTED_MSG
         }
     }
 

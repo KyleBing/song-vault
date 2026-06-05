@@ -8,6 +8,15 @@ import {
   flacVorbisField,
   type FlacCoverWriteMode
 } from './flacRewrite';
+import {
+  readUnmanagedVorbisCommentsFromBuffer,
+  rebuildOggWithVorbisComments
+} from './oggRewrite';
+import {
+  collectItunesIlstFields,
+  readUnmanagedItunesTagsFromBuffer,
+  rebuildMp4WithItunesTags
+} from './mp4Rewrite';
 
 export const FLAC_HEADER = [0x66, 0x4c, 0x61, 0x43];
 export const MP3_HEADER = [0x49, 0x44, 0x33];
@@ -727,6 +736,40 @@ export function WriteMetaToFlac(
   }
 
   return writer.save();
+}
+
+export function WriteMetaToOgg(
+  audioData: Buffer,
+  info: IMusicMeta,
+  original: IAudioMetadata,
+  replaceExisting = false,
+  extraTags: ExtraNativeTagWriteEntry[] = []
+): Buffer {
+  const meta = buildMusicMetaFromSources(info, original, replaceExisting);
+  const comments = collectFlacVorbisComments(meta, extraTags);
+
+  return rebuildOggWithVorbisComments(audioData, comments, {
+    preserveUnmanaged: replaceExisting
+      ? undefined
+      : readUnmanagedVorbisCommentsFromBuffer(audioData)
+  });
+}
+
+export function WriteMetaToM4a(
+  audioData: Buffer,
+  info: IMusicMeta,
+  original: IAudioMetadata,
+  replaceExisting = false,
+  extraTags: ExtraNativeTagWriteEntry[] = []
+): Buffer {
+  const meta = buildMusicMetaFromSources(info, original, replaceExisting);
+  const fields = collectItunesIlstFields(meta, extraTags);
+
+  return rebuildMp4WithItunesTags(audioData, fields, {
+    preserveUnmanaged: replaceExisting
+      ? undefined
+      : readUnmanagedItunesTagsFromBuffer(audioData)
+  });
 }
 
 /** 在已写入常规标签的 FLAC 上追加 / 覆盖非托管或额外标签 */

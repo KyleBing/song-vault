@@ -81,6 +81,26 @@ export async function readAudioFileMetrics(
   }
 }
 
+/** 仅读取编码名（不解析时长，供播放前快速检测） */
+export async function readAudioPlaybackCodec(
+  filePath: string
+): Promise<string | undefined> {
+  const ext = path.extname(filePath).slice(1).toLowerCase()
+  if (isDecryptableExtension(ext)) {
+    return undefined
+  }
+
+  try {
+    const meta = await parseFile(filePath, {
+      skipCovers: true,
+      duration: false
+    })
+    return pickString(meta.format.codec)
+  } catch {
+    return undefined
+  }
+}
+
 const DEFAULT_CONCURRENCY = 6
 
 /** 批量读取音频指标（限制并发） */

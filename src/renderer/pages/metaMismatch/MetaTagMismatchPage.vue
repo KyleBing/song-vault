@@ -1430,7 +1430,7 @@ async function writeTagsForRow(
 async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -1476,7 +1476,7 @@ async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void>
 async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -1522,7 +1522,7 @@ async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void
 async function fixExtArtistContentItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -1572,7 +1572,7 @@ async function fixExtArtistContentItems(items: MetaTagMismatchItem[]): Promise<v
 async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -1618,7 +1618,7 @@ async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void>
 async function fixExtTitleContentItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -1668,7 +1668,7 @@ async function fixExtTitleContentItems(items: MetaTagMismatchItem[]): Promise<vo
 async function fixExtTagDuplicateItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -1718,7 +1718,7 @@ async function fixExtTagDuplicateItems(items: MetaTagMismatchItem[]): Promise<vo
 async function fixExtTagTraditionalItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -2052,7 +2052,7 @@ async function fixTagUnderscoreItems(items: MetaTagMismatchItem[]): Promise<void
                 fieldHasEdgeUnderscore(row.extTagTitle))
     )
     if (!targets.length) {
-        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
         return
     }
 
@@ -2311,6 +2311,24 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                             开始扫描
                         </NButton>
 
+                        <section
+                            v-if="!scanResult && !loading"
+                            class="mtm-usage-guide"
+                            aria-label="使用说明"
+                        >
+                            <h3 class="mtm-usage-guide__title">用途</h3>
+                            <p class="mtm-usage-guide__text">
+                                核对「艺人 - 曲名」类文件名与内嵌标签（及扩展标签）是否一致，并按你的命名规范批量修正。可发现文件名 / 标签内容不一致、多作者分隔符不规范、首尾下划线、繁体字、扩展标签重复、MP3 文件尾 ID3v1 标签（常为 ????）等问题。
+                            </p>
+                            <h3 class="mtm-usage-guide__title">使用说明</h3>
+                            <ol class="mtm-usage-guide__list">
+                                <li>扫描源来自「设置 → 路径」中已配置的乐库 / 同步目录，请先在上方下拉框选择。</li>
+                                <li>点击「开始扫描」；大库扫描需一些时间，进度与用时见左下角全局进度条。</li>
+                                <li>扫描完成后，左侧可按问题类型筛选列表；勾选记录后点击对应「执行 / 繁转简 / 删除」批量处理，或选中单条后在下方元数据面板编辑。</li>
+                                <li>有选中时，批量操作仅处理已选中且符合该项的记录。</li>
+                            </ol>
+                        </section>
+
                         <section v-if="scanResult" class="mtm-stats-panel">
                             <div class="mtm-stats-grid">
                                 <div class="mtm-stats-grid__item">
@@ -2547,6 +2565,9 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                     </div>
                     <div v-else class="meta-mismatch-empty">
                         <p class="meta-mismatch-empty__title">尚未扫描</p>
+                        <p class="meta-mismatch-empty__desc">
+                            请在左侧选择扫描源并点击「开始扫描」。
+                        </p>
                     </div>
                 </NSpin>
                 <SelectionPathFooter :path="metaPanelFilePath" />
@@ -2738,6 +2759,43 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.mtm-usage-guide {
+    padding: 12px 14px;
+    border-radius: $radius-panel;
+    border: 1px solid $border-subtle;
+    background: $surface-panel;
+}
+
+.mtm-usage-guide__title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.65;
+
+    &:not(:first-child) {
+        margin-top: 12px;
+    }
+}
+
+.mtm-usage-guide__text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.55;
+    opacity: 0.55;
+}
+
+.mtm-usage-guide__list {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 11px;
+    line-height: 1.55;
+    opacity: 0.55;
+
+    li + li {
+        margin-top: 6px;
+    }
 }
 
 .mtm-selected-count {

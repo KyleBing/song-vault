@@ -7,8 +7,12 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
     canPlayAudioFilePath,
-    playBlockedReason
+    formatMediaPlaybackError,
+    MEDIA_ERR_DECODE,
+    playBlockedReason,
+    playbackBlockedByCodec
 } from '@shared/audioPlayback'
+import { fileExtensionLower } from '@shared/pathLite'
 
 /** 从路径取文件名，用于顶栏标题 */
 function fileBaseName(filePath: string): string {
@@ -23,21 +27,22 @@ function toErrorMessage(err: unknown): string {
 }
 
 /** 将 media 元素 error 码转为用户可读文案 */
-function mediaErrorDetail(audio: HTMLAudioElement): string {
-    const code = audio.error?.code
-    if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        return '无法播放该文件（格式或路径受限）'
-    }
-    if (code === MediaError.MEDIA_ERR_NETWORK) {
-        return '无法读取音频文件'
-    }
-    return '无法播放该文件'
+function mediaErrorDetail(
+    audio: HTMLAudioElement,
+    context?: { codec?: string; ext?: string }
+): string {
+    return formatMediaPlaybackError(audio.error?.code, {
+        codec: context?.codec,
+        ext: context?.ext
+    })
 }
 
 /** 全局唯一 audio 实例，避免重复创建与事件重复绑定 */
 let audioEl: HTMLAudioElement | null = null
 /** 同一文件解码失败时仅自动重试一次 */
 let playRetryPath: string | null = null
+/** 最近一次加载用于 error 提示的编码 / 扩展名 */
+let lastPlaybackContext: { codec?: string; ext?: string } = {}
 
 /** 切换曲目前重置解码器，避免 Chromium 在旧流上残留状态 */
 function assignAudioSource(audio: HTMLAudioElement, url: string): void {
@@ -65,7 +70,7 @@ function waitForCanPlay(audio: HTMLAudioElement, timeoutMs = 15000): Promise<voi
         }
         const onErr = () => {
             cleanup()
-            reject(new Error(mediaErrorDetail(audio)))
+            reject(new Error(mediaErrorDetail(audio, lastPlaybackContext)))
         }
         const cleanup = () => {
             window.clearTimeout(timer)
@@ -117,7 +122,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
         audio.addEventListener('error', () => {
             playing.value = false
             loading.value = false
-            lastError.value = mediaErrorDetail(audio)
+            lastError.value = mediaErrorDetail(audio, lastPlaybackContext)
         })
         audioEl = audio
         return audio
@@ -132,6 +137,23 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
         const blocked = playBlockedReason(resolved)
         if (blocked) {
             lastError.value = blocked
+            return
+        }
+
+        const ext = fileExtensionLower(resolved)
+        let codec: string | undefined
+        try {
+            codec =
+                (await window.electronAPI.readAudioPlaybackCodec(resolved)) ??
+                undefined
+        } catch {
+            codec = undefined
+        }
+        lastPlaybackContext = { codec, ext }
+
+        const codecBlocked = playbackBlockedByCodec(codec, ext)
+        if (codecBlocked) {
+            lastError.value = codecBlocked
             return
         }
 
@@ -158,13 +180,17 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
             playRetryPath = null
         } catch (err) {
             const decodeFailed =
-                audioEl?.error?.code === MediaError.MEDIA_ERR_DECODE
+                audioEl?.error?.code === MEDIA_ERR_DECODE
             if (!options?.retry && decodeFailed && playRetryPath !== resolved) {
                 playRetryPath = resolved
                 await play(resolved, { retry: true })
                 return
             }
-            lastError.value = toErrorMessage(err)
+            if (audioEl?.error) {
+                lastError.value = mediaErrorDetail(audioEl, lastPlaybackContext)
+            } else {
+                lastError.value = toErrorMessage(err)
+            }
             playing.value = false
         } finally {
             loading.value = false

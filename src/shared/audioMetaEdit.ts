@@ -42,7 +42,7 @@ export interface AudioMetaEditFieldDef {
     numeric?: boolean
 }
 
-/** 可写入 mp3/flac 的标签字段 */
+/** 可写入 mp3 / flac / ogg / m4a 的标签字段 */
 export const AUDIO_META_EDIT_FIELDS: AudioMetaEditFieldDef[] = [
     { key: 'title', label: labelForCommonKey('title') },
     { key: 'artist', label: labelForCommonKey('artist'), multiValue: true },
@@ -381,11 +381,19 @@ function trimOrUndefined(value: string): string | undefined {
     return trimmed || undefined
 }
 
-/** 是否支持写入标签（当前仅 mp3 / flac） */
+/** 是否支持写入标签（MP3 / FLAC / OGG / M4A 等） */
 export function isEditableAudioMetaPath(filePath: string): boolean {
     const ext = fileExtensionLower(filePath)
     if (isDecryptableExtension(ext)) return false
-    return ext === 'mp3' || ext === 'flac'
+    return (
+        ext === 'mp3' ||
+        ext === 'flac' ||
+        ext === 'ogg' ||
+        ext === 'opus' ||
+        ext === 'm4a' ||
+        ext === 'mp4' ||
+        ext === 'alac'
+    )
 }
 
 /** 表单 → 写入用的 IMusicMeta 形状（纯 JSON，供 IPC / 主进程使用） */

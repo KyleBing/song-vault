@@ -74,7 +74,11 @@ export function locateFlacInBuffer(buffer: Buffer): FlacLocatedBuffer | null {
     return null
 }
 
-function formatVorbisComment(vendorString: string, commentList: string[]): Buffer {
+/** Vorbis Comment 二进制体（vendor + 用户字段列表，不含容器包头） */
+export function buildVorbisCommentPayload(
+    vendorString: string,
+    commentList: string[]
+): Buffer {
     const parts: Buffer[] = []
     const vendorStringBuffer = Buffer.from(vendorString, 'utf8')
     const vendorLengthBuffer = Buffer.alloc(4)
@@ -249,7 +253,7 @@ function assembleFlacFromState(sourceFlac: Buffer, state: MetaFlacReadState): Bu
     }
 
     const vendor = state.vendorString?.trim() || 'SongVault'
-    const vorbisData = formatVorbisComment(vendor, state.tags)
+    const vorbisData = buildVorbisCommentPayload(vendor, state.tags)
     blocks.push(buildMetadataBlock(BLOCK.VORBIS_COMMENT, vorbisData, false))
 
     for (const picture of state.pictures) {

@@ -61,7 +61,7 @@ import {
   type ListDirAudioFilesParams,
   type ListSourceDirChildrenParams
 } from '../shared/sourceDirBrowse'
-import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
+import { readAudioFileMetricsBatch, readAudioPlaybackCodec } from '../shared/readAudioFileMetrics'
 import { readAudioFileMeta } from '../shared/readAudioFileMeta'
 import {
     writeAudioFileMeta,
@@ -300,6 +300,11 @@ function registerIpcHandlers(): void {
       return toIpcPlain(await readAudioFileMetricsBatch(paths))
     }
   )
+
+  ipcMain.handle('read-audio-playback-codec', async (_, filePath: unknown) => {
+    const p = typeof filePath === 'string' ? filePath : ''
+    return readAudioPlaybackCodec(p) ?? null
+  })
 
   ipcMain.handle(
     'read-file-stats-batch',

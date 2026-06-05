@@ -2,6 +2,7 @@ import type { AudioFileMetaInfo } from './audioFileMeta'
 import {
     isMusicBrainzMetaKey,
     isMusicBrainzNativeTag,
+    isItunesNativeTag,
     isVorbisNativeTag,
     labelForCommonKey,
     labelForMusicBrainzCommonKey,
@@ -77,11 +78,20 @@ export function isId3NativeTag(fullId: string): boolean {
     return nativeTagFormatId(fullId).startsWith('id3v2')
 }
 
+function usesVorbisCommentNativeTags(ext: string): boolean {
+    return ext === 'flac' || ext === 'ogg' || ext === 'opus'
+}
+
+function usesItunesNativeTags(ext: string): boolean {
+    return ext === 'm4a' || ext === 'mp4' || ext === 'alac'
+}
+
 function isExtendedNativeTag(fullId: string, ext: string): boolean {
     if (isMusicBrainzNativeTag(fullId)) return false
     const tagId = nativeTagIdFromFullId(fullId).toUpperCase()
     if (BINARY_NATIVE_TAG_IDS.has(tagId)) return false
-    if (ext === 'flac') return isVorbisNativeTag(fullId)
+    if (usesVorbisCommentNativeTags(ext)) return isVorbisNativeTag(fullId)
+    if (usesItunesNativeTags(ext)) return isItunesNativeTag(fullId)
     if (ext === 'mp3') return isId3NativeTag(fullId)
     return false
 }
@@ -112,9 +122,11 @@ export function buildExtendedNativeEditRows(
         rows.push({
             rowKey: nextRowKey('ext', index++, tag.id),
             label:
-                ext === 'flac'
+                usesVorbisCommentNativeTags(ext)
                     ? labelForVorbisNativeTag(tag.id)
-                    : labelForNativeTag(tag.id),
+                    : usesItunesNativeTags(ext)
+                      ? labelForNativeTag(tag.id)
+                      : labelForNativeTag(tag.id),
             tagKey,
             nativeId: tag.id,
             source: 'native',
@@ -406,18 +418,70 @@ export const MANAGED_MP3_FRAME_ID_SET = new Set([
     'APIC'
 ])
 
-export function isManagedNativeTagKey(tagKey: string, ext: 'mp3' | 'flac'): boolean {
+export const MANAGED_ITUNES_ATOM_KEY_SET = new Set([
+    '©NAM',
+    '©ART',
+    'AART',
+    '©ALB',
+    '©GEN',
+    '©DAY',
+    'TRKN',
+    'DISK',
+    '©CMT',
+    '©LYR',
+    '©WRT',
+    '©GRP',
+    '©ST3',
+    'TMPO',
+    'CATN',
+    '©CON',
+    '©REM',
+    '©PRD',
+    '©PUB',
+    'TITLE',
+    'ARTIST',
+    'ARTISTS',
+    'ALBUM',
+    'ALBUMARTIST',
+    'GENRE',
+    'DATE',
+    'TRACKNUMBER',
+    'TRACKTOTAL',
+    'DISCNUMBER',
+    'DISCTOTAL',
+    'COMMENT',
+    'LYRICS',
+    'COMPOSER',
+    'LYRICIST',
+    'CONDUCTOR',
+    'REMIXER',
+    'PRODUCER',
+    'LABEL',
+    'GROUPING',
+    'SUBTITLE',
+    'CATALOGNUMBER',
+    'BPM'
+])
+
+export function isManagedNativeTagKey(
+    tagKey: string,
+    ext: 'mp3' | 'flac' | 'ogg' | 'opus' | 'm4a' | 'mp4' | 'alac'
+): boolean {
     const normalized = normalizeNativeTagKey(tagKey)
-    return ext === 'flac'
-        ? MANAGED_FLAC_TAG_KEY_SET.has(normalized)
-        : MANAGED_MP3_FRAME_ID_SET.has(normalized)
+    if (ext === 'mp3') {
+        return MANAGED_MP3_FRAME_ID_SET.has(normalized)
+    }
+    if (usesItunesNativeTags(ext)) {
+        return MANAGED_ITUNES_ATOM_KEY_SET.has(normalized)
+    }
+    return MANAGED_FLAC_TAG_KEY_SET.has(normalized)
 }
 
 /** 写入文件时需要追加的非托管原生 / common / MusicBrainz 标签 */
 export function collectPersistedExtraTagRows(
     extendedNative: AudioMetaExtraTagRow[],
     otherExtra: AudioMetaExtraTagRow[],
-    ext: 'mp3' | 'flac'
+    ext: 'mp3' | 'flac' | 'ogg' | 'opus' | 'm4a' | 'mp4' | 'alac'
 ): AudioMetaExtraTagRow[] {
     const out: AudioMetaExtraTagRow[] = []
 

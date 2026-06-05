@@ -243,6 +243,14 @@ const api = {
     return toIpcPlain(result)
   },
 
+  readAudioPlaybackCodec: async (filePath: string): Promise<string | null> => {
+    const result = await ipcRenderer.invoke(
+      'read-audio-playback-codec',
+      filePath
+    )
+    return typeof result === 'string' ? result : null
+  },
+
   readFileStatsBatch: async (
     filePaths: string[]
   ): Promise<Record<string, FileStatFields>> => {
