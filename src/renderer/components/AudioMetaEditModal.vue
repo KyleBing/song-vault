@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { ImageOutline, MusicalNotesOutline, TrashOutline } from '@vicons/ionicons5'
+import { AddOutline, ImageOutline, MusicalNotesOutline, TrashOutline } from '@vicons/ionicons5'
 import {
     NButton,
     NIcon,
     NInput,
     NModal,
-    NScrollbar,
+    NTabPane,
+    NTabs,
     NTooltip,
     useMessage
 } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 import type { AudioFileMetaInfo } from '@shared/audioFileMeta'
 import {
-    nativeArtistTitleFromMeta,
-    nativeArtistTitleMatchesCommon
-} from '@shared/audioFileMeta'
+    emptyExtraEditState,
+    familyTokenForTagKey,
+    metaInfoToExtraEditState,
+    normalizeNativeTagKey,
+    type AudioMetaExtraEditState,
+    type AudioMetaExtraTagRow
+} from '@shared/audioMetaExtraEdit'
 import { plainForIpc } from '@renderer/utils/ipcPayload'
+import { fileExtensionLower } from '@shared/pathLite'
 import {
     AUDIO_META_EDIT_FIELDS,
     emptyAudioMetaEditForm,
@@ -39,29 +45,23 @@ const emit = defineEmits<{
 const message = useMessage()
 
 const form = ref<AudioMetaEditForm>(emptyAudioMetaEditForm())
+const extraEdit = ref<AudioMetaExtraEditState>(emptyExtraEditState())
+const touchedExtensionFamilies = ref(new Set<string>())
+const activeTab = ref<'regular' | 'extended' | 'other'>('regular')
 const saving = ref(false)
 const pickingCover = ref(false)
+
+const newExtTagKey = ref('')
+const newExtTagValue = ref('')
+const newOtherTagKey = ref('')
+const newOtherTagValue = ref('')
 
 /** undefined = 未改动；null = 移除；string = 新封面 base64 */
 const coverBase64 = ref<string | null | undefined>(undefined)
 const coverPreviewUrl = ref<string | null>(null)
 
-const extNativeTags = computed(() => {
-    if (!props.meta?.ok) {
-        return { artist: '', title: '', artistDiffers: false, titleDiffers: false }
-    }
-    const native = nativeArtistTitleFromMeta(props.meta)
-    const matches = nativeArtistTitleMatchesCommon(props.meta)
-    return {
-        artist: native.artist,
-        title: native.title,
-        artistDiffers: Boolean(native.artist) && !matches.artistMatches,
-        titleDiffers: Boolean(native.title) && !matches.titleMatches
-    }
-})
-
-const showExtNativeSection = computed(
-    () => extNativeTags.value.artistDiffers || extNativeTags.value.titleDiffers
+const fileExt = computed(() =>
+    props.filePath ? fileExtensionLower(props.filePath) : ''
 )
 
 const HEAD_KEYS = new Set<keyof AudioMetaEditForm>([
@@ -90,24 +90,49 @@ const wideFields = computed(() =>
     AUDIO_META_EDIT_FIELDS.filter((f) => WIDE_KEYS.has(f.key))
 )
 
+const visibleExtendedRows = computed(() =>
+    extraEdit.value.extendedNative.filter((row) => !row.removed)
+)
+const visibleOtherRows = computed(() =>
+    extraEdit.value.otherExtra.filter((row) => !row.removed)
+)
+
 const modalTitle = computed(() => {
     if (!props.filePath) return '编辑标签'
     const name = props.filePath.replace(/^.*[/\\]/, '')
     return name.length > 28 ? `编辑 · ${name.slice(0, 26)}…` : `编辑 · ${name}`
 })
 
+const extendedTabHint = computed(() =>
+    fileExt.value === 'mp3'
+        ? 'ID3v2 原生标签，可编辑或删除单条'
+        : 'Vorbis 原生标签，可编辑或删除单条'
+)
+
 function fieldPlaceholder(field: AudioMetaEditFieldDef): string | undefined {
     return field.multiValue ? '多值 ; 分隔' : undefined
 }
 
 function resetFromMeta(): void {
+    touchedExtensionFamilies.value = new Set()
+    activeTab.value = 'regular'
+    newExtTagKey.value = ''
+    newExtTagValue.value = ''
+    newOtherTagKey.value = ''
+    newOtherTagValue.value = ''
+
     if (!props.meta) {
         form.value = emptyAudioMetaEditForm()
+        extraEdit.value = emptyExtraEditState()
         coverBase64.value = undefined
         coverPreviewUrl.value = null
         return
     }
+
     form.value = metaInfoToEditForm(props.meta)
+    extraEdit.value = props.filePath
+        ? metaInfoToExtraEditState(props.meta, props.filePath)
+        : emptyExtraEditState()
     coverBase64.value = undefined
     coverPreviewUrl.value = props.meta.coverDataUrl ?? null
 }
@@ -121,6 +146,118 @@ watch(
 
 function close(): void {
     emit('update:show', false)
+}
+
+function markExtensionFamily(tagKey: string): void {
+    const token = familyTokenForTagKey(tagKey)
+    if (!token) return
+    const next = new Set(touchedExtensionFamilies.value)
+    next.add(token)
+    touchedExtensionFamilies.value = next
+}
+
+/** 编辑/新增时移除同族别名行（如 ARTIST + ARTISTS），保留当前键 */
+function removeOtherAliasRowsInFamily(tagKey: string, keepRowKey: string): void {
+    const token = familyTokenForTagKey(tagKey)
+    const keepNormalized = normalizeNativeTagKey(tagKey)
+    if (!token) return
+
+    const rows = extraEdit.value.extendedNative
+    let changed = false
+    const nextRows = rows.map((row) => {
+        if (row.rowKey === keepRowKey || row.removed) return row
+        if (familyTokenForTagKey(row.tagKey) !== token) return row
+        if (normalizeNativeTagKey(row.tagKey) === keepNormalized) return row
+        changed = true
+        return { ...row, removed: true }
+    })
+    if (changed) {
+        extraEdit.value = { ...extraEdit.value, extendedNative: nextRows }
+    }
+}
+
+function updateExtraRow(
+    list: 'extendedNative' | 'otherExtra',
+    rowKey: string,
+    patch: Partial<AudioMetaExtraTagRow>
+): void {
+    const rows = extraEdit.value[list]
+    const index = rows.findIndex((row) => row.rowKey === rowKey)
+    if (index < 0) return
+    const current = rows[index]!
+    if (list === 'extendedNative' && patch.value !== undefined) {
+        markExtensionFamily(current.tagKey)
+    }
+    const nextRows = [...rows]
+    nextRows[index] = { ...current, ...patch }
+    extraEdit.value = { ...extraEdit.value, [list]: nextRows }
+    if (list === 'extendedNative' && patch.value !== undefined) {
+        removeOtherAliasRowsInFamily(current.tagKey, rowKey)
+    }
+}
+
+function removeExtraRow(list: 'extendedNative' | 'otherExtra', rowKey: string): void {
+    const rows = extraEdit.value[list]
+    const index = rows.findIndex((row) => row.rowKey === rowKey)
+    if (index < 0) return
+    const current = rows[index]!
+    if (list === 'extendedNative') {
+        markExtensionFamily(current.tagKey)
+    }
+    updateExtraRow(list, rowKey, { removed: true })
+}
+
+function addExtendedRow(): void {
+    const tagKey = newExtTagKey.value.trim()
+    const value = newExtTagValue.value.trim()
+    if (!tagKey || !value) {
+        message.warning('请填写键名与值')
+        return
+    }
+    markExtensionFamily(tagKey)
+    const rowKey = `new-ext-${Date.now()}-${tagKey}`
+    extraEdit.value = {
+        ...extraEdit.value,
+        extendedNative: [
+            ...extraEdit.value.extendedNative,
+            {
+                rowKey,
+                label: tagKey,
+                tagKey,
+                source: 'native',
+                value,
+                removed: false
+            }
+        ]
+    }
+    removeOtherAliasRowsInFamily(tagKey, rowKey)
+    newExtTagKey.value = ''
+    newExtTagValue.value = ''
+}
+
+function addOtherRow(): void {
+    const tagKey = newOtherTagKey.value.trim()
+    const value = newOtherTagValue.value.trim()
+    if (!tagKey || !value) {
+        message.warning('请填写键名与值')
+        return
+    }
+    extraEdit.value = {
+        ...extraEdit.value,
+        otherExtra: [
+            ...extraEdit.value.otherExtra,
+            {
+                rowKey: `new-other-${Date.now()}-${tagKey}`,
+                label: tagKey,
+                tagKey,
+                source: 'common',
+                value,
+                removed: false
+            }
+        ]
+    }
+    newOtherTagKey.value = ''
+    newOtherTagValue.value = ''
 }
 
 async function onPickCover(): Promise<void> {
@@ -157,18 +294,6 @@ function onFillFromFilename(): void {
     }
 }
 
-function onAdoptExtArtist(): void {
-    if (!extNativeTags.value.artist) return
-    form.value.artist = extNativeTags.value.artist
-    message.success('已采用扩展标签中的艺人')
-}
-
-function onAdoptExtTitle(): void {
-    if (!extNativeTags.value.title) return
-    form.value.title = extNativeTags.value.title
-    message.success('已采用扩展标签中的曲名')
-}
-
 async function onSave(): Promise<void> {
     if (!props.filePath || saving.value) return
 
@@ -178,7 +303,11 @@ async function onSave(): Promise<void> {
             plainForIpc({
                 filePath: props.filePath,
                 form: form.value,
-                coverBase64: coverBase64.value
+                coverBase64:
+                    coverBase64.value === null ? null : coverBase64.value,
+                extendedNative: extraEdit.value.extendedNative,
+                otherExtra: extraEdit.value.otherExtra,
+                touchedExtensionFamilies: [...touchedExtensionFamilies.value]
             })
         )
         if (!result.ok) {
@@ -203,14 +332,14 @@ async function onSave(): Promise<void> {
         preset="card"
         :title="modalTitle"
         class="audio-meta-edit-modal"
-        :style="{ width: 'min(520px, 96vw)' }"
+        :style="{ width: 'min(580px, 96vw)' }"
         :bordered="false"
         :segmented="{ content: true, footer: true }"
         :mask-closable="false"
         @update:show="emit('update:show', $event)"
         @close="close"
     >
-        <NScrollbar style="max-height: min(72vh, 540px)">
+        <div class="audio-meta-edit-modal__scroll">
             <div class="audio-meta-edit-modal__body">
                 <div class="audio-meta-edit-modal__head">
                     <div class="audio-meta-edit-modal__cover-block">
@@ -283,95 +412,200 @@ async function onSave(): Promise<void> {
                     </dl>
                 </div>
 
-                <section
-                    v-if="showExtNativeSection"
-                    class="audio-meta-edit-modal__ext"
-                >
-                    <p class="audio-meta-edit-modal__ext-title">
-                        扩展 / Vorbis 标签与上方常规字段不一致
-                    </p>
-                    <dl class="audio-meta-edit-modal__dl audio-meta-edit-modal__dl-ext">
-                        <template v-if="extNativeTags.artistDiffers">
-                            <dt>扩展·艺人</dt>
-                            <dd class="audio-meta-edit-modal__ext-row">
-                                <span class="audio-meta-edit-modal__ext-value">{{
-                                    extNativeTags.artist
-                                }}</span>
-                                <NButton
-                                    size="tiny"
-                                    quaternary
-                                    @click="onAdoptExtArtist"
-                                >
-                                    采用
-                                </NButton>
-                            </dd>
-                        </template>
-                        <template v-if="extNativeTags.titleDiffers">
-                            <dt>扩展·曲名</dt>
-                            <dd class="audio-meta-edit-modal__ext-row">
-                                <span class="audio-meta-edit-modal__ext-value">{{
-                                    extNativeTags.title
-                                }}</span>
-                                <NButton
-                                    size="tiny"
-                                    quaternary
-                                    @click="onAdoptExtTitle"
-                                >
-                                    采用
-                                </NButton>
-                            </dd>
-                        </template>
-                    </dl>
-                </section>
+                <NTabs v-model:value="activeTab" size="small" class="audio-meta-edit-modal__tabs">
+                    <NTabPane name="regular" tab="常规">
+                        <dl class="audio-meta-edit-modal__dl">
+                            <template v-for="field in gridFields" :key="field.key">
+                                <dt>{{ field.label }}</dt>
+                                <dd>
+                                    <NInput
+                                        v-model:value="form[field.key]"
+                                        size="small"
+                                        :placeholder="fieldPlaceholder(field)"
+                                    />
+                                </dd>
+                            </template>
+                        </dl>
 
-                <dl class="audio-meta-edit-modal__dl">
-                    <template v-for="field in gridFields" :key="field.key">
-                        <dt>{{ field.label }}</dt>
-                        <dd>
+                        <div class="audio-meta-edit-modal__track-row">
+                            <label class="audio-meta-edit-modal__track-item">
+                                <span>曲号</span>
+                                <NInput v-model:value="form.trackNo" size="small" />
+                            </label>
+                            <label class="audio-meta-edit-modal__track-item">
+                                <span>曲共</span>
+                                <NInput v-model:value="form.trackOf" size="small" />
+                            </label>
+                            <label class="audio-meta-edit-modal__track-item">
+                                <span>碟号</span>
+                                <NInput v-model:value="form.diskNo" size="small" />
+                            </label>
+                            <label class="audio-meta-edit-modal__track-item">
+                                <span>碟共</span>
+                                <NInput v-model:value="form.diskOf" size="small" />
+                            </label>
+                        </div>
+
+                        <dl class="audio-meta-edit-modal__dl audio-meta-edit-modal__dl-wide">
+                            <template v-for="field in wideFields" :key="field.key">
+                                <dt>{{ field.label }}</dt>
+                                <dd>
+                                    <NInput
+                                        v-model:value="form[field.key]"
+                                        size="small"
+                                        type="textarea"
+                                        :autosize="{ minRows: 1, maxRows: 4 }"
+                                        :placeholder="fieldPlaceholder(field)"
+                                    />
+                                </dd>
+                            </template>
+                        </dl>
+                    </NTabPane>
+
+                    <NTabPane name="extended" tab="扩展">
+                        <p class="audio-meta-edit-modal__tab-hint">
+                            {{ extendedTabHint }}
+                        </p>
+                        <div
+                            v-if="visibleExtendedRows.length === 0"
+                            class="audio-meta-edit-modal__empty"
+                        >
+                            无扩展标签
+                        </div>
+                        <ul v-else class="audio-meta-edit-modal__extra-list">
+                            <li
+                                v-for="row in visibleExtendedRows"
+                                :key="row.rowKey"
+                                class="audio-meta-edit-modal__extra-item"
+                            >
+                                <div class="audio-meta-edit-modal__extra-meta">
+                                    <span class="audio-meta-edit-modal__extra-label">{{
+                                        row.label
+                                    }}</span>
+                                    <span class="audio-meta-edit-modal__extra-key">{{
+                                        row.tagKey
+                                    }}</span>
+                                </div>
+                                <NInput
+                                    class="audio-meta-edit-modal__extra-input"
+                                    size="small"
+                                    :value="row.value"
+                                    @update:value="
+                                        (value) =>
+                                            updateExtraRow('extendedNative', row.rowKey, {
+                                                value
+                                            })
+                                    "
+                                />
+                                <NTooltip>
+                                    <template #trigger>
+                                        <NButton
+                                            quaternary
+                                            circle
+                                            size="tiny"
+                                            @click="removeExtraRow('extendedNative', row.rowKey)"
+                                        >
+                                            <template #icon>
+                                                <NIcon :size="14"><TrashOutline /></NIcon>
+                                            </template>
+                                        </NButton>
+                                    </template>
+                                    删除此项
+                                </NTooltip>
+                            </li>
+                        </ul>
+                        <div class="audio-meta-edit-modal__add-row">
                             <NInput
-                                v-model:value="form[field.key]"
+                                v-model:value="newExtTagKey"
                                 size="small"
-                                :placeholder="fieldPlaceholder(field)"
+                                placeholder="键名（如 ARTIST）"
                             />
-                        </dd>
-                    </template>
-                </dl>
-
-                <div class="audio-meta-edit-modal__track-row">
-                    <label class="audio-meta-edit-modal__track-item">
-                        <span>曲号</span>
-                        <NInput v-model:value="form.trackNo" size="small" />
-                    </label>
-                    <label class="audio-meta-edit-modal__track-item">
-                        <span>曲共</span>
-                        <NInput v-model:value="form.trackOf" size="small" />
-                    </label>
-                    <label class="audio-meta-edit-modal__track-item">
-                        <span>碟号</span>
-                        <NInput v-model:value="form.diskNo" size="small" />
-                    </label>
-                    <label class="audio-meta-edit-modal__track-item">
-                        <span>碟共</span>
-                        <NInput v-model:value="form.diskOf" size="small" />
-                    </label>
-                </div>
-
-                <dl class="audio-meta-edit-modal__dl audio-meta-edit-modal__dl-wide">
-                    <template v-for="field in wideFields" :key="field.key">
-                        <dt>{{ field.label }}</dt>
-                        <dd>
                             <NInput
-                                v-model:value="form[field.key]"
+                                v-model:value="newExtTagValue"
                                 size="small"
-                                type="textarea"
-                                :autosize="{ minRows: 1, maxRows: 4 }"
-                                :placeholder="fieldPlaceholder(field)"
+                                placeholder="值"
                             />
-                        </dd>
-                    </template>
-                </dl>
+                            <NButton size="small" @click="addExtendedRow">
+                                <template #icon>
+                                    <NIcon :size="14"><AddOutline /></NIcon>
+                                </template>
+                                添加
+                            </NButton>
+                        </div>
+                    </NTabPane>
+
+                    <NTabPane name="other" tab="其它">
+                        <p class="audio-meta-edit-modal__tab-hint">
+                            MusicBrainz、未纳入常规表单的 common 字段及其它原生标签
+                        </p>
+                        <div
+                            v-if="visibleOtherRows.length === 0"
+                            class="audio-meta-edit-modal__empty"
+                        >
+                            无其它元数据
+                        </div>
+                        <ul v-else class="audio-meta-edit-modal__extra-list">
+                            <li
+                                v-for="row in visibleOtherRows"
+                                :key="row.rowKey"
+                                class="audio-meta-edit-modal__extra-item"
+                            >
+                                <div class="audio-meta-edit-modal__extra-meta">
+                                    <span class="audio-meta-edit-modal__extra-label">{{
+                                        row.label
+                                    }}</span>
+                                    <span class="audio-meta-edit-modal__extra-key">{{
+                                        row.tagKey
+                                    }}</span>
+                                </div>
+                                <NInput
+                                    class="audio-meta-edit-modal__extra-input"
+                                    size="small"
+                                    :value="row.value"
+                                    @update:value="
+                                        (value) =>
+                                            updateExtraRow('otherExtra', row.rowKey, { value })
+                                    "
+                                />
+                                <NTooltip>
+                                    <template #trigger>
+                                        <NButton
+                                            quaternary
+                                            circle
+                                            size="tiny"
+                                            @click="removeExtraRow('otherExtra', row.rowKey)"
+                                        >
+                                            <template #icon>
+                                                <NIcon :size="14"><TrashOutline /></NIcon>
+                                            </template>
+                                        </NButton>
+                                    </template>
+                                    删除此项
+                                </NTooltip>
+                            </li>
+                        </ul>
+                        <div class="audio-meta-edit-modal__add-row">
+                            <NInput
+                                v-model:value="newOtherTagKey"
+                                size="small"
+                                placeholder="键名"
+                            />
+                            <NInput
+                                v-model:value="newOtherTagValue"
+                                size="small"
+                                placeholder="值"
+                            />
+                            <NButton size="small" @click="addOtherRow">
+                                <template #icon>
+                                    <NIcon :size="14"><AddOutline /></NIcon>
+                                </template>
+                                添加
+                            </NButton>
+                        </div>
+                    </NTabPane>
+                </NTabs>
             </div>
-        </NScrollbar>
+        </div>
 
         <template #footer>
             <div class="audio-meta-edit-modal__footer">
@@ -422,47 +656,87 @@ async function onSave(): Promise<void> {
     }
 }
 
+.audio-meta-edit-modal__scroll {
+    max-height: min(72vh, 560px);
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+
 .audio-meta-edit-modal__body {
-    padding-right: 2px;
+    padding-right: 4px;
 }
 
 .audio-meta-edit-modal__head {
     display: flex;
     align-items: flex-start;
     gap: 50px;
-    margin-bottom: 6px;
-}
-
-.audio-meta-edit-modal__ext {
     margin-bottom: 8px;
-    padding: 8px 10px;
-    border-radius: 4px;
-    border: 1px solid $border-subtle;
-    background: rgba(255, 196, 64, 0.06);
 }
 
-.audio-meta-edit-modal__ext-title {
-    margin: 0 0 6px;
+.audio-meta-edit-modal__tabs {
+    :deep(.n-tabs-nav) {
+        margin-bottom: 8px;
+    }
+}
+
+.audio-meta-edit-modal__tab-hint {
+    margin: 0 0 8px;
     font-size: 11px;
-    line-height: 1.35;
-    opacity: 0.72;
+    line-height: 1.4;
+    opacity: 0.65;
 }
 
-.audio-meta-edit-modal__dl-ext {
-    grid-template-columns: max-content minmax(0, 1fr);
+.audio-meta-edit-modal__empty {
+    margin: 0 0 10px;
+    font-size: 12px;
+    opacity: 0.5;
 }
 
-.audio-meta-edit-modal__ext-row {
+.audio-meta-edit-modal__extra-list {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.audio-meta-edit-modal__extra-item {
+    display: grid;
+    grid-template-columns: minmax(88px, 120px) minmax(0, 1fr) auto;
+    gap: 8px;
     align-items: center;
-    gap: 6px;
+}
+
+.audio-meta-edit-modal__extra-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.audio-meta-edit-modal__extra-label {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.audio-meta-edit-modal__extra-key {
+    font-size: 10px;
+    opacity: 0.55;
+    word-break: break-all;
+}
+
+.audio-meta-edit-modal__extra-input {
     min-width: 0;
 }
 
-.audio-meta-edit-modal__ext-value {
-    flex: 1;
-    min-width: 0;
-    word-break: break-word;
+.audio-meta-edit-modal__add-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    gap: 8px;
+    align-items: center;
 }
 
 .audio-meta-edit-modal__cover-block {

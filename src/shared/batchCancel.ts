@@ -32,16 +32,35 @@ export function runWithCancelCheck<T>(
     }
 }
 
+/** 异步批处理：须保持取消检查直至 Promise 结束 */
+export async function runWithCancelCheckAsync<T>(
+    check: BatchCancelCheck | undefined,
+    fn: () => Promise<T>
+): Promise<T> {
+    const prev = activeCancelCheck
+    activeCancelCheck = check ?? null
+    try {
+        return await fn()
+    } finally {
+        activeCancelCheck = prev
+    }
+}
+
 /** 在循环/递归中调用；若已取消则抛出 BatchCancelledError */
 export function checkBatchCancelled(): void {
     activeCancelCheck?.()
 }
 
 export function isBatchCancelledError(err: unknown): err is BatchCancelledError {
-    return (
-        err instanceof BatchCancelledError ||
-        (err instanceof Error && err.name === 'BatchCancelledError')
-    )
+    if (err instanceof BatchCancelledError) return true
+    if (err instanceof Error) {
+        if (err.name === 'BatchCancelledError') return true
+        if (err.message.includes('操作已取消')) return true
+        if (/scan-meta-tag-mismatches/i.test(err.message) && err.message.includes('取消')) {
+            return true
+        }
+    }
+    return false
 }
 
 export function batchJobIdFromParams(params: unknown): string | undefined {

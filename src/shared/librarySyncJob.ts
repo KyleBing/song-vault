@@ -34,6 +34,14 @@ export interface CompareLibrarySyncParams extends BatchJobParams {
     pathFilterRules: PathFilterRule[]
 }
 
+export type LibrarySyncComparePhase = 'scanLeft' | 'scanRight' | 'compare'
+
+export type LibrarySyncCompareProgress = (
+    done: number,
+    total: number,
+    phase: LibrarySyncComparePhase
+) => void
+
 export interface CompareLibrarySyncResult {
     leftRoot: string
     rightRoot: string
@@ -134,7 +142,8 @@ function toRelativeKey(root: string, fullPath: string): string {
 /** 递归扫描乐库根目录下的明文音频文件 */
 export function walkLibraryAudioFiles(
     root: string,
-    pathFilterRules: PathFilterRule[]
+    pathFilterRules: PathFilterRule[],
+    onFileFound?: (fileCount: number) => void
 ): Map<string, SyncFileEntry> {
     const map = new Map<string, SyncFileEntry>()
 
@@ -175,6 +184,7 @@ export function walkLibraryAudioFiles(
                 fileName: ent.name,
                 size: stat.size
             })
+            onFileFound?.(map.size)
         }
     }
 
@@ -244,45 +254,58 @@ function pairMovedItems(items: SyncDiffItem[]): SyncDiffItem[] {
 
 /** 递归扫描两侧目录并返回仅包含差异的条目列表 */
 export function compareLibrarySync(
-    params: CompareLibrarySyncParams
+    params: CompareLibrarySyncParams & {
+        onProgress?: LibrarySyncCompareProgress
+    }
 ): CompareLibrarySyncResult {
     const leftRoot = resolveRoot(params.leftRoot)
     const rightRoot = resolveRoot(params.rightRoot)
     const pathFilterRules = params.pathFilterRules ?? []
 
-    const leftMap = walkLibraryAudioFiles(leftRoot, pathFilterRules)
-    const rightMap = walkLibraryAudioFiles(rightRoot, pathFilterRules)
+    params.onProgress?.(0, 0, 'scanLeft')
+    const leftMap = walkLibraryAudioFiles(
+        leftRoot,
+        pathFilterRules,
+        (count) => params.onProgress?.(count, 0, 'scanLeft')
+    )
+
+    params.onProgress?.(0, 0, 'scanRight')
+    const rightMap = walkLibraryAudioFiles(
+        rightRoot,
+        pathFilterRules,
+        (count) => params.onProgress?.(count, 0, 'scanRight')
+    )
 
     const allPaths = new Set<string>([
         ...leftMap.keys(),
         ...rightMap.keys()
     ])
+    const sortedPaths = [...allPaths].sort((a, b) => a.localeCompare(b))
+    const total = sortedPaths.length
+    params.onProgress?.(0, total, 'compare')
 
     const items: SyncDiffItem[] = []
     let sameCount = 0
 
-    for (const relativePath of [...allPaths].sort((a, b) => a.localeCompare(b))) {
+    for (let i = 0; i < sortedPaths.length; i++) {
         checkBatchCancelled()
+        const relativePath = sortedPaths[i]!
         const left = leftMap.get(relativePath)
         const right = rightMap.get(relativePath)
 
         if (left && right) {
             if (entriesEqual(left, right)) {
                 sameCount += 1
-                continue
+            } else {
+                items.push({ relativePath, kind: 'modified', left, right })
             }
-            items.push({ relativePath, kind: 'modified', left, right })
-            continue
-        }
-
-        if (left) {
+        } else if (left) {
             items.push({ relativePath, kind: 'left_only', left })
-            continue
-        }
-
-        if (right) {
+        } else if (right) {
             items.push({ relativePath, kind: 'right_only', right })
         }
+
+        params.onProgress?.(i + 1, total, 'compare')
     }
 
     const pairedItems = pairMovedItems(items).sort((a, b) =>

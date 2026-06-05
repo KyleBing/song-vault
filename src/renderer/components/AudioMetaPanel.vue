@@ -352,6 +352,7 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
   padding-top: 6px;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
 
   .audio-meta-panel__dl {
     flex: 1;
@@ -391,6 +392,8 @@ watch([showVorbisTab, showMusicBrainzTab], () => {
   min-height: 0;
   max-height: 100%;
   overflow: auto;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
 }
 
 .audio-meta-panel__dl {

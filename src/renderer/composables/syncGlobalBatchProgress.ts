@@ -25,10 +25,11 @@ export function syncGlobalBatchProgress(
     config: GlobalBatchProgressConfig
 ): void {
     const store = useBatchProgressStore()
+    const owner = Symbol('batch-progress-owner')
 
     watchEffect(() => {
         if (!toValue(config.active)) {
-            store.clear()
+            store.clear(owner)
             return
         }
         const next: BatchProgressSnapshot = {
@@ -38,10 +39,10 @@ export function syncGlobalBatchProgress(
             indeterminate: toValue(config.indeterminate),
             onCancel: config.onCancel ?? (() => batchTask.cancel())
         }
-        store.publish(next)
+        store.publish(owner, next)
     })
 
     onScopeDispose(() => {
-        store.clear()
+        store.clear(owner)
     })
 }

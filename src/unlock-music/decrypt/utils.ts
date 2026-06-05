@@ -2,6 +2,12 @@ import { IAudioMetadata, parseBlob as metaParseBlob } from 'music-metadata-brows
 import ID3Writer from 'browser-id3-writer';
 import MetaFlac from 'metaflac-js';
 import type { DecryptResult } from '@unlock/decrypt/entity';
+import {
+  rebuildFlacWithVorbisTags,
+  validateFlacBufferStructure,
+  flacVorbisField,
+  type FlacCoverWriteMode
+} from './flacRewrite';
 
 export const FLAC_HEADER = [0x66, 0x4c, 0x61, 0x43];
 export const MP3_HEADER = [0x49, 0x44, 0x33];
@@ -332,6 +338,7 @@ function setFlacTags(writer: MetaFlac, key: string, values: string[] | undefined
 const MANAGED_FLAC_TAG_KEYS = [
   'TITLE',
   'ARTIST',
+  'ARTISTS',
   'ALBUM',
   'ALBUMARTIST',
   'GENRE',
@@ -379,14 +386,101 @@ function nodeBufferToArrayBuffer(data: Buffer): ArrayBuffer {
   return copy.buffer.slice(copy.byteOffset, copy.byteOffset + copy.byteLength);
 }
 
+export interface ExtraNativeTagWriteEntry {
+  tagKey: string;
+  value: string;
+  source: 'native' | 'common' | 'musicbrainz';
+}
+
+/** 去掉文件头 ID3v2 标签，返回 MP3 音频主体（replaceExisting 写入前使用） */
+function isValidId3v2SyncsafeSizeByte(byte: number): boolean {
+  return (byte & 0x80) === 0;
+}
+
+function stripId3v2FromMp3Buffer(buffer: Buffer): Buffer {
+  if (buffer.length < 10) return buffer;
+  if (buffer.toString('ascii', 0, 3) !== 'ID3') return buffer;
+
+  if (
+    !isValidId3v2SyncsafeSizeByte(buffer[6]!) ||
+    !isValidId3v2SyncsafeSizeByte(buffer[7]!) ||
+    !isValidId3v2SyncsafeSizeByte(buffer[8]!) ||
+    !isValidId3v2SyncsafeSizeByte(buffer[9]!)
+  ) {
+    return buffer;
+  }
+
+  const size =
+    ((buffer[6]! & 0x7f) << 21) |
+    ((buffer[7]! & 0x7f) << 14) |
+    ((buffer[8]! & 0x7f) << 7) |
+    (buffer[9]! & 0x7f);
+  const end = 10 + size;
+  if (end <= 10 || end >= buffer.length) return buffer;
+  return buffer.subarray(end);
+}
+
+const ID3V1_TAG_SIZE = 128;
+const ID3V1_EXTENDED_TAG_SIZE = 227;
+
+/** 去掉文件尾 ID3v1 / ID3v1.1（TAG / TAG+）块 */
+export function stripId3v1FromMp3Buffer(buffer: Buffer): Buffer {
+  if (buffer.length < ID3V1_TAG_SIZE) return buffer;
+
+  let end = buffer.length;
+  if (
+    buffer.length >= ID3V1_EXTENDED_TAG_SIZE &&
+    buffer.subarray(end - ID3V1_EXTENDED_TAG_SIZE, end - ID3V1_EXTENDED_TAG_SIZE + 4).toString('ascii') === 'TAG+'
+  ) {
+    end -= ID3V1_EXTENDED_TAG_SIZE;
+  } else if (
+    buffer.subarray(end - ID3V1_TAG_SIZE, end - ID3V1_TAG_SIZE + 3).toString('ascii') === 'TAG'
+  ) {
+    end -= ID3V1_TAG_SIZE;
+  }
+
+  return end < buffer.length ? buffer.subarray(0, end) : buffer;
+}
+
+function mp3BodyForTagWriter(audioData: Buffer, replaceExisting: boolean): Buffer {
+  const withoutV1 = stripId3v1FromMp3Buffer(audioData);
+  return replaceExisting ? stripId3v2FromMp3Buffer(withoutV1) : withoutV1;
+}
+
+function applyExtraNativeTagEntriesToMp3Writer(
+  writer: ID3Writer,
+  entries: ExtraNativeTagWriteEntry[]
+): void {
+  for (const entry of entries) {
+    const frameId = entry.tagKey.trim().toUpperCase();
+    const value = entry.value.trim();
+    if (!frameId || !value) continue;
+
+    try {
+      if (entry.source === 'native') {
+        writer.setFrame(frameId, value);
+      } else {
+        writer.setFrame('TXXX', {
+          description: frameId,
+          value
+        });
+      }
+    } catch {
+      /* 不支持的帧类型时跳过 */
+    }
+  }
+}
+
 export function WriteMetaToMp3(
   audioData: Buffer,
   info: IMusicMeta,
   original: IAudioMetadata,
-  replaceExisting = false
+  replaceExisting = false,
+  extraTags: ExtraNativeTagWriteEntry[] = []
 ): Buffer {
   const meta = buildMusicMetaFromSources(info, original, replaceExisting);
-  const writer = new ID3Writer(nodeBufferToArrayBuffer(audioData));
+  const mp3Body = mp3BodyForTagWriter(audioData, replaceExisting);
+  const writer = new ID3Writer(nodeBufferToArrayBuffer(mp3Body));
 
   if (!replaceExisting) {
     const frames =
@@ -441,23 +535,138 @@ export function WriteMetaToMp3(
       description: meta.picture_desc || ''
     });
   }
+  applyExtraNativeTagEntriesToMp3Writer(writer, extraTags);
   return Buffer.from(writer.addTag());
 }
 
-function ensureMetaFlacPadding(writer: MetaFlac): void {
-  const w = writer as MetaFlac & { padding: Buffer | null }
-  if (w.padding == null) {
-    w.padding = Buffer.alloc(0)
+function pushFlacComments(
+  out: string[],
+  key: string,
+  values: string[] | undefined
+): void {
+  if (!values?.length) return;
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    out.push(flacVorbisField(key, trimmed));
   }
+}
+
+function pushFlacComment(out: string[], key: string, value?: string): void {
+  const trimmed = value?.trim();
+  if (!trimmed) return;
+  out.push(flacVorbisField(key, trimmed));
+}
+
+function collectFlacVorbisComments(
+  meta: IMusicMeta,
+  extraTags: ExtraNativeTagWriteEntry[]
+): string[] {
+  const out: string[] = [];
+
+  pushFlacComment(out, 'TITLE', meta.title);
+  pushFlacComments(out, 'ARTIST', meta.artists);
+  pushFlacComment(out, 'ALBUM', meta.album);
+  pushFlacComment(out, 'ALBUMARTIST', meta.albumartist);
+  pushFlacComments(out, 'GENRE', meta.genre);
+  if (meta.date) pushFlacComment(out, 'DATE', meta.date);
+  else if (meta.year) pushFlacComment(out, 'DATE', String(meta.year));
+
+  const track = formatTrackNumber(meta.trackNo, meta.trackOf);
+  if (track) {
+    const [no, of] = track.includes('/') ? track.split('/') : [track, ''];
+    pushFlacComment(out, 'TRACKNUMBER', no);
+    if (of) pushFlacComment(out, 'TRACKTOTAL', of);
+  }
+
+  const disc = formatTrackNumber(meta.diskNo, meta.diskOf);
+  if (disc) {
+    const [no, of] = disc.includes('/') ? disc.split('/') : [disc, ''];
+    pushFlacComment(out, 'DISCNUMBER', no);
+    if (of) pushFlacComment(out, 'DISCTOTAL', of);
+  }
+
+  pushFlacComments(out, 'COMMENT', meta.comment);
+  if (meta.lyrics?.length) {
+    pushFlacComment(out, 'LYRICS', meta.lyrics.join('\n\n'));
+  }
+  pushFlacComments(out, 'COMPOSER', meta.composer);
+  pushFlacComments(out, 'LYRICIST', meta.lyricist);
+  pushFlacComments(out, 'CONDUCTOR', meta.conductor);
+  pushFlacComments(out, 'REMIXER', meta.remixer);
+  pushFlacComments(out, 'PRODUCER', meta.producer);
+  pushFlacComments(out, 'LABEL', meta.label);
+  pushFlacComment(out, 'GROUPING', meta.grouping);
+  pushFlacComments(out, 'SUBTITLE', meta.subtitle);
+  pushFlacComments(out, 'CATALOGNUMBER', meta.catalognumber);
+  if (meta.bpm) pushFlacComment(out, 'BPM', String(meta.bpm));
+
+  const grouped = new Map<string, string[]>();
+  for (const entry of extraTags) {
+    const key = entry.tagKey.trim().toUpperCase();
+    const value = entry.value.trim();
+    if (!key || !value) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(value);
+  }
+  for (const [key, values] of grouped) {
+    pushFlacComments(out, key, values);
+  }
+
+  return out;
+}
+
+export type { FlacCoverWriteMode };
+
+const DEFAULT_FLAC_PADDING_BYTES = 4096;
+
+type MetaFlacInternal = MetaFlac & {
+  padding: Buffer | null
+  pictures: Buffer[]
+  picturesSpecs: unknown[]
+  picturesDatas: Buffer[]
+};
+
+function ensureMetaFlacPadding(writer: MetaFlac): void {
+  const w = writer as MetaFlacInternal;
+  if (w.padding == null || w.padding.length < DEFAULT_FLAC_PADDING_BYTES) {
+    w.padding = Buffer.alloc(
+      w.padding?.length
+        ? Math.max(w.padding.length, DEFAULT_FLAC_PADDING_BYTES)
+        : DEFAULT_FLAC_PADDING_BYTES
+    );
+  }
+}
+
+function clearFlacPictures(writer: MetaFlac): void {
+  const w = writer as MetaFlacInternal;
+  w.pictures = [];
+  w.picturesSpecs = [];
+  w.picturesDatas = [];
 }
 
 export function WriteMetaToFlac(
   audioData: Buffer,
   info: IMusicMeta,
   original: IAudioMetadata,
-  replaceExisting = false
+  replaceExisting = false,
+  extraTags: ExtraNativeTagWriteEntry[] = [],
+  coverMode: FlacCoverWriteMode = 'preserve'
 ): Buffer {
   const meta = buildMusicMetaFromSources(info, original, replaceExisting);
+
+  if (replaceExisting) {
+    const comments = collectFlacVorbisComments(meta, extraTags);
+    const picture =
+      coverMode === 'replace' && meta.picture?.byteLength
+        ? Buffer.from(meta.picture)
+        : undefined;
+    return rebuildFlacWithVorbisTags(audioData, comments, {
+      coverMode,
+      picture
+    });
+  }
+
   const writer = new MetaFlac(audioData);
   ensureMetaFlacPadding(writer);
   clearManagedFlacTags(writer);
@@ -493,14 +702,72 @@ export function WriteMetaToFlac(
   setFlacTags(writer, 'SUBTITLE', meta.subtitle);
   setFlacTags(writer, 'CATALOGNUMBER', meta.catalognumber);
   if (meta.bpm) setFlacTag(writer, 'BPM', String(meta.bpm));
+
+  if (extraTags.length > 0) {
+    const grouped = new Map<string, string[]>();
+    for (const entry of extraTags) {
+      const key = entry.tagKey.trim().toUpperCase();
+      const value = entry.value.trim();
+      if (!key || !value) continue;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(value);
+    }
+    for (const [key, values] of grouped) {
+      setFlacTags(writer, key, values);
+    }
+  }
+
   if (meta.picture?.byteLength) {
     try {
+      clearFlacPictures(writer);
       writer.importPictureFromBuffer(Buffer.from(meta.picture));
     } catch {
       /* 封面写入失败时仍保留其它标签 */
     }
   }
+
   return writer.save();
+}
+
+/** 在已写入常规标签的 FLAC 上追加 / 覆盖非托管或额外标签 */
+export function applyExtraTagsToFlacBuffer(
+  audioData: Buffer,
+  entries: ExtraNativeTagWriteEntry[]
+): Buffer {
+  if (!entries.length) return audioData;
+
+  const writer = new MetaFlac(audioData);
+  ensureMetaFlacPadding(writer);
+  const grouped = new Map<string, string[]>();
+
+  for (const entry of entries) {
+    const key = entry.tagKey.trim().toUpperCase();
+    const value = entry.value.trim();
+    if (!key || !value) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(value);
+  }
+
+  for (const [key, values] of grouped) {
+    setFlacTags(writer, key, values);
+  }
+
+  return writer.save();
+}
+
+/** 在已写入常规标签的 MP3 上追加 / 覆盖非托管或额外标签（需先剥离已有 ID3） */
+export function applyExtraTagsToMp3Buffer(
+  audioData: Buffer,
+  entries: ExtraNativeTagWriteEntry[]
+): Buffer {
+  if (!entries.length) return audioData;
+
+  const mp3Body = mp3BodyForTagWriter(audioData, true);
+  const writer = new ID3Writer(nodeBufferToArrayBuffer(mp3Body));
+
+  applyExtraNativeTagEntriesToMp3Writer(writer, entries);
+
+  return Buffer.from(writer.addTag());
 }
 
 /** 将解密结果中的元数据写入 mp3/flac 文件体 */

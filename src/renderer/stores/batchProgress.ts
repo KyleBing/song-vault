@@ -11,13 +11,19 @@ export interface BatchProgressSnapshot {
 
 export const useBatchProgressStore = defineStore('batchProgress', () => {
     const snapshot = ref<BatchProgressSnapshot | null>(null)
+    let ownerId: symbol | null = null
 
-    function publish(next: BatchProgressSnapshot): void {
+    function publish(id: symbol, next: BatchProgressSnapshot): void {
+        ownerId = id
         snapshot.value = next
     }
 
-    function clear(): void {
-        snapshot.value = null
+    /** 仅清除由同一 owner 发布的进度，避免多页面互相覆盖 */
+    function clear(id: symbol): void {
+        if (ownerId === id) {
+            ownerId = null
+            snapshot.value = null
+        }
     }
 
     return { snapshot, publish, clear }

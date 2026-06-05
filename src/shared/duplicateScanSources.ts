@@ -15,8 +15,6 @@ export interface DuplicateScanSourceInput {
     syncLeftAlias?: string
     syncRightDir?: string
     syncRightAlias?: string
-    /** 当前选用或上次保存的路径（可为根目录下的子文件夹） */
-    duplicateScanDir: string
     /** 是否包含乐库同步目录，默认 true */
     includeSyncSources?: boolean
     /** 根目录分组标签，默认「乐库目录」 */
@@ -106,20 +104,6 @@ export function buildDuplicateScanSourceGroups(
                 options: syncOptions
             })
         }
-    }
-
-    const current = normalizePath(input.duplicateScanDir)
-    if (current && !seen.has(current)) {
-        groups.push({
-            key: 'other',
-            label: '其他',
-            options: [
-                {
-                    label: `${pathBasename(current)}（当前选用）`,
-                    path: current
-                }
-            ]
-        })
     }
 
     return groups

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import {
     BatchCancelledError,
     runWithCancelCheck,
+    runWithCancelCheckAsync,
     type BatchCancelCheck
 } from '../shared/batchCancel'
 
@@ -56,7 +57,7 @@ export async function runWithBatchJobAsync<T>(
     fn: () => Promise<T>
 ): Promise<T> {
     try {
-        return await runWithCancelCheck(makeJobCancelCheck(jobId), fn)
+        return await runWithCancelCheckAsync(makeJobCancelCheck(jobId), fn)
     } finally {
         clearBatchJob(jobId)
     }

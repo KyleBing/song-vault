@@ -33,6 +33,7 @@ import {
   scanMetaTagMismatches,
   type ScanMetaTagMismatchParams
 } from '../shared/metaTagMismatchJob'
+import { BATCH_JOB_PROGRESS_CHANNEL } from '../shared/batchJobProgress'
 import { readTextFile } from '../shared/readTextFile'
 import {
   readMusicFile,
@@ -64,9 +65,14 @@ import { readAudioFileMetricsBatch } from '../shared/readAudioFileMetrics'
 import { readAudioFileMeta } from '../shared/readAudioFileMeta'
 import {
     writeAudioFileMeta,
-    writeFilenameTagsToFile
+    writeFilenameTagsToFile,
+    cleanupDuplicateExtendedTagsToFile,
+    convertTraditionalExtendedTagsToFile,
+    removeId3v1TagsFromFile
 } from './writeAudioFileMeta'
+import { toSimplifiedChinese } from './traditionalChineseConvert'
 import type { AudioMetaEditForm } from '../shared/audioMetaEdit'
+import type { AudioMetaExtraTagRow } from '../shared/audioMetaExtraEdit'
 import { resolvePathToMediaUrl } from '../shared/pathToMediaUrl'
 import { toIpcPlain } from '../shared/serialize'
 import {
@@ -118,6 +124,10 @@ const IPC_CHANNELS = [
   'read-audio-meta',
   'write-audio-meta',
   'write-filename-tags',
+  'cleanup-duplicate-ext-tags',
+  'convert-traditional-ext-tags',
+  'convert-text-to-simplified',
+  'remove-id3v1-tags',
   'pick-cover-image',
   'compare-library-sync',
   'validate-search-roots',
@@ -316,6 +326,19 @@ function registerIpcHandlers(): void {
         : typeof raw.coverBase64 === 'string'
           ? raw.coverBase64
           : undefined
+    const extendedNative = Array.isArray(raw.extendedNative)
+      ? (raw.extendedNative as AudioMetaExtraTagRow[])
+      : undefined
+    const otherExtra = Array.isArray(raw.otherExtra)
+      ? (raw.otherExtra as AudioMetaExtraTagRow[])
+      : undefined
+    const touchedExtensionFamilies = Array.isArray(raw.touchedExtensionFamilies)
+      ? new Set(
+          raw.touchedExtensionFamilies.filter(
+            (item): item is string => typeof item === 'string'
+          )
+        )
+      : undefined
 
     if (!filePath || !form) {
       return toIpcPlain({
@@ -329,7 +352,10 @@ function registerIpcHandlers(): void {
       await writeAudioFileMeta({
         filePath,
         form,
-        coverBase64
+        coverBase64,
+        extendedNative,
+        otherExtra,
+        touchedExtensionFamilies
       })
     )
   })
@@ -354,6 +380,78 @@ function registerIpcHandlers(): void {
     return toIpcPlain(
       await writeFilenameTagsToFile({ filePath, artist, title })
     )
+  })
+
+  ipcMain.handle('cleanup-duplicate-ext-tags', async (_, payload: unknown) => {
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {}
+    const filePath = typeof raw.filePath === 'string' ? raw.filePath : ''
+
+    if (!filePath) {
+      return toIpcPlain({
+        ok: false,
+        filePath,
+        message: '参数无效'
+      })
+    }
+
+    return toIpcPlain(
+      await cleanupDuplicateExtendedTagsToFile({ filePath })
+    )
+  })
+
+  ipcMain.handle('convert-traditional-ext-tags', async (_, payload: unknown) => {
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {}
+    const filePath = typeof raw.filePath === 'string' ? raw.filePath : ''
+
+    if (!filePath) {
+      return toIpcPlain({
+        ok: false,
+        filePath,
+        message: '参数无效'
+      })
+    }
+
+    return toIpcPlain(
+      await convertTraditionalExtendedTagsToFile({ filePath })
+    )
+  })
+
+  ipcMain.handle('convert-text-to-simplified', (_, payload: unknown) => {
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {}
+    const text =
+      typeof raw.text === 'string'
+        ? raw.text
+        : typeof payload === 'string'
+          ? payload
+          : ''
+    return toIpcPlain(toSimplifiedChinese(text))
+  })
+
+  ipcMain.handle('remove-id3v1-tags', async (_, payload: unknown) => {
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {}
+    const filePath = typeof raw.filePath === 'string' ? raw.filePath : ''
+
+    if (!filePath) {
+      return toIpcPlain({
+        ok: false,
+        filePath,
+        message: '参数无效'
+      })
+    }
+
+    return toIpcPlain(await removeId3v1TagsFromFile({ filePath }))
   })
 
   ipcMain.handle('pick-cover-image', async () => {
@@ -403,11 +501,33 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'compare-library-sync',
-    async (_, params: CompareLibrarySyncParams) => {
+    async (event, params: CompareLibrarySyncParams) => {
       const plain = toIpcPlain(params)
       const jobId = batchJobIdFromParams(plain)
+
+      const sendProgress = (
+        done: number,
+        total: number,
+        phase: 'scanLeft' | 'scanRight' | 'compare'
+      ): void => {
+        if (!jobId) return
+        const ipcPhase =
+          phase === 'compare' ? ('compareSync' as const) : phase
+        event.sender.send(BATCH_JOB_PROGRESS_CHANNEL, {
+          jobId,
+          done,
+          total,
+          phase: ipcPhase
+        })
+      }
+
       return toIpcPlain(
-        runWithBatchJob(jobId, () => compareLibrarySync(plain))
+        runWithBatchJob(jobId, () =>
+          compareLibrarySync({
+            ...(plain as CompareLibrarySyncParams),
+            onProgress: sendProgress
+          })
+        )
       )
     }
   )
@@ -475,7 +595,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'scan-meta-tag-mismatches',
-    async (_, params: unknown) => {
+    async (event, params: unknown) => {
       const plain = toIpcPlain(params)
       const jobId = batchJobIdFromParams(plain)
       const root =
@@ -485,19 +605,34 @@ function registerIpcHandlers(): void {
         typeof (plain as ScanMetaTagMismatchParams).root === 'string'
           ? (plain as ScanMetaTagMismatchParams).root
           : ''
+      const pathFilterRules =
+        plain &&
+        typeof plain === 'object' &&
+        'pathFilterRules' in plain &&
+        Array.isArray((plain as ScanMetaTagMismatchParams).pathFilterRules)
+          ? (plain as ScanMetaTagMismatchParams).pathFilterRules
+          : []
+
+      const sendProgress = (
+        done: number,
+        total: number,
+        phase?: 'read' | 'compare'
+      ): void => {
+        if (!jobId) return
+        event.sender.send(BATCH_JOB_PROGRESS_CHANNEL, {
+          jobId,
+          done,
+          total,
+          phase
+        })
+      }
+
       return toIpcPlain(
         await runWithBatchJobAsync(jobId, () =>
           scanMetaTagMismatches({
             root,
-            pathFilterRules:
-              plain &&
-              typeof plain === 'object' &&
-              'pathFilterRules' in plain &&
-              Array.isArray(
-                (plain as ScanMetaTagMismatchParams).pathFilterRules
-              )
-                ? (plain as ScanMetaTagMismatchParams).pathFilterRules
-                : []
+            pathFilterRules,
+            onProgress: sendProgress
           })
         )
       )

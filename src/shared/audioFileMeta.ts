@@ -1,4 +1,6 @@
 import { formatFileSize, formatMetaFieldFromRaw } from './formatAudioDisplay'
+import { nativeTagFormatId } from './audioMetaLabels'
+import { fileExtensionLower } from './pathLite'
 
 /** 单条原生标签（如 ID3v2 / Vorbis comment） */
 export interface AudioNativeTagEntry {
@@ -217,4 +219,16 @@ export function nativeArtistTitleMatchesCommon(meta: AudioFileMetaInfo): {
       !commonTitle ||
       normalizeMetaCompare(native.title) === normalizeMetaCompare(commonTitle)
   }
+}
+
+/** MP3 是否带有文件尾 ID3v1 / ID3v1.1 原生标签 */
+export function metaHasId3v1NativeTags(
+    meta: AudioFileMetaInfo,
+    filePath: string
+): boolean {
+    if (fileExtensionLower(filePath) !== 'mp3') return false
+    return (meta.native ?? []).some((tag) => {
+        const formatId = nativeTagFormatId(tag.id)
+        return formatId === 'id3v1' || formatId === 'id3v1.1'
+    })
 }

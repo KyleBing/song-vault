@@ -185,6 +185,9 @@ export interface FindAudioInSearchRootsParams {
 export interface BrowseRenameResult {
   oldPath: string
   newPath: string
+  /** 同步重命名的同级歌词路径（若有） */
+  oldLrcPath?: string
+  newLrcPath?: string
 }
 
 export interface BrowseDeleteFilesResult {
@@ -577,7 +580,36 @@ export function browseRenamePath(
     throw new Error('目标名称已存在')
   }
 
-  fs.renameSync(oldPath, newPath)
+  const stat = fs.statSync(oldPath)
+  const siblingLrc = stat.isFile() ? findSiblingLrc(oldPath) : null
+  let newLrcPath: string | null = null
+  if (siblingLrc) {
+    const lrcExt = path.parse(siblingLrc).ext || '.lrc'
+    newLrcPath = path.join(parent, `${path.parse(newPath).name}${lrcExt}`)
+    if (
+      path.resolve(newLrcPath) !== path.resolve(siblingLrc) &&
+      fs.existsSync(newLrcPath)
+    ) {
+      throw new Error('目标歌词文件名已存在')
+    }
+  }
+
+  safeRenameFile(oldPath, newPath)
+
+  if (
+    siblingLrc &&
+    newLrcPath &&
+    path.resolve(newLrcPath) !== path.resolve(siblingLrc)
+  ) {
+    safeRenameFile(siblingLrc, newLrcPath)
+    return {
+      oldPath,
+      newPath,
+      oldLrcPath: siblingLrc,
+      newLrcPath
+    }
+  }
+
   return { oldPath, newPath }
 }
 

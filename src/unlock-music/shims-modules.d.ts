@@ -11,6 +11,7 @@ declare module 'metaflac-js' {
     constructor(buffer: Buffer)
     setTag(field: string): void
     removeTag(name: string): void
+    removeAllTags(): void
     importPictureFromBuffer(picture: Buffer): void
     save(): Buffer
   }

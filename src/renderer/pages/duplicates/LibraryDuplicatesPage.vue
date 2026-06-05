@@ -7,7 +7,7 @@ import {
     NSpin,
     useMessage
 } from 'naive-ui'
-import { Close, Folder, FolderOpen, Refresh, Trash } from '@vicons/ionicons5'
+import { Close, Refresh, Trash } from '@vicons/ionicons5'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { PathFilterRule } from '@shared/appConfig'
 import type {
@@ -17,6 +17,7 @@ import type {
 import { duplicateMemberKey } from '@shared/libraryDuplicateTypes'
 import {
     buildDuplicateScanSourceGroups,
+    flattenDuplicateScanSourcePaths,
     hasDuplicateScanSourceOptions
 } from '@shared/duplicateScanSources'
 import type { SyncRootCheck } from '@shared/librarySyncJob'
@@ -33,7 +34,6 @@ import {
 import { formatElapsedMs } from '@renderer/utils/formatDuration'
 import DuplicateGroupTreeNode from './DuplicateGroupTreeNode.vue'
 import DuplicateGroupCoverCompare from './DuplicateGroupCoverCompare.vue'
-import BrowseDirPickerModal from '@renderer/pages/library/BrowseDirPickerModal.vue'
 import { useBatchTask } from '@renderer/composables/useBatchTask'
 import { syncGlobalBatchProgress } from '@renderer/composables/syncGlobalBatchProgress'
 
@@ -64,9 +64,6 @@ interface DeleteToolbarResult {
 }
 
 const deleteResult = ref<DeleteToolbarResult | null>(null)
-const scanDirPickerVisible = ref(false)
-
-const browseRoots = computed(() => [...props.searchRoots])
 
 const {
     selectedKeys: selectedRowKeys,
@@ -94,11 +91,29 @@ const rootIssue = computed(() => {
 const sourceGroups = computed(() =>
     buildDuplicateScanSourceGroups({
         searchRoots: props.searchRoots,
-        duplicateScanDir: duplicateScanDir.value,
         includeSyncSources: false,
         libraryGroupLabel: '音乐源文件夹'
     })
 )
+
+function normalizeScanPath(dirPath: string): string {
+    return dirPath.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+function ensureScanDirFromConfiguredSources(): void {
+    const allowed = flattenDuplicateScanSourcePaths(sourceGroups.value)
+    if (allowed.length === 0) {
+        duplicateScanDir.value = ''
+        return
+    }
+    const current = (duplicateScanDir.value ?? '').trim()
+    const ok =
+        !!current &&
+        allowed.some((p) => normalizeScanPath(p) === normalizeScanPath(current))
+    if (!ok) {
+        duplicateScanDir.value = allowed[0]!
+    }
+}
 
 const hasConfiguredSources = computed(() =>
     hasDuplicateScanSourceOptions(sourceGroups.value)
@@ -272,18 +287,6 @@ async function validateScanRoot(): Promise<SyncRootCheck> {
     }
 }
 
-async function pickScanDir(): Promise<void> {
-    if (!props.searchRoots.length) {
-        message.warning('请先在「设置 → 路径」中添加音乐源文件夹')
-        return
-    }
-    scanDirPickerVisible.value = true
-}
-
-function onScanDirPicked(path: string): void {
-    duplicateScanDir.value = path
-}
-
 async function runScan(options?: {
     silent?: boolean
     scanLoading?: boolean
@@ -334,6 +337,7 @@ async function tryAutoScan(): Promise<void> {
 }
 
 onMounted(() => {
+    ensureScanDirFromConfiguredSources()
     void (async () => {
         if (canScan.value) {
             await validateScanRoot()
@@ -341,6 +345,14 @@ onMounted(() => {
         await tryAutoScan()
     })()
 })
+
+watch(
+    () => props.searchRoots,
+    () => {
+        ensureScanDirFromConfiguredSources()
+    },
+    { deep: true }
+)
 
 watch(duplicateScanDir, () => {
     scanResult.value = null
@@ -429,23 +441,9 @@ async function deleteSelectedDuplicates(): Promise<void> {
 
 <template>
     <div class="library-duplicates-page">
-        <BrowseDirPickerModal
-            v-model:show="scanDirPickerVisible"
-            :browse-roots="browseRoots"
-            :path-filter-rules="pathFilterRules"
-            :initial-dir="duplicateScanDir || null"
-            title="选择扫描文件夹"
-            positive-text="确定"
-            selected-hint-prefix="扫描目录："
-            pending-hint="请在音乐源文件夹中选择要扫描的目录"
-            empty-roots-description="请先在设置 → 路径 中添加音乐源文件夹"
-            :show-create-subdir="false"
-            @confirm="onScanDirPicked"
-        />
-
         <section v-if="!canScan" class="library-duplicates-hint">
             <p>
-                请从设置中的音乐源文件夹选择扫描目录，或在目录树中指定子文件夹。
+                请先在「设置 → 路径」中添加音乐源文件夹，并从下方列表选择扫描目录。
             </p>
             <NSelect
                 v-if="hasConfiguredSources"
@@ -464,12 +462,6 @@ async function deleteSelectedDuplicates(): Promise<void> {
                     }
                 "
             />
-            <NButton size="small" @click="pickScanDir">
-                <template #icon>
-                    <NIcon><Folder /></NIcon>
-                </template>
-                从音乐源选择…
-            </NButton>
         </section>
 
         <section
@@ -488,7 +480,23 @@ async function deleteSelectedDuplicates(): Promise<void> {
                 {{ rootIssue.message }}
                 <span>{{ rootIssue.path }}</span>
             </p>
-            <NButton size="small" @click="pickScanDir">重新选择</NButton>
+            <NSelect
+                v-if="hasConfiguredSources"
+                class="dup-source-select"
+                :value="duplicateScanDir || null"
+                :options="sourceSelectOptions"
+                size="small"
+                filterable
+                :consistent-menu-width="false"
+                placeholder="从音乐源文件夹选择"
+                @update:value="
+                    (value) => {
+                        if (typeof value === 'string') {
+                            duplicateScanDir = value
+                        }
+                    }
+                "
+            />
         </section>
 
         <div v-else class="workspace">
@@ -551,19 +559,12 @@ async function deleteSelectedDuplicates(): Promise<void> {
                         >
                             请先在设置 → 路径 中添加音乐源文件夹。
                         </p>
-                        <NButton block size="small" secondary @click="pickScanDir">
-                            <template #icon>
-                                <NIcon><FolderOpen /></NIcon>
-                            </template>
-                            从音乐源选择…
-                        </NButton>
                         <p v-if="duplicateScanDir" class="dup-source-panel__path">
                             {{ duplicateScanDir }}
                         </p>
                     </section>
 
                     <section v-if="scanResult" class="dup-stats-panel">
-                        <p class="dup-stats-panel__path">{{ scanResult.root }}</p>
                         <div class="dup-stats-grid">
                             <div class="dup-stats-grid__item">
                                 <span class="dup-stats-grid__value">
@@ -661,7 +662,7 @@ async function deleteSelectedDuplicates(): Promise<void> {
                     <section class="dup-usage-guide" aria-label="使用说明">
                         <h3 class="dup-usage-guide__title">使用说明</h3>
                         <p class="dup-usage-guide__text">
-                            扫描源来自设置 → 路径 中的「你的乐库目录」（音乐源文件夹）：可在下拉框选根目录，或点击「从音乐源选择…」在目录树中指定子文件夹。勾选重复组后，用单选指定要保留的那一份，再点击「删除副本」清理其余副本。
+                            扫描源来自设置 → 路径 中的「你的乐库目录」（音乐源文件夹），请在下拉框中选择。勾选重复组后，用单选指定要保留的那一份，再点击「删除副本」清理其余副本。
                         </p>
                     </section>
                 </div>
@@ -891,15 +892,6 @@ async function deleteSelectedDuplicates(): Promise<void> {
     border-radius: $radius-panel;
     border: 1px solid $border-subtle;
     background: $surface-panel;
-}
-
-.dup-stats-panel__path {
-    margin: 0;
-    font-family: $font-mono;
-    font-size: 9px;
-    line-height: 1.35;
-    opacity: 0.5;
-    word-break: break-all;
 }
 
 .dup-stats-grid {

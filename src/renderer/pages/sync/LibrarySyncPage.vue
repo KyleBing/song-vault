@@ -17,10 +17,11 @@ import {
     Refresh,
     Trash
 } from '@vicons/ionicons5'
-import { computed, nextTick, onActivated, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { PathFilterRule } from '@shared/appConfig'
 import type {
     CompareLibrarySyncResult,
+    LibrarySyncComparePhase,
     SyncDiffItem,
     ValidateSyncRootsResult
 } from '@shared/librarySyncJob'
@@ -83,15 +84,40 @@ const sidebarBatchProgressActive = computed(
         deletingSelected.value
 )
 
-syncGlobalBatchProgress(batchTask, {
-    active: () => sidebarBatchProgressActive.value,
-    title: () => batchCopyProgressTitle.value,
-    percentage: () => batchCopyProgressPercent.value,
-    detail: () =>
-        batchCopying.value ? batchCopyProgressDetailText.value : undefined,
-    indeterminate: () =>
-        !batchCopying.value || batchCopyProgressPercent.value === 0
-})
+const compareProgress = ref<{
+    done: number
+    total: number
+    phase: LibrarySyncComparePhase
+}>({ done: 0, total: 0, phase: 'scanLeft' })
+const compareTiming = ref<{ elapsedMs: number | null }>({ elapsedMs: null })
+
+let compareTimingTimer: ReturnType<typeof setInterval> | null = null
+let compareStartedAt = 0
+let activeCompareJobId: string | null = null
+let unsubscribeBatchJobProgress: (() => void) | null = null
+
+function stopCompareTimingClock(final = false): void {
+    if (compareTimingTimer) {
+        clearInterval(compareTimingTimer)
+        compareTimingTimer = null
+    }
+    if (final && compareStartedAt > 0) {
+        compareTiming.value = {
+            elapsedMs: performance.now() - compareStartedAt
+        }
+    }
+}
+
+function startCompareTimingClock(): void {
+    stopCompareTimingClock()
+    compareStartedAt = performance.now()
+    compareTiming.value = { elapsedMs: 0 }
+    compareTimingTimer = setInterval(() => {
+        compareTiming.value = {
+            elapsedMs: performance.now() - compareStartedAt
+        }
+    }, 200)
+}
 
 const batchCopyProgressTitle = computed(() => {
     if (loading.value && batchTask.active && !batchCopying.value) {
@@ -292,6 +318,40 @@ const batchCopyProgressPercent = computed(() => {
     return Math.round((done / total) * 100)
 })
 
+const compareProgressPercent = computed(() => {
+    const { done, total, phase } = compareProgress.value
+    if (phase !== 'compare' || !total) return 0
+    return Math.round((done / total) * 100)
+})
+
+const compareProgressDetailText = computed(() => {
+    if (!loading.value || batchCopying.value || deletingSelected.value) {
+        return ''
+    }
+    const { done, total, phase } = compareProgress.value
+    const parts: string[] = []
+    if (phase === 'compare') {
+        if (total > 0) {
+            parts.push(`已对比 ${done} / ${total}`)
+        } else {
+            parts.push('正在对比…')
+        }
+    } else if (phase === 'scanLeft') {
+        parts.push(
+            done > 0 ? `左侧已发现 ${done} 个文件` : '正在扫描左侧…'
+        )
+    } else if (phase === 'scanRight') {
+        parts.push(
+            done > 0 ? `右侧已发现 ${done} 个文件` : '正在扫描右侧…'
+        )
+    }
+    const ms = compareTiming.value.elapsedMs
+    if (ms != null) {
+        parts.push(`已用 ${formatElapsedMs(ms)}`)
+    }
+    return parts.join(' · ')
+})
+
 const batchCopyProgressDetailText = computed(() => {
     const { done, total } = batchCopyProgress.value
     if (!batchCopying.value || total === 0) return ''
@@ -308,6 +368,29 @@ const batchCopyProgressDetailText = computed(() => {
         }
     }
     return parts.join(' · ')
+})
+
+syncGlobalBatchProgress(batchTask, {
+    active: () => sidebarBatchProgressActive.value,
+    title: () => batchCopyProgressTitle.value,
+    percentage: () =>
+        loading.value && !batchCopying.value && !deletingSelected.value
+            ? compareProgressPercent.value
+            : batchCopyProgressPercent.value,
+    detail: () =>
+        loading.value && !batchCopying.value && !deletingSelected.value
+            ? compareProgressDetailText.value
+            : batchCopying.value || deletingSelected.value
+              ? batchCopyProgressDetailText.value
+              : undefined,
+    indeterminate: () =>
+        (loading.value &&
+            !batchCopying.value &&
+            !deletingSelected.value &&
+            (compareProgress.value.phase !== 'compare' ||
+                compareProgress.value.total === 0)) ||
+        ((batchCopying.value || deletingSelected.value) &&
+            batchCopyProgressPercent.value === 0)
 })
 
 const batchCopyResultTitle = computed(() => {
@@ -508,8 +591,11 @@ async function runCompare(options?: {
     const showScanLoading = !!options?.scanLoading
     if (showScanLoading) scanButtonLoading.value = true
     loading.value = true
+    compareProgress.value = { done: 0, total: 0, phase: 'scanLeft' }
+    startCompareTimingClock()
     await flushLoadingPaint()
     batchTask.begin()
+    activeCompareJobId = batchTask.jobId
 
     try {
         const validation = await validateSyncDirs({ background: true })
@@ -533,6 +619,8 @@ async function runCompare(options?: {
         }
         throw err
     } finally {
+        stopCompareTimingClock(true)
+        activeCompareJobId = null
         batchTask.end()
         loading.value = false
         if (showScanLoading) scanButtonLoading.value = false
@@ -573,24 +661,49 @@ if (canCompare.value) {
     tryRestoreCachedCompare()
 }
 
-async function tryAutoCompareIfNeeded(): Promise<void> {
-    if (
-        !canCompare.value ||
-        loading.value ||
-        batchCopying.value ||
-        deletingSelected.value ||
-        compareResult.value
-    ) {
+async function bootstrapSyncPage(): Promise<void> {
+    if (!canCompare.value) return
+    if (compareResult.value || tryRestoreCachedCompare()) {
+        void validateSyncDirs({ background: true })
         return
     }
-    const validation = syncDirsValidation.value ?? (await validateSyncDirs())
-    if (!validation.left.ok || !validation.right.ok) {
-        return
-    }
-    await runCompare()
+    void validateSyncDirs({ background: true })
 }
 
-/** 进入页面：有结果则直接展示，无结果也不自动重新扫描 */
+onMounted(() => {
+    unsubscribeBatchJobProgress = window.electronAPI.onBatchJobProgress(
+        (payload) => {
+            if (!activeCompareJobId || payload.jobId !== activeCompareJobId) {
+                return
+            }
+            const phase =
+                payload.phase === 'compareSync'
+                    ? 'compare'
+                    : payload.phase === 'scanLeft' ||
+                        payload.phase === 'scanRight'
+                      ? payload.phase
+                      : compareProgress.value.phase
+            compareProgress.value = {
+                done: payload.done,
+                total: payload.total,
+                phase
+            }
+        }
+    )
+    void bootstrapSyncPage()
+})
+
+onUnmounted(() => {
+    unsubscribeBatchJobProgress?.()
+    unsubscribeBatchJobProgress = null
+    stopCompareTimingClock()
+})
+
+onActivated(() => {
+    onSyncPageActivated()
+})
+
+/** 进入页面：有缓存结果则展示，无结果不自动扫描 */
 function onSyncPageActivated(): void {
     if (!canCompare.value) {
         syncDirsValidation.value = null
@@ -605,29 +718,6 @@ function onSyncPageActivated(): void {
     }
     void validateSyncDirs({ background: true })
 }
-
-/** 首次挂载且从未对比过：自动扫描一次 */
-async function bootstrapFirstVisitCompare(): Promise<void> {
-    if (!canCompare.value) return
-    if (compareResult.value || tryRestoreCachedCompare()) {
-        void validateSyncDirs({ background: true })
-        return
-    }
-    if (syncSession.compareResult) {
-        void validateSyncDirs({ background: true })
-        return
-    }
-    await validateSyncDirs()
-    await tryAutoCompareIfNeeded()
-}
-
-onMounted(() => {
-    void bootstrapFirstVisitCompare()
-})
-
-onActivated(() => {
-    onSyncPageActivated()
-})
 
 watch([syncLeftDir, syncRightDir], (newDirs, oldDirs) => {
     if (
@@ -654,8 +744,7 @@ watch([syncLeftDir, syncRightDir], (newDirs, oldDirs) => {
         compareResult.value = null
         treeData.value = []
         expandedRowKeys.value = []
-        await validateSyncDirs()
-        await tryAutoCompareIfNeeded()
+        void validateSyncDirs({ background: true })
     })()
 })
 
@@ -1413,7 +1502,7 @@ async function deleteSelectedSyncFiles(): Promise<void> {
             <section class="sync-main-pane">
                 <NSpin
                     :show="loading"
-                    description="正在扫描对比…"
+                    description="请稍候，进度见左下角"
                     class="sync-main-spin"
                 >
                     <div
@@ -1502,8 +1591,8 @@ async function deleteSelectedSyncFiles(): Promise<void> {
                     </div>
 
                     <div v-else-if="!loading" class="library-sync-empty">
-                        <p class="library-sync-empty__title">等待扫描</p>
-                        <p class="library-sync-empty__desc">正在加载或请点击「扫描对比」</p>
+                        <p class="library-sync-empty__title">尚未对比</p>
+                        <p class="library-sync-empty__desc">点击左侧「扫描对比」。</p>
                     </div>
                 </NSpin>
                 <SelectionPathFooter :path="metaPanelFilePath" />

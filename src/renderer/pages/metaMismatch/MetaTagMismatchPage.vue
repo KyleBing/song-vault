@@ -9,7 +9,7 @@ import {
     useMessage,
     type DataTableColumns
 } from 'naive-ui'
-import { Folder, FolderOpen, Refresh } from '@vicons/ionicons5'
+import { Close, Refresh } from '@vicons/ionicons5'
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { PathFilterRule } from '@shared/appConfig'
@@ -33,9 +33,17 @@ import type { SyncRootCheck } from '@shared/librarySyncJob'
 import { pathFilterRulesForSave } from '@shared/pathFilters'
 import {
     buildDuplicateScanSourceGroups,
+    flattenDuplicateScanSourcePaths,
     hasDuplicateScanSourceOptions
 } from '@shared/duplicateScanSources'
-import { metaTagFieldsHaveTraditionalChinese } from '@shared/traditionalChinese'
+import {
+    metaTagRowHasTraditionalChinese,
+    isTraditionalVariantChar
+} from '@shared/traditionalChinese'
+import {
+    duplicateKeysForArtistStack,
+    duplicateKeysForTitleStack
+} from '@shared/audioMetaExtraEdit'
 import { useShiftRowSelection } from '@renderer/composables/useShiftRowSelection'
 import {
     applySortableHeaders,
@@ -57,23 +65,24 @@ import { metaPanelPathFromSelection } from '@renderer/composables/metaPanelPathF
 import type { VNode } from 'vue'
 
 type IssueFilterKey = 'all' | MetaTagMismatchIssue
+type IssueGroupId = 'filename' | 'tag' | 'extended'
+
+const ISSUE_GROUP_LABELS: Record<IssueGroupId, string> = {
+    filename: '文件名',
+    tag: '标签',
+    extended: '扩展'
+}
 
 const ISSUE_FILTER_OPTIONS: {
     key: MetaTagMismatchIssue
+    group: IssueGroupId
     label: string
     fixLabel: string
     confirmAll: (count: number) => string
     confirmSelected: (selectedCount: number, fixCount: number) => string
 }[] = [
     {
-        key: 'tagArtistSep',
-        label: META_TAG_MISMATCH_ISSUE_LABELS.tagArtistSep,
-        fixLabel: '执行',
-        confirmAll: (n) => `将全部 ${n} 个符合项的标签艺人改为「 & 」分隔？`,
-        confirmSelected: (sel, n) =>
-            `已选 ${sel} 条，其中 ${n} 条符合「标签分隔」，确定修复标签艺人？`
-    },
-    {
+        group: 'filename',
         key: 'fileArtistSep',
         label: META_TAG_MISMATCH_ISSUE_LABELS.fileArtistSep,
         fixLabel: '执行',
@@ -82,6 +91,7 @@ const ISSUE_FILTER_OPTIONS: {
             `已选 ${sel} 条，其中 ${n} 条符合「文件名分隔」，确定重命名？`
     },
     {
+        group: 'filename',
         key: 'fileUnderscore',
         label: META_TAG_MISMATCH_ISSUE_LABELS.fileUnderscore,
         fixLabel: '执行',
@@ -91,6 +101,26 @@ const ISSUE_FILTER_OPTIONS: {
             `已选 ${sel} 条，其中 ${n} 条符合「文件名下划线」，确定重命名？`
     },
     {
+        group: 'filename',
+        key: 'fileTraditional',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.fileTraditional,
+        fixLabel: '繁转简',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的文件名（艺人 / 曲名）繁体转为简体并重命名？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「文件名繁体」，确定繁转简并重命名？`
+    },
+    {
+        group: 'tag',
+        key: 'tagArtistSep',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.tagArtistSep,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项的标签艺人改为「 & 」分隔？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「标签分隔」，确定修复标签艺人？`
+    },
+    {
+        group: 'tag',
         key: 'tagUnderscore',
         label: META_TAG_MISMATCH_ISSUE_LABELS.tagUnderscore,
         fixLabel: '执行',
@@ -100,6 +130,7 @@ const ISSUE_FILTER_OPTIONS: {
             `已选 ${sel} 条，其中 ${n} 条符合「标签下划线」，确定修复标签？`
     },
     {
+        group: 'tag',
         key: 'artistContent',
         label: META_TAG_MISMATCH_ISSUE_LABELS.artistContent,
         fixLabel: '执行',
@@ -108,6 +139,26 @@ const ISSUE_FILTER_OPTIONS: {
             `已选 ${sel} 条，其中 ${n} 条符合「标签艺人」，确定修复？`
     },
     {
+        group: 'tag',
+        key: 'titleContent',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.titleContent,
+        fixLabel: '执行',
+        confirmAll: (n) => `将全部 ${n} 个符合项的标签曲名改为与文件名一致？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「标签曲名」，确定修复？`
+    },
+    {
+        group: 'tag',
+        key: 'id3v1Tag',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.id3v1Tag,
+        fixLabel: '删除',
+        confirmAll: (n) =>
+            `将全部 ${n} 个 MP3 的文件尾 ID3v1 标签删除（保留 ID3v2）？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条含有 ID3v1 标签，确定删除？`
+    },
+    {
+        group: 'extended',
         key: 'extArtistContent',
         label: META_TAG_MISMATCH_ISSUE_LABELS.extArtistContent,
         fixLabel: '执行',
@@ -117,14 +168,7 @@ const ISSUE_FILTER_OPTIONS: {
             `已选 ${sel} 条，其中 ${n} 条符合「扩展艺人」，确定修复？`
     },
     {
-        key: 'titleContent',
-        label: META_TAG_MISMATCH_ISSUE_LABELS.titleContent,
-        fixLabel: '执行',
-        confirmAll: (n) => `将全部 ${n} 个符合项的标签曲名改为与文件名一致？`,
-        confirmSelected: (sel, n) =>
-            `已选 ${sel} 条，其中 ${n} 条符合「标签曲名」，确定修复？`
-    },
-    {
+        group: 'extended',
         key: 'extTitleContent',
         label: META_TAG_MISMATCH_ISSUE_LABELS.extTitleContent,
         fixLabel: '执行',
@@ -132,8 +176,30 @@ const ISSUE_FILTER_OPTIONS: {
             `将全部 ${n} 个符合项的扩展曲名（Vorbis/ID3）改为与文件名一致？`,
         confirmSelected: (sel, n) =>
             `已选 ${sel} 条，其中 ${n} 条符合「扩展曲名」，确定修复？`
+    },
+    {
+        group: 'extended',
+        key: 'extTagDuplicate',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.extTagDuplicate,
+        fixLabel: '清理',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的扩展标签去重（同键 / 别名重复只保留一条）？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「扩展重复」，确定清理？`
+    },
+    {
+        group: 'extended',
+        key: 'extTagTraditional',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.extTagTraditional,
+        fixLabel: '繁转简',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的扩展标签（Vorbis/ID3）繁体转为简体？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「扩展繁体」，确定繁转简？`
     }
 ]
+
+const ISSUE_GROUP_ORDER: IssueGroupId[] = ['filename', 'tag', 'extended']
 
 /** 表格展示行：预计算文案，避免虚拟滚动时重复解析 */
 interface MetaTagMismatchDisplayRow extends MetaTagMismatchItem {
@@ -189,6 +255,7 @@ function isBadEdgeUnderscoreChar(text: string, index: number): boolean {
 function isBadFileArtistChar(text: string, index: number): boolean {
     if (isBadEdgeUnderscoreChar(text, index)) return true
     const ch = text[index]
+    if (isTraditionalVariantChar(ch ?? '')) return true
     if (ch === ';' || ch === '&') return true
     if (ch === ',') {
         return text[index + 1] === ' ' || text[index - 1] === ' '
@@ -207,7 +274,8 @@ function isBadTagArtistChar(text: string, index: number): boolean {
 }
 
 function isBadFileTitleChar(text: string, index: number): boolean {
-    return isBadEdgeUnderscoreChar(text, index)
+    if (isBadEdgeUnderscoreChar(text, index)) return true
+    return isTraditionalVariantChar(text[index] ?? '')
 }
 
 function renderTextWithHighlights(
@@ -299,7 +367,8 @@ function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
                 issue === 'fileArtistSep' ||
                 issue === 'fileUnderscore' ||
                 issue === 'extArtistContent' ||
-                issue === 'extTitleContent'
+                issue === 'extTitleContent' ||
+                issue === 'extTagDuplicate'
                     ? 'error'
                     : 'warning',
                 { class: 'mtm-issue-pill' }
@@ -413,6 +482,36 @@ const { invalidateMeta } = useAudioMetaCache()
 const loading = ref(false)
 const validatingDir = ref(false)
 const scanButtonLoading = ref(false)
+const scanTiming = ref<{ elapsedMs: number | null }>({ elapsedMs: null })
+const scanProgress = ref<{
+    done: number
+    total: number
+    phase: 'read' | 'compare'
+}>({ done: 0, total: 0, phase: 'read' })
+
+let scanTimingTimer: ReturnType<typeof setInterval> | null = null
+let scanStartedAt = 0
+let activeScanJobId: string | null = null
+let unsubscribeBatchJobProgress: (() => void) | null = null
+
+function stopScanTimingClock(final = false): void {
+    if (scanTimingTimer) {
+        clearInterval(scanTimingTimer)
+        scanTimingTimer = null
+    }
+    if (final && scanStartedAt > 0) {
+        scanTiming.value = { elapsedMs: performance.now() - scanStartedAt }
+    }
+}
+
+function startScanTimingClock(): void {
+    stopScanTimingClock()
+    scanStartedAt = performance.now()
+    scanTiming.value = { elapsedMs: 0 }
+    scanTimingTimer = setInterval(() => {
+        scanTiming.value = { elapsedMs: performance.now() - scanStartedAt }
+    }, 200)
+}
 const applyingFixIssue = ref<MetaTagMismatchIssue | null>(null)
 const applyingFix = computed(() => applyingFixIssue.value !== null)
 const rootValidation = ref<SyncRootCheck | null>(null)
@@ -476,10 +575,28 @@ const sourceGroups = computed(() =>
         syncLeftDir: props.syncLeftDir,
         syncLeftAlias: props.syncLeftAlias,
         syncRightDir: props.syncRightDir,
-        syncRightAlias: props.syncRightAlias,
-        duplicateScanDir: metaMismatchScanDir.value
+        syncRightAlias: props.syncRightAlias
     })
 )
+
+function normalizeScanPath(dirPath: string): string {
+    return dirPath.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+function ensureScanDirFromConfiguredSources(): void {
+    const allowed = flattenDuplicateScanSourcePaths(sourceGroups.value)
+    if (allowed.length === 0) {
+        metaMismatchScanDir.value = ''
+        return
+    }
+    const current = (metaMismatchScanDir.value ?? '').trim()
+    const ok =
+        !!current &&
+        allowed.some((p) => normalizeScanPath(p) === normalizeScanPath(current))
+    if (!ok) {
+        metaMismatchScanDir.value = allowed[0]!
+    }
+}
 
 const hasConfiguredSources = computed(() =>
     hasDuplicateScanSourceOptions(sourceGroups.value)
@@ -502,14 +619,7 @@ const tableRows = computed(() => scanResult.value?.items ?? [])
 const filteredTableRows = computed(() => {
     let rows = tableRows.value
     if (filterTraditionalMeta.value) {
-        rows = rows.filter((row) =>
-            metaTagFieldsHaveTraditionalChinese(
-                row.tagArtist,
-                row.tagTitle,
-                row.extTagArtist,
-                row.extTagTitle
-            )
-        )
+        rows = rows.filter((row) => metaTagRowHasTraditionalChinese(row))
     }
     if (issueFilter.value !== 'all') {
         const key = issueFilter.value
@@ -528,16 +638,31 @@ const issueFilterCounts = computed(() => {
     ) as Record<MetaTagMismatchIssue, number>
 })
 
+const issueFilterGroups = computed(() =>
+    ISSUE_GROUP_ORDER.map((groupId) => {
+        const options = ISSUE_FILTER_OPTIONS.filter(
+            (opt) => opt.group === groupId
+        )
+        const total = options.reduce(
+            (sum, opt) => sum + (issueFilterCounts.value[opt.key] ?? 0),
+            0
+        )
+        return {
+            id: groupId,
+            label: ISSUE_GROUP_LABELS[groupId],
+            total,
+            options
+        }
+    }).filter((group) => group.total > 0)
+)
+
+function toggleIssueFilter(issue: MetaTagMismatchIssue): void {
+    if ((issueFilterCounts.value[issue] ?? 0) === 0) return
+    issueFilter.value = issueFilter.value === issue ? 'all' : issue
+}
+
 const traditionalMetaCount = computed(
-    () =>
-        tableRows.value.filter((row) =>
-            metaTagFieldsHaveTraditionalChinese(
-                row.tagArtist,
-                row.tagTitle,
-                row.extTagArtist,
-                row.extTagTitle
-            )
-        ).length
+    () => tableRows.value.filter((row) => metaTagRowHasTraditionalChinese(row)).length
 )
 
 const sortKey = ref<MetaTagMismatchSortKey>('relativePath')
@@ -550,7 +675,8 @@ function shouldShowExtArtistLine(row: MetaTagMismatchTableRow): boolean {
         Boolean(row.extTagArtist) ||
         row.extArtistMismatchFilename ||
         row.extTagArtistDiffers ||
-        row.issues.includes('extArtistContent')
+        row.issues.includes('extArtistContent') ||
+        duplicateKeysForArtistStack(row.extDuplicateKeys).length > 0
     )
 }
 
@@ -559,11 +685,23 @@ function shouldShowExtTitleLine(row: MetaTagMismatchTableRow): boolean {
         Boolean(row.extTagTitle) ||
         row.extTitleMismatchFilename ||
         row.extTagTitleDiffers ||
-        row.issues.includes('extTitleContent')
+        row.issues.includes('extTitleContent') ||
+        duplicateKeysForTitleStack(row.extDuplicateKeys).length > 0
     )
 }
 
 function defaultWriteArtist(row: MetaTagMismatchItem): string {
+    if (
+        row.issues.includes('extArtistContent') &&
+        !row.issues.includes('artistContent')
+    ) {
+        if (row.targetTagArtist !== null) {
+            return row.targetTagArtist
+        }
+        const normalized = tagArtistForMetaFromFilename(row.fileArtist)
+        if (normalized) return normalized
+        return row.fileArtist
+    }
     if (row.targetTagArtist !== null) {
         return row.targetTagArtist
     }
@@ -600,6 +738,24 @@ function getWriteArtist(row: MetaTagMismatchItem): string {
 
 function getWriteTitle(row: MetaTagMismatchItem): string {
     return writeTargetOverrides.value.get(row.fullPath)?.title ?? defaultWriteTitle(row)
+}
+
+function getExtWriteArtist(row: MetaTagMismatchItem): string {
+    const override = writeTargetOverrides.value.get(row.fullPath)?.artist
+    if (override !== undefined) return override
+    if (row.targetTagArtist !== null) return row.targetTagArtist
+    const normalized = tagArtistForMetaFromFilename(row.fileArtist)
+    if (normalized) return normalized
+    return row.fileArtist
+}
+
+function getExtWriteTitle(row: MetaTagMismatchItem): string {
+    const override = writeTargetOverrides.value.get(row.fullPath)?.title
+    if (override !== undefined) return override
+    if (row.issues.includes('extTitleContent') && !row.issues.includes('titleContent')) {
+        return row.fileTitle || row.tagTitle || row.extTagTitle
+    }
+    return row.tagTitle || row.extTagTitle || row.fileTitle
 }
 
 function setWriteTargetField(
@@ -750,6 +906,18 @@ function renderArtistStackCell(row: MetaTagMismatchTableRow): VNode {
                   ? 'mtm-stack-line--warn'
                   : undefined
         })
+        const dupKeys = duplicateKeysForArtistStack(row.extDuplicateKeys)
+        if (dupKeys.length) {
+            lines.push({
+                label: '重复',
+                content: h(
+                    'span',
+                    { class: 'mtm-ext-dup-hint' },
+                    dupKeys.join(', ')
+                ),
+                lineClass: 'mtm-stack-line--warn'
+            })
+        }
     }
     if (row.editable) {
         lines.push({
@@ -790,6 +958,18 @@ function renderTitleStackCell(row: MetaTagMismatchTableRow): VNode {
                   ? 'mtm-stack-line--warn'
                   : undefined
         })
+        const dupKeys = duplicateKeysForTitleStack(row.extDuplicateKeys)
+        if (dupKeys.length) {
+            lines.push({
+                label: '重复',
+                content: h(
+                    'span',
+                    { class: 'mtm-ext-dup-hint' },
+                    dupKeys.join(', ')
+                ),
+                lineClass: 'mtm-stack-line--warn'
+            })
+        }
     }
     if (row.editable) {
         lines.push({
@@ -908,6 +1088,28 @@ const applyFixProgressTitle = computed(() => {
     return `正在修复：${META_TAG_MISMATCH_ISSUE_LABELS[issue]}`
 })
 
+const scanProgressDetailText = computed(() => {
+    if (!loading.value || applyingFix.value) return ''
+    const { done, total } = scanProgress.value
+    const parts: string[] = []
+    if (total > 0) {
+        parts.push(`已扫描 ${done} / ${total}`)
+    } else {
+        parts.push('正在统计文件…')
+    }
+    const ms = scanTiming.value.elapsedMs
+    if (ms != null) {
+        parts.push(`已用 ${formatElapsedMs(ms)}`)
+    }
+    return parts.join(' · ')
+})
+
+const scanProgressPercent = computed(() => {
+    const { done, total } = scanProgress.value
+    if (!total) return 0
+    return Math.round((done / total) * 100)
+})
+
 const batchProgressTitle = computed(() => {
     if (loading.value && batchTask.active && !applyingFix.value) {
         return '正在扫描'
@@ -935,7 +1137,40 @@ const applyResult = ref<{
     ok: number
     fail: number
     elapsedMs: number
+    subject: string
+    failSamples: string[]
 } | null>(null)
+
+const applyResultTitle = computed(() => '执行结果')
+
+const applyResultText = computed(() => {
+    const result = applyResult.value
+    if (!result) return ''
+    const lines: string[] = []
+    if (result.fail > 0) {
+        lines.push(
+            `写入完成：成功 ${result.ok}，失败 ${result.fail}（${result.subject}）`
+        )
+    } else {
+        lines.push(`已成功处理 ${result.ok} 个文件的${result.subject}`)
+    }
+    if (result.failSamples.length) {
+        lines.push(...result.failSamples)
+    }
+    lines.push(`用时 ${formatElapsedMs(result.elapsedMs)}`)
+    return lines.join('\n')
+})
+
+const applyResultTone = computed(() => {
+    const result = applyResult.value
+    if (!result) return 'success' as const
+    if (result.fail > 0) return 'warning' as const
+    return 'success' as const
+})
+
+function dismissApplyResult(): void {
+    applyResult.value = null
+}
 
 const applyTagsProgress = ref({ done: 0, total: 0 })
 const applyTagsTiming = ref({ elapsedMs: 0 })
@@ -981,10 +1216,18 @@ const applyTagsProgressDetailText = computed(() => {
 syncGlobalBatchProgress(batchTask, {
     active: () => batchTask.active,
     title: () => batchProgressTitle.value,
-    percentage: () => applyTagsProgressPercent.value,
+    percentage: () =>
+        loading.value && !applyingFix.value
+            ? scanProgressPercent.value
+            : applyTagsProgressPercent.value,
     detail: () =>
-        applyingFix.value ? applyTagsProgressDetailText.value : undefined,
-    indeterminate: () => loading.value && !applyingFix.value
+        loading.value && !applyingFix.value
+            ? scanProgressDetailText.value
+            : applyingFix.value
+              ? applyTagsProgressDetailText.value
+              : undefined,
+    indeterminate: () =>
+        loading.value && !applyingFix.value && scanProgress.value.total === 0
 })
 
 function mismatchRowKey(row: MetaTagMismatchTableRow): string {
@@ -1003,13 +1246,6 @@ async function validateScanRoot(): Promise<SyncRootCheck> {
     }
 }
 
-async function pickScanDir(): Promise<void> {
-    const picked = await window.electronAPI.pickDirectory()
-    if (picked) {
-        metaMismatchScanDir.value = picked
-    }
-}
-
 async function runScan(options?: {
     silent?: boolean
     scanLoading?: boolean
@@ -1021,7 +1257,10 @@ async function runScan(options?: {
 
     if (options?.scanLoading) scanButtonLoading.value = true
     loading.value = true
+    scanProgress.value = { done: 0, total: 0, phase: 'read' }
+    startScanTimingClock()
     batchTask.begin()
+    activeScanJobId = batchTask.jobId
     try {
         const root = (metaMismatchScanDir.value ?? '').trim()
         scanResult.value = await window.electronAPI.scanMetaTagMismatches({
@@ -1042,38 +1281,59 @@ async function runScan(options?: {
         if (!options?.silent) message.error(msg)
         throw err
     } finally {
+        stopScanTimingClock(true)
+        activeScanJobId = null
         batchTask.end()
         loading.value = false
         if (options?.scanLoading) scanButtonLoading.value = false
     }
 }
 
-async function tryAutoScan(): Promise<void> {
-    if (!canScan.value || loading.value || applyingFix.value) return
-    const validation = rootValidation.value ?? (await validateScanRoot())
-    if (!validation.ok) return
-    await runScan()
-}
-
 onMounted(() => {
+    unsubscribeBatchJobProgress = window.electronAPI.onBatchJobProgress(
+        (payload) => {
+            if (!activeScanJobId || payload.jobId !== activeScanJobId) return
+            scanProgress.value = {
+                done: payload.done,
+                total: payload.total,
+                phase: payload.phase ?? 'read'
+            }
+        }
+    )
+    ensureScanDirFromConfiguredSources()
     void (async () => {
         if (canScan.value) await validateScanRoot()
-        await tryAutoScan()
     })()
 })
 
+watch(
+    () => [
+        props.searchRoots,
+        props.syncLeftDir,
+        props.syncRightDir
+    ],
+    () => {
+        ensureScanDirFromConfiguredSources()
+    },
+    { deep: true }
+)
+
 onUnmounted(() => {
+    unsubscribeBatchJobProgress?.()
+    unsubscribeBatchJobProgress = null
+    stopScanTimingClock()
     tableResizeObserver?.disconnect()
     tableResizeObserver = null
 })
 
 watch(metaMismatchScanDir, () => {
     scanResult.value = null
+    scanTiming.value = { elapsedMs: null }
+    scanProgress.value = { done: 0, total: 0, phase: 'read' }
     rootValidation.value = null
     void (async () => {
         if (!canScan.value) return
         await validateScanRoot()
-        await tryAutoScan()
     })()
 })
 
@@ -1099,8 +1359,15 @@ function itemsWithIssue(issue: MetaTagMismatchIssue): MetaTagMismatchItem[] {
 
 function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
     const items = itemsWithIssue(issue)
-    if (issue === 'fileArtistSep' || issue === 'fileUnderscore') {
+    if (issue === 'fileArtistSep' || issue === 'fileUnderscore' || issue === 'fileTraditional') {
         return items.length
+    }
+    if (issue === 'id3v1Tag') {
+        return items.filter(
+            (row) =>
+                row.editable &&
+                row.fullPath.toLowerCase().endsWith('.mp3')
+        ).length
     }
     if (issue === 'tagUnderscore') {
         return items.filter(
@@ -1252,6 +1519,56 @@ async function fixArtistContentItems(items: MetaTagMismatchItem[]): Promise<void
     finishFixResult(ok, fail, started, failSamples, '标签艺人')
 }
 
+async function fixExtArtistContentItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter((row) => row.editable)
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'extArtistContent'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            try {
+                const res = await writeTagsForRow(
+                    row,
+                    getExtWriteArtist(row),
+                    getExtWriteTitle(row)
+                )
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '扩展艺人')
+}
+
 async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void> {
     const targets = items.filter((row) => row.editable)
     if (!targets.length) {
@@ -1296,6 +1613,209 @@ async function fixTitleContentItems(items: MetaTagMismatchItem[]): Promise<void>
     }
 
     finishFixResult(ok, fail, started, failSamples, '标签曲名')
+}
+
+async function fixExtTitleContentItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter((row) => row.editable)
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'extTitleContent'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            try {
+                const res = await writeTagsForRow(
+                    row,
+                    getWriteArtist(row),
+                    getExtWriteTitle(row)
+                )
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '扩展曲名')
+}
+
+async function fixExtTagDuplicateItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter((row) => row.editable)
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'extTagDuplicate'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            try {
+                const res = await window.electronAPI.cleanupDuplicateExtendedTags({
+                    filePath: row.fullPath
+                })
+                if (res.ok) {
+                    ok += 1
+                    invalidateMeta(row.fullPath)
+                } else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '扩展重复')
+}
+
+async function fixExtTagTraditionalItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter((row) => row.editable)
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC）')
+        return
+    }
+
+    applyingFixIssue.value = 'extTagTraditional'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            try {
+                const res = await window.electronAPI.convertTraditionalExtendedTags({
+                    filePath: row.fullPath
+                })
+                if (res.ok) {
+                    ok += 1
+                    invalidateMeta(row.fullPath)
+                } else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '扩展繁转简')
+}
+
+async function fixId3v1TagItems(items: MetaTagMismatchItem[]): Promise<void> {
+    const targets = items.filter(
+        (row) =>
+            row.editable && row.fullPath.toLowerCase().endsWith('.mp3')
+    )
+    if (!targets.length) {
+        message.warning('没有可处理的 MP3 文件')
+        return
+    }
+
+    applyingFixIssue.value = 'id3v1Tag'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            try {
+                const res = await window.electronAPI.removeId3v1Tags({
+                    filePath: row.fullPath
+                })
+                if (res.ok) {
+                    ok += 1
+                    invalidateMeta(row.fullPath)
+                } else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '删除 ID3v1')
 }
 
 async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void> {
@@ -1356,6 +1876,80 @@ async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void
     }
 
     finishFixResult(ok, fail, started, failSamples, '文件名')
+}
+
+async function fixFileTraditionalItems(items: MetaTagMismatchItem[]): Promise<void> {
+    if (!items.length) return
+
+    const root = (metaMismatchScanDir.value ?? '').trim()
+    if (!root) return
+
+    applyingFixIssue.value = 'fileTraditional'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: items.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of items) {
+            batchTask.createCheck()()
+            const artist = await window.electronAPI.convertTextToSimplified(
+                row.fileArtist
+            )
+            const title = await window.electronAPI.convertTextToSimplified(
+                row.fileTitle
+            )
+            if (artist === row.fileArtist && title === row.fileTitle) {
+                ok += 1
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            const newName = rebuildFileNameWithArtistAndTitle(
+                row.fullPath,
+                artist,
+                title
+            )
+            if (!newName) {
+                fail += 1
+                if (failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: 无法解析文件名结构`)
+                }
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            if (newName === row.fileName) {
+                ok += 1
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            try {
+                await window.electronAPI.browseRenamePath({
+                    browseRoots: [root],
+                    targetPath: row.fullPath,
+                    newName,
+                    disambiguateIfExists: true
+                })
+                ok += 1
+                invalidateMeta(row.fullPath)
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, items.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '文件名繁转简')
 }
 
 async function renameFileInScanRoot(
@@ -1511,15 +2105,9 @@ function finishFixResult(
     applyResult.value = {
         ok,
         fail,
-        elapsedMs: performance.now() - started
-    }
-
-    if (ok > 0) {
-        message.success(`已修复 ${ok} 个文件的${subject}`)
-    }
-    if (fail > 0) {
-        const detail = failSamples.length ? `\n${failSamples.join('\n')}` : ''
-        message.warning(`${fail} 个文件未能修复${detail}`, { duration: 8000 })
+        elapsedMs: performance.now() - started,
+        subject,
+        failSamples
     }
 
     void runScan({ silent: true }).catch(() => {
@@ -1543,16 +2131,32 @@ async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
             case 'fileUnderscore':
                 await fixFileUnderscoreItems(items)
                 break
+            case 'fileTraditional':
+                await fixFileTraditionalItems(items)
+                break
             case 'tagUnderscore':
                 await fixTagUnderscoreItems(items)
                 break
             case 'artistContent':
-            case 'extArtistContent':
                 await fixArtistContentItems(items)
                 break
+            case 'extArtistContent':
+                await fixExtArtistContentItems(items)
+                break
             case 'titleContent':
-            case 'extTitleContent':
                 await fixTitleContentItems(items)
+                break
+            case 'extTitleContent':
+                await fixExtTitleContentItems(items)
+                break
+            case 'extTagDuplicate':
+                await fixExtTagDuplicateItems(items)
+                break
+            case 'extTagTraditional':
+                await fixExtTagTraditionalItems(items)
+                break
+            case 'id3v1Tag':
+                await fixId3v1TagItems(items)
                 break
         }
     } catch (err) {
@@ -1578,7 +2182,7 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     <div class="meta-mismatch-page">
         <section v-if="!canScan" class="meta-mismatch-hint">
             <p>
-                扫描「艺人 - 曲名」类文件名与内嵌标签不一致的音频。请从乐库 / 同步目录选择，或指定文件夹。
+                扫描「艺人 - 曲名」类文件名与内嵌标签不一致的音频。请从下方已配置的乐库 / 同步目录中选择。
             </p>
             <NSelect
                 v-if="hasConfiguredSources"
@@ -1597,12 +2201,6 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                     }
                 "
             />
-            <NButton size="small" @click="pickScanDir">
-                <template #icon>
-                    <NIcon><Folder /></NIcon>
-                </template>
-                选择目录
-            </NButton>
         </section>
 
         <section
@@ -1621,11 +2219,59 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                 {{ rootIssue.message }}
                 <span>{{ rootIssue.path }}</span>
             </p>
-            <NButton size="small" @click="pickScanDir">重新选择</NButton>
+            <NSelect
+                v-if="hasConfiguredSources"
+                class="mtm-source-select"
+                :value="metaMismatchScanDir || null"
+                :options="sourceSelectOptions"
+                size="small"
+                filterable
+                :consistent-menu-width="false"
+                placeholder="从已配置的目录选择"
+                @update:value="
+                    (value) => {
+                        if (typeof value === 'string') {
+                            metaMismatchScanDir = value
+                        }
+                    }
+                "
+            />
         </section>
 
         <div v-else class="workspace">
             <aside class="sidebar">
+                <div
+                    v-if="applyResult"
+                    class="mtm-result-bubble-wrap"
+                    role="status"
+                >
+                    <div
+                        class="mtm-result-bubble"
+                        :class="`mtm-result-bubble--${applyResultTone}`"
+                    >
+                        <div class="mtm-result-bubble__head">
+                            <span class="mtm-result-bubble__title">
+                                {{ applyResultTitle }}
+                            </span>
+                            <NButton
+                                quaternary
+                                circle
+                                size="tiny"
+                                class="mtm-result-bubble__close"
+                                aria-label="关闭"
+                                @click="dismissApplyResult"
+                            >
+                                <template #icon>
+                                    <NIcon :size="14"><Close /></NIcon>
+                                </template>
+                            </NButton>
+                        </div>
+                        <p class="mtm-result-bubble__text">
+                            {{ applyResultText }}
+                        </p>
+                    </div>
+                </div>
+
                 <div class="sidebar-scroll">
                     <section class="mtm-source-panel">
                         <span class="mtm-source-panel__label">扫描源</span>
@@ -1646,12 +2292,6 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                                 }
                             "
                         />
-                        <NButton block size="small" secondary @click="pickScanDir">
-                            <template #icon>
-                                <NIcon><FolderOpen /></NIcon>
-                            </template>
-                            选择其他目录
-                        </NButton>
                         <p v-if="metaMismatchScanDir" class="mtm-source-panel__path">
                             {{ metaMismatchScanDir }}
                         </p>
@@ -1661,14 +2301,14 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                         <NButton
                             block
                             type="primary"
-                            :disabled="applyingFix"
+                            :disabled="applyingFix || loading"
                             :loading="scanButtonLoading"
                             @click="runScan({ scanLoading: true })"
                         >
                             <template #icon>
                                 <NIcon><Refresh /></NIcon>
                             </template>
-                            扫描不一致
+                            开始扫描
                         </NButton>
 
                         <section v-if="scanResult" class="mtm-stats-panel">
@@ -1694,62 +2334,104 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                                     <span class="mtm-stats-grid__label">待处理</span>
                                 </div>
                             </div>
+                            <p
+                                v-if="scanTiming.elapsedMs != null"
+                                class="mtm-stats-panel__timing"
+                            >
+                                扫描用时 {{ formatElapsedMs(scanTiming.elapsedMs) }}
+                            </p>
                         </section>
 
-                        <section v-if="scanResult" class="mtm-issue-filters">
-                            <p class="mtm-issue-filters__title">
-                                按问题筛选 / 执行
-                                <span
-                                    v-if="selectedItems.length > 0"
-                                    class="mtm-issue-filters__scope"
+                        <section
+                            v-if="scanResult && issueFilterGroups.length > 0"
+                            class="mtm-issue-filters"
+                        >
+                            <div class="mtm-issue-filters__head">
+                                <p class="mtm-issue-filters__title">
+                                    问题处理
+                                    <span
+                                        v-if="selectedItems.length > 0"
+                                        class="mtm-issue-filters__scope"
+                                    >
+                                        · 已选 {{ selectedItems.length }} 条
+                                    </span>
+                                </p>
+                                <NButton
+                                    v-if="issueFilter !== 'all'"
+                                    quaternary
+                                    size="tiny"
+                                    @click="issueFilter = 'all'"
                                 >
-                                    · 已选 {{ selectedItems.length }} 条
-                                </span>
-                            </p>
+                                    显示全部
+                                </NButton>
+                            </div>
                             <p
                                 v-if="selectedItems.length > 0"
                                 class="mtm-issue-filters__hint"
                             >
-                                执行时仅处理已选中且符合该项的记录
+                                点击问题名筛选列表；执行时仅处理已选中且符合该项的记录
                             </p>
                             <div
-                                v-for="opt in ISSUE_FILTER_OPTIONS"
-                                :key="opt.key"
-                                class="mtm-issue-filter-row"
+                                v-for="group in issueFilterGroups"
+                                :key="group.id"
+                                class="mtm-issue-group"
                             >
-                                <NButton
-                                    class="mtm-issue-filter-row__filter"
-                                    quaternary
-                                    :type="issueFilter === opt.key ? 'primary' : 'default'"
-                                    :disabled="issueFilterCounts[opt.key] === 0"
-                                    @click="
-                                        issueFilter =
-                                            issueFilter === opt.key ? 'all' : opt.key
-                                    "
+                                <p class="mtm-issue-group__title">
+                                    {{ group.label }}
+                                    <span class="mtm-issue-group__total">{{
+                                        group.total
+                                    }}</span>
+                                </p>
+                                <div
+                                    v-for="opt in group.options"
+                                    :key="opt.key"
+                                    class="mtm-issue-item"
                                 >
-                                    {{
-                                        issueFilter === opt.key
-                                            ? `全部（${opt.label}）`
-                                            : `${opt.label} (${issueFilterCounts[opt.key]})`
-                                    }}
-                                </NButton>
-                                <NPopconfirm
-                                    :disabled="!canFixIssue(opt.key)"
-                                    @positive-click="fixIssue(opt.key)"
-                                >
-                                    <template #trigger>
-                                        <NButton
-                                            class="mtm-issue-filter-row__fix"
-                                            type="primary"
-                                            size="small"
-                                            :disabled="!canFixIssue(opt.key)"
-                                            :loading="applyingFixIssue === opt.key"
-                                        >
-                                            执行 ({{ fixableCountForIssue(opt.key) }})
-                                        </NButton>
-                                    </template>
-                                    {{ fixConfirmMessage(opt.key) }}
-                                </NPopconfirm>
+                                    <button
+                                        type="button"
+                                        class="mtm-issue-item__filter"
+                                        :class="{
+                                            'mtm-issue-item__filter--active':
+                                                issueFilter === opt.key
+                                        }"
+                                        :disabled="issueFilterCounts[opt.key] === 0"
+                                        :title="
+                                            issueFilter === opt.key
+                                                ? '点击取消筛选'
+                                                : '点击筛选此项'
+                                        "
+                                        @click="toggleIssueFilter(opt.key)"
+                                    >
+                                        <span class="mtm-issue-item__label">{{
+                                            opt.label
+                                        }}</span>
+                                        <span class="mtm-issue-item__count">{{
+                                            issueFilterCounts[opt.key]
+                                        }}</span>
+                                    </button>
+                                    <NPopconfirm
+                                        :disabled="!canFixIssue(opt.key)"
+                                        @positive-click="fixIssue(opt.key)"
+                                    >
+                                        <template #trigger>
+                                            <NButton
+                                                class="mtm-issue-item__fix"
+                                                type="primary"
+                                                size="tiny"
+                                                :disabled="!canFixIssue(opt.key)"
+                                                :loading="
+                                                    applyingFixIssue === opt.key
+                                                "
+                                            >
+                                                {{ opt.fixLabel }}
+                                                ({{
+                                                    fixableCountForIssue(opt.key)
+                                                }})
+                                            </NButton>
+                                        </template>
+                                        {{ fixConfirmMessage(opt.key) }}
+                                    </NPopconfirm>
+                                </div>
                             </div>
                         </section>
 
@@ -1774,7 +2456,7 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                                 <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code></li>
                                 <li>文件名：扩展名前不得有多余 <code>_</code>（如 <code>曲名_.flac</code>）</li>
                                 <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code></li>
-                                <li>列表：艺人 / 曲名列内纵向展示文件名、标签、扩展与写入；扩展≠文件名时标红并显示「扩展艺人/曲名」问题</li>
+                                <li>列表：艺人 / 曲名列内纵向展示文件名、标签、扩展与写入；扩展≠文件名时标红；扩展同键或别名重复（如多个 ARTIST / ARTIST+ARTISTS）显示「扩展重复」，清理后每键只保留一条；文件名或扩展字段含繁体字分别显示「文件名繁体」「扩展繁体」，可批量繁转简；MP3 含文件尾 ID3v1 标签（常为 ????）显示「ID3v1 标签」，可批量删除</li>
                             </ul>
                         </section>
                         <NButton
@@ -1788,7 +2470,7 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                             {{
                                 filterTraditionalMeta
                                     ? '显示全部'
-                                    : `仅繁体标签 (${traditionalMetaCount})`
+                                    : `仅含繁体 (${traditionalMetaCount})`
                             }}
                         </NButton>
                         <p
@@ -1806,12 +2488,6 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                         >
                             取消选择
                         </NButton>
-                        <p v-if="applyResult" class="mtm-apply-result">
-                            写入完成：成功 {{ applyResult.ok }}，失败
-                            {{ applyResult.fail }}（{{
-                                formatElapsedMs(applyResult.elapsedMs)
-                            }}）
-                        </p>
                     </section>
                 </div>
 
@@ -1823,7 +2499,7 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
             </aside>
 
             <main class="mtm-main-pane">
-                <NSpin :show="loading" class="mtm-main-spin">
+                <NSpin :show="applyingFix" class="mtm-main-spin">
                     <div
                         v-if="scanResult && displayRows.length > 0"
                         ref="tableWrapRef"
@@ -1862,11 +2538,15 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                             个可解析文件名中，标签内容与分隔符均已符合规范。
                         </p>
                     </div>
+                    <div
+                        v-else-if="loading && !applyingFix && !scanResult"
+                        class="meta-mismatch-empty"
+                    >
+                        <p class="meta-mismatch-empty__title">正在扫描</p>
+                        <p class="meta-mismatch-empty__desc">请稍候，进度见左下角。</p>
+                    </div>
                     <div v-else class="meta-mismatch-empty">
                         <p class="meta-mismatch-empty__title">尚未扫描</p>
-                        <p class="meta-mismatch-empty__desc">
-                            点击「扫描不一致」开始检测。
-                        </p>
                     </div>
                 </NSpin>
                 <SelectionPathFooter :path="metaPanelFilePath" />
@@ -2018,6 +2698,14 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     word-break: break-all;
 }
 
+.mtm-stats-panel__timing {
+    margin: 0;
+    font-size: 11px;
+    text-align: center;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+}
+
 .mtm-stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -2052,12 +2740,57 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     gap: 10px;
 }
 
-.mtm-selected-count,
-.mtm-apply-result {
+.mtm-selected-count {
     margin: 0;
     font-size: 12px;
     text-align: center;
     opacity: 0.55;
+}
+
+.mtm-result-bubble-wrap {
+    flex-shrink: 0;
+    padding: 12px 16px;
+}
+
+.mtm-result-bubble {
+    padding: 10px 12px 11px;
+    border-radius: 14px;
+    border: 1px solid $border-subtle;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.mtm-result-bubble--success {
+    background: rgba(34, 197, 94, 0.12);
+}
+
+.mtm-result-bubble--warning {
+    background: rgba(234, 179, 8, 0.14);
+}
+
+.mtm-result-bubble__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.mtm-result-bubble__title {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mtm-result-bubble__close {
+    flex-shrink: 0;
+    margin: -2px -4px -2px 0;
+}
+
+.mtm-result-bubble__text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-line;
+    opacity: 0.88;
 }
 
 .mtm-main-pane {
@@ -2139,6 +2872,13 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     background: rgba(255, 255, 255, 0.02);
 }
 
+.mtm-issue-filters__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .mtm-issue-filters__title {
     margin: 0;
     font-size: 11px;
@@ -2158,20 +2898,85 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     opacity: 0.55;
 }
 
-.mtm-issue-filter-row {
+.mtm-issue-group {
     display: flex;
-    gap: 8px;
-    align-items: center;
+    flex-direction: column;
+    gap: 4px;
+
+    & + & {
+        margin-top: 4px;
+        padding-top: 8px;
+        border-top: 1px solid $border-subtle;
+    }
 }
 
-.mtm-issue-filter-row__filter {
-    flex: 1;
+.mtm-issue-group__title {
+    margin: 0 0 2px;
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.5;
+}
+
+.mtm-issue-group__total {
+    margin-left: 4px;
+    font-weight: 500;
+}
+
+.mtm-issue-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
 }
 
-.mtm-issue-filter-row__fix {
+.mtm-issue-item__filter {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: left;
+
+    &:hover:not(:disabled) {
+        background: rgba(128, 128, 128, 0.08);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    &--active {
+        border-color: rgba(99, 102, 241, 0.35);
+        background: rgba(99, 102, 241, 0.1);
+    }
+}
+
+.mtm-issue-item__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mtm-issue-item__count {
     flex-shrink: 0;
-    min-width: 56px;
+    font-size: 11px;
+    opacity: 0.55;
+}
+
+.mtm-issue-item__fix {
+    flex-shrink: 0;
+    min-width: 52px;
 }
 
 .mtm-rules-panel {
@@ -2277,6 +3082,13 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     align-items: center;
     gap: 4px;
     min-width: 0;
+}
+
+:deep(.mtm-ext-dup-hint) {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgb(234, 179, 8);
+    word-break: break-word;
 }
 
 :deep(.mtm-ext-adopt) {

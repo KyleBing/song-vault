@@ -6,6 +6,7 @@ import type {
     PickCoverImageResult,
     WriteAudioMetaResult
 } from '../shared/audioMetaEdit'
+import type { AudioMetaExtraTagRow } from '../shared/audioMetaExtraEdit'
 import type { AppConfig } from '../shared/appConfig'
 import type {
   CopyLrcParams,
@@ -65,6 +66,10 @@ import {
   APP_NAVIGATE_CHANNEL,
   type AppNavigateTarget
 } from '../shared/appNavigate'
+import {
+  BATCH_JOB_PROGRESS_CHANNEL,
+  type BatchJobProgressPayload
+} from '../shared/batchJobProgress'
 
 /** 暴露给渲染进程的安全 API（通过 contextBridge） */
 const api = {
@@ -260,6 +265,9 @@ const api = {
     filePath: string
     form: AudioMetaEditForm
     coverBase64?: string | null
+    extendedNative?: AudioMetaExtraTagRow[]
+    otherExtra?: AudioMetaExtraTagRow[]
+    touchedExtensionFamilies?: string[]
   }): Promise<WriteAudioMetaResult> => {
     const result = await ipcRenderer.invoke('write-audio-meta', toIpcPlain(params))
     return toIpcPlain(result)
@@ -272,6 +280,44 @@ const api = {
   }): Promise<WriteAudioMetaResult> => {
     const result = await ipcRenderer.invoke(
       'write-filename-tags',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  cleanupDuplicateExtendedTags: async (params: {
+    filePath: string
+  }): Promise<WriteAudioMetaResult> => {
+    const result = await ipcRenderer.invoke(
+      'cleanup-duplicate-ext-tags',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  convertTraditionalExtendedTags: async (params: {
+    filePath: string
+  }): Promise<WriteAudioMetaResult> => {
+    const result = await ipcRenderer.invoke(
+      'convert-traditional-ext-tags',
+      toIpcPlain(params)
+    )
+    return toIpcPlain(result)
+  },
+
+  convertTextToSimplified: async (text: string): Promise<string> => {
+    const result = await ipcRenderer.invoke(
+      'convert-text-to-simplified',
+      toIpcPlain({ text })
+    )
+    return typeof result === 'string' ? result : String(result ?? text)
+  },
+
+  removeId3v1Tags: async (params: {
+    filePath: string
+  }): Promise<WriteAudioMetaResult> => {
+    const result = await ipcRenderer.invoke(
+      'remove-id3v1-tags',
       toIpcPlain(params)
     )
     return toIpcPlain(result)
@@ -377,6 +423,21 @@ const api = {
 
   clearBatchJob: (jobId: string): Promise<void> =>
     ipcRenderer.invoke('clear-batch-job', jobId),
+
+  onBatchJobProgress: (
+    callback: (payload: BatchJobProgressPayload) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: BatchJobProgressPayload
+    ) => {
+      callback(payload)
+    }
+    ipcRenderer.on(BATCH_JOB_PROGRESS_CHANNEL, handler)
+    return () => {
+      ipcRenderer.removeListener(BATCH_JOB_PROGRESS_CHANNEL, handler)
+    }
+  },
 
   /** 订阅主进程菜单栏导航；返回取消订阅函数 */
   onAppNavigate: (callback: (view: AppNavigateTarget) => void): (() => void) => {

@@ -7,8 +7,10 @@ import {
 } from './artistSeparatorRules'
 import {
     nativeArtistTitleFromMeta,
+    metaHasId3v1NativeTags,
     type AudioFileMetaInfo
 } from './audioFileMeta'
+import { detectDuplicateExtendedNativeTags } from './audioMetaExtraEdit'
 import {
     isEditableAudioMetaPath,
     filenameStemHasTrailingUnderscore,
@@ -17,6 +19,10 @@ import {
 } from './audioMetaEdit'
 import type { PathFilterRule } from './pathFilters'
 import type { BatchJobParams } from './batchCancel'
+import {
+    extendedNativeTagsHaveTraditionalChinese,
+    filenameFieldsHaveTraditionalChinese
+} from './traditionalChinese'
 
 /** @deprecated 保留兼容；请用 issues */
 export type MetaTagMismatchReason = 'artist' | 'title' | 'both'
@@ -30,6 +36,10 @@ export type MetaTagMismatchIssue =
     | 'tagArtistSep'
     | 'fileUnderscore'
     | 'tagUnderscore'
+    | 'extTagDuplicate'
+    | 'extTagTraditional'
+    | 'fileTraditional'
+    | 'id3v1Tag'
 
 export interface MetaTagMismatchItem {
     relativePath: string
@@ -55,6 +65,8 @@ export interface MetaTagMismatchItem {
     targetTagArtist: string | null
     /** 是否可写入标签（mp3 / flac） */
     editable: boolean
+    /** 扩展原生层重复的标签键（如 ARTIST、ALBUM） */
+    extDuplicateKeys: string[]
 }
 
 export interface MetaTagMismatchScanStats {
@@ -132,7 +144,11 @@ export const META_TAG_MISMATCH_ISSUE_LABELS: Record<MetaTagMismatchIssue, string
         fileArtistSep: '文件名分隔',
         tagArtistSep: '标签分隔',
         fileUnderscore: '文件名下划线',
-        tagUnderscore: '标签下划线'
+        tagUnderscore: '标签下划线',
+        extTagDuplicate: '扩展重复',
+        extTagTraditional: '扩展繁体',
+        fileTraditional: '文件名繁体',
+        id3v1Tag: 'ID3v1 标签'
     }
 
 export function issuesToReasons(
@@ -165,6 +181,10 @@ function buildIssues(params: {
     tagArtistSep: boolean
     fileUnderscore: boolean
     tagUnderscore: boolean
+    extTagDuplicate: boolean
+    extTagTraditional: boolean
+    fileTraditional: boolean
+    id3v1Tag: boolean
 }): MetaTagMismatchIssue[] {
     const out: MetaTagMismatchIssue[] = []
     if (params.artistContentMismatch) out.push('artistContent')
@@ -175,19 +195,49 @@ function buildIssues(params: {
     if (params.tagArtistSep) out.push('tagArtistSep')
     if (params.fileUnderscore) out.push('fileUnderscore')
     if (params.tagUnderscore) out.push('tagUnderscore')
+    if (params.extTagDuplicate) out.push('extTagDuplicate')
+    if (params.extTagTraditional) out.push('extTagTraditional')
+    if (params.fileTraditional) out.push('fileTraditional')
+    if (params.id3v1Tag) out.push('id3v1Tag')
     return out
 }
 
 /**
  * 判断单文件是否需要文件名与标签对齐处理。
- * 文件名须可解析为「艺人 - 曲名」；艺人/曲名内容不一致，或分隔符不符合规范时返回条目。
+ * 文件名须可解析为「艺人 - 曲名」，或 MP3 带有 ID3v1 标签待清理。
  */
 export function analyzeMetaTagMismatch(
     filePath: string,
     meta: AudioFileMetaInfo
 ): Omit<MetaTagMismatchItem, 'relativePath' | 'fileName' | 'fullPath'> | null {
     const parsed = parseArtistTitleFromFilePath(filePath)
-    if (!parsed.split) return null
+    const id3v1Tag = metaHasId3v1NativeTags(meta, filePath)
+
+    if (!parsed.split) {
+        if (!id3v1Tag) return null
+
+        const tagArtist = tagArtistFromCommon(meta.common)
+        const tagTitle = tagTitleFromCommon(meta.common)
+        const { artist: extTagArtist, title: extTagTitle } =
+            nativeArtistTitleFromMeta(meta)
+        const resolved = path.resolve(filePath)
+
+        return {
+            fileArtist: '',
+            fileTitle: '',
+            tagArtist,
+            tagTitle,
+            extTagArtist,
+            extTagTitle,
+            extArtistMismatchFilename: false,
+            extTitleMismatchFilename: false,
+            issues: ['id3v1Tag'],
+            reasons: [],
+            targetTagArtist: null,
+            editable: isEditableAudioMetaPath(resolved),
+            extDuplicateKeys: []
+        }
+    }
 
     const tagArtist = tagArtistFromCommon(meta.common)
     const tagTitle = tagTitleFromCommon(meta.common)
@@ -226,6 +276,18 @@ export function analyzeMetaTagMismatch(
         Boolean(extTagTitle && fieldHasEdgeUnderscore(extTagTitle)) ||
         Boolean(extTagArtist && fieldHasEdgeUnderscore(extTagArtist))
 
+    const { hasDuplicate: extTagDuplicate, duplicateKeys: extDuplicateKeys } =
+        detectDuplicateExtendedNativeTags(meta, filePath)
+
+    const extTagTraditional = extendedNativeTagsHaveTraditionalChinese(
+        meta,
+        filePath
+    )
+    const fileTraditional = filenameFieldsHaveTraditionalChinese(
+        parsed.artist,
+        parsed.title
+    )
+
     const issues = buildIssues({
         artistContentMismatch: tagArtistContentMismatch,
         extArtistContentMismatch,
@@ -234,7 +296,11 @@ export function analyzeMetaTagMismatch(
         fileArtistSep,
         tagArtistSep,
         fileUnderscore,
-        tagUnderscore
+        tagUnderscore,
+        extTagDuplicate,
+        extTagTraditional,
+        fileTraditional,
+        id3v1Tag
     })
     if (issues.length === 0) return null
 
@@ -252,7 +318,8 @@ export function analyzeMetaTagMismatch(
         issues,
         reasons: issuesToReasons(issues),
         targetTagArtist: tagArtistFromFilenameArtist(parsed.artist),
-        editable: isEditableAudioMetaPath(resolved)
+        editable: isEditableAudioMetaPath(resolved),
+        extDuplicateKeys
     }
 }
 

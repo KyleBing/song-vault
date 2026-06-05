@@ -1,15 +1,35 @@
 import fs from 'fs'
 import path from 'path'
 import { parseFile } from 'music-metadata'
+import { parseAudioFileSafe } from '../shared/parseAudioFileSafe'
 import {
     WriteMetaToFlac,
     WriteMetaToMp3,
     buildMusicMetaFromSources,
+    type ExtraNativeTagWriteEntry,
+    type FlacCoverWriteMode,
     type IMusicMeta
 } from '../unlock-music/decrypt/utils'
+import { validateFlacBufferStructure, locateFlacInBuffer } from '../unlock-music/decrypt/flacRewrite'
+import {
+    applyExtensionRowsToMusicMeta,
+    buildExtendedNativeEditRows,
+    collectPersistedExtraTagRows,
+    collectTouchedFamiliesForDuplicateGroups,
+    dedupeExtendedNativeRows,
+    detectDuplicateExtendedNativeTags,
+    familyTokenForTagKey,
+    prepareExtendedNativeRowsForWrite,
+    type AudioMetaExtraTagRow
+} from '../shared/audioMetaExtraEdit'
+import { readAudioFileMeta } from '../shared/readAudioFileMeta'
+import { stripId3v1FromMp3Buffer } from '../unlock-music/decrypt/utils'
+import { containsTraditionalChinese } from '../shared/traditionalChinese'
+import { toSimplifiedChinese } from './traditionalChineseConvert'
 import {
     editFormToMusicMetaJson,
     isEditableAudioMetaPath,
+    metaInfoToEditForm,
     type AudioMetaEditForm,
     type WriteAudioMetaResult
 } from '../shared/audioMetaEdit'
@@ -93,16 +113,113 @@ function musicMetaFromJson(json: Record<string, unknown>): IMusicMeta {
     }
 }
 
+function assertTaggedBufferLooksValid(
+    original: Buffer,
+    tagged: Buffer,
+    ext: string
+): void {
+    if (ext === 'flac') {
+        if (tagged.length < 42 || !locateFlacInBuffer(tagged)) {
+            throw new Error('FLAC 写入结果无效（文件头损坏）')
+        }
+        validateFlacBufferStructure(tagged)
+        return
+    }
+
+    if (ext === 'mp3') {
+        if (tagged.length < 128) {
+            throw new Error('MP3 写入结果无效（文件过小）')
+        }
+        const head = tagged.toString('ascii', 0, 3)
+        const frameSync =
+            tagged[0] === 0xff && (tagged[1]! & 0xe0) === 0xe0
+        if (head !== 'ID3' && !frameSync) {
+            throw new Error('MP3 写入结果无效（缺少 ID3 或音频帧）')
+        }
+    }
+
+    const minBytes = Math.max(4096, Math.floor(original.length * 0.5))
+    if (tagged.length < minBytes) {
+        throw new Error('写入后文件体积异常缩小，可能已损坏')
+    }
+}
+
 function writeTaggedBuffer(
     audioData: Buffer,
     meta: IMusicMeta,
     parsed: Awaited<ReturnType<typeof parseFile>>,
     ext: string,
-    replaceExisting: boolean
+    replaceExisting: boolean,
+    extraTags: ExtraNativeTagWriteEntry[] = [],
+    flacCoverMode: FlacCoverWriteMode = 'preserve'
 ): Buffer {
-    return ext === 'mp3'
-        ? WriteMetaToMp3(audioData, meta, parsed, replaceExisting)
-        : WriteMetaToFlac(audioData, meta, parsed, replaceExisting)
+    const tagged =
+        ext === 'mp3'
+            ? WriteMetaToMp3(
+                  audioData,
+                  meta,
+                  parsed,
+                  replaceExisting,
+                  extraTags
+              )
+            : WriteMetaToFlac(
+                  audioData,
+                  meta,
+                  parsed,
+                  replaceExisting,
+                  extraTags,
+                  flacCoverMode
+              )
+    assertTaggedBufferLooksValid(audioData, tagged, ext)
+    return tagged
+}
+
+async function writeValidatedTaggedFile(
+    resolved: string,
+    audioData: Buffer,
+    meta: IMusicMeta,
+    parsed: Awaited<ReturnType<typeof parseFile>>,
+    ext: string,
+    replaceExisting: boolean,
+    extraTags: ExtraNativeTagWriteEntry[] = [],
+    flacCoverMode: FlacCoverWriteMode = 'preserve'
+): Promise<WriteAudioMetaResult> {
+    const tmpPath = `${resolved}.songvault-tag-tmp`
+    let tagged: Buffer
+
+    try {
+        tagged = writeTaggedBuffer(
+            audioData,
+            meta,
+            parsed,
+            ext,
+            replaceExisting,
+            extraTags,
+            flacCoverMode
+        )
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { ok: false, filePath: resolved, message: msg || '写入标签失败' }
+    }
+
+    try {
+        fs.writeFileSync(tmpPath, tagged)
+        await parseFile(tmpPath, { skipCovers: true, duration: false })
+        fs.renameSync(tmpPath, resolved)
+        return { ok: true, filePath: resolved }
+    } catch (err) {
+        try {
+            if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath)
+        } catch {
+            /* ignore */
+        }
+        const msg = err instanceof Error ? err.message : String(err)
+        return {
+            ok: false,
+            filePath: resolved,
+            message: msg || '写入后校验失败，原文件未改动'
+        }
+    }
 }
 
 function tryWriteTaggedFile(
@@ -133,6 +250,16 @@ function tryWriteTaggedFile(
             )
         )
     }
+}
+
+function extraTagEntriesFromRows(
+    rows: AudioMetaExtraTagRow[]
+): ExtraNativeTagWriteEntry[] {
+    return rows.map((row) => ({
+        tagKey: row.tagKey,
+        value: row.value,
+        source: row.source
+    }))
 }
 
 /**
@@ -166,16 +293,13 @@ export async function writeFilenameTagsToFile(params: {
     }
 
     try {
-        const parsed = await parseFile(resolved, { skipCovers: false })
+        const parsed = await parseAudioFileSafe(resolved, { skipCovers: false })
         const audioData = fs.readFileSync(resolved)
         const explicit: Partial<IMusicMeta> & { artist?: string } = {
             title,
             artist
         }
-        let meta = buildMusicMetaFromSources(explicit, parsed, false)
-        meta.picture = normalizeEmbedPicture(
-            pictureArrayBufferFromParsed(parsed)
-        )
+        const meta = buildMusicMetaFromSources(explicit, parsed, false)
 
         tryWriteTaggedFile(resolved, audioData, meta, parsed, ext, false)
 
@@ -190,6 +314,9 @@ export async function writeAudioFileMeta(params: {
     filePath: string
     form: AudioMetaEditForm
     coverBase64?: string | null
+    extendedNative?: AudioMetaExtraTagRow[]
+    otherExtra?: AudioMetaExtraTagRow[]
+    touchedExtensionFamilies?: ReadonlySet<string>
 }): Promise<WriteAudioMetaResult> {
     const resolved = path.resolve(params.filePath)
 
@@ -208,12 +335,65 @@ export async function writeAudioFileMeta(params: {
     const ext = fileExtensionLower(resolved)
 
     try {
-        const parsed = await parseFile(resolved, { skipCovers: false })
         const audioData = fs.readFileSync(resolved)
-        const metaJson = editFormToMusicMetaJson(params.form, params.coverBase64)
-        let meta = musicMetaFromJson(metaJson)
+        if (ext === 'flac') {
+            const located = locateFlacInBuffer(audioData)
+            if (!located) {
+                return {
+                    ok: false,
+                    filePath: resolved,
+                    message:
+                        '文件已损坏或无法识别为 FLAC，请从备份恢复后再编辑'
+                }
+            }
+        }
 
-        if (params.coverBase64 === undefined) {
+        let parsed: Awaited<ReturnType<typeof parseAudioFileSafe>>
+        try {
+            parsed = await parseAudioFileSafe(resolved, { skipCovers: false })
+        } catch (parseErr) {
+            if (ext === 'flac') {
+                const hint =
+                    parseErr instanceof Error ? parseErr.message : String(parseErr)
+                return {
+                    ok: false,
+                    filePath: resolved,
+                    message:
+                        hint.includes('offset') || hint.includes('FLAC')
+                            ? '文件元数据已损坏，无法安全写入，请从备份恢复后再编辑'
+                            : hint || '无法读取文件标签'
+                }
+            }
+            throw parseErr
+        }
+        const metaJson = editFormToMusicMetaJson(params.form, params.coverBase64)
+        const preparedExtended = prepareExtendedNativeRowsForWrite(
+            params.extendedNative ?? [],
+            params.touchedExtensionFamilies
+        )
+        const mergedJson = applyExtensionRowsToMusicMeta(
+            metaJson,
+            preparedExtended,
+            params.touchedExtensionFamilies
+        )
+        let meta = musicMetaFromJson(mergedJson)
+
+        let flacCoverMode: FlacCoverWriteMode = 'preserve'
+        if (ext === 'flac') {
+            if (params.coverBase64 === null) {
+                flacCoverMode = 'remove'
+            } else if (params.coverBase64 !== undefined) {
+                flacCoverMode = 'replace'
+            }
+        }
+
+        if (flacCoverMode === 'replace') {
+            if (typeof meta.picture === 'object' && meta.picture) {
+                meta.picture = normalizeEmbedPicture(meta.picture)
+            }
+        } else if (ext === 'flac') {
+            meta = { ...meta, picture: undefined }
+        } else if (params.coverBase64 === undefined) {
             meta.picture = normalizeEmbedPicture(
                 pictureArrayBufferFromParsed(parsed)
             )
@@ -221,11 +401,185 @@ export async function writeAudioFileMeta(params: {
             meta.picture = normalizeEmbedPicture(meta.picture)
         }
 
-        tryWriteTaggedFile(resolved, audioData, meta, parsed, ext, true)
+        const extraRows = collectPersistedExtraTagRows(
+            preparedExtended,
+            params.otherExtra ?? [],
+            ext as 'mp3' | 'flac'
+        )
+        const extraTags = extraTagEntriesFromRows(extraRows)
 
-        return { ok: true, filePath: resolved }
+        let result = await writeValidatedTaggedFile(
+            resolved,
+            audioData,
+            meta,
+            parsed,
+            ext,
+            true,
+            extraTags,
+            flacCoverMode
+        )
+
+        if (!result.ok && meta.picture) {
+            result = await writeValidatedTaggedFile(
+                resolved,
+                audioData,
+                { ...meta, picture: undefined },
+                parsed,
+                ext,
+                true,
+                extraTags,
+                flacCoverMode === 'replace' ? 'preserve' : flacCoverMode
+            )
+        }
+
+        return result
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         return { ok: false, filePath: resolved, message: msg || '写入标签失败' }
+    }
+}
+
+/** 清理扩展原生标签中的重复项（同键多条、ARTIST/ARTISTS 别名重复等） */
+export async function cleanupDuplicateExtendedTagsToFile(params: {
+    filePath: string
+}): Promise<WriteAudioMetaResult> {
+    const resolved = path.resolve(params.filePath)
+
+    if (!isEditableAudioMetaPath(resolved)) {
+        return {
+            ok: false,
+            filePath: resolved,
+            message: '当前仅支持编辑 MP3 / FLAC 文件的标签'
+        }
+    }
+
+    if (!fs.existsSync(resolved)) {
+        return { ok: false, filePath: resolved, message: '文件不存在' }
+    }
+
+    const meta = await readAudioFileMeta(resolved)
+    if (!meta.ok) {
+        return {
+            ok: false,
+            filePath: resolved,
+            message: meta.message ?? '无法读取标签'
+        }
+    }
+
+    const { duplicateKeys } = detectDuplicateExtendedNativeTags(meta, resolved)
+    if (!duplicateKeys.length) {
+        return { ok: true, filePath: resolved }
+    }
+
+    const extRows = buildExtendedNativeEditRows(meta, resolved)
+    const prepared = dedupeExtendedNativeRows(extRows, {
+        collapseAliasGroups: true,
+        keepSingleValueWhenDuplicate: true
+    })
+    const touched = collectTouchedFamiliesForDuplicateGroups(extRows)
+
+    return writeAudioFileMeta({
+        filePath: resolved,
+        form: metaInfoToEditForm(meta),
+        extendedNative: prepared,
+        touchedExtensionFamilies: touched
+    })
+}
+
+/** 将扩展原生标签中的繁体字转为简体（Vorbis / ID3 扩展 Tab 全部字段） */
+export async function convertTraditionalExtendedTagsToFile(params: {
+    filePath: string
+}): Promise<WriteAudioMetaResult> {
+    const resolved = path.resolve(params.filePath)
+
+    if (!isEditableAudioMetaPath(resolved)) {
+        return {
+            ok: false,
+            filePath: resolved,
+            message: '当前仅支持编辑 MP3 / FLAC 文件的标签'
+        }
+    }
+
+    if (!fs.existsSync(resolved)) {
+        return { ok: false, filePath: resolved, message: '文件不存在' }
+    }
+
+    const meta = await readAudioFileMeta(resolved)
+    if (!meta.ok) {
+        return {
+            ok: false,
+            filePath: resolved,
+            message: meta.message ?? '无法读取标签'
+        }
+    }
+
+    const extRows = buildExtendedNativeEditRows(meta, resolved)
+    const touched = new Set<string>()
+    let changed = false
+
+    const prepared = extRows.map((row) => {
+        if (!containsTraditionalChinese(row.value)) return row
+        const simplified = toSimplifiedChinese(row.value)
+        if (simplified === row.value) return row
+        changed = true
+        const token = familyTokenForTagKey(row.tagKey)
+        if (token) touched.add(token)
+        return { ...row, value: simplified }
+    })
+
+    if (!changed) {
+        return { ok: true, filePath: resolved }
+    }
+
+    return writeAudioFileMeta({
+        filePath: resolved,
+        form: metaInfoToEditForm(meta),
+        extendedNative: prepared,
+        touchedExtensionFamilies: touched
+    })
+}
+
+/** 删除 MP3 文件尾 ID3v1 / ID3v1.1 标签块（保留 ID3v2） */
+export async function removeId3v1TagsFromFile(params: {
+    filePath: string
+}): Promise<WriteAudioMetaResult> {
+    const resolved = path.resolve(params.filePath)
+
+    if (fileExtensionLower(resolved) !== 'mp3') {
+        return {
+            ok: false,
+            filePath: resolved,
+            message: '仅 MP3 文件含有 ID3v1 标签'
+        }
+    }
+
+    if (!fs.existsSync(resolved)) {
+        return { ok: false, filePath: resolved, message: '文件不存在' }
+    }
+
+    const audioData = fs.readFileSync(resolved)
+    const stripped = stripId3v1FromMp3Buffer(audioData)
+    if (stripped.length === audioData.length) {
+        return { ok: true, filePath: resolved }
+    }
+
+    const tmpPath = `${resolved}.songvault-id3v1-tmp`
+    try {
+        fs.writeFileSync(tmpPath, stripped)
+        await parseFile(tmpPath, { skipCovers: true, duration: false })
+        fs.renameSync(tmpPath, resolved)
+        return { ok: true, filePath: resolved }
+    } catch (err) {
+        try {
+            if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath)
+        } catch {
+            /* ignore */
+        }
+        const msg = err instanceof Error ? err.message : String(err)
+        return {
+            ok: false,
+            filePath: resolved,
+            message: msg || '删除 ID3v1 后校验失败，原文件未改动'
+        }
     }
 }

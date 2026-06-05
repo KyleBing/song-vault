@@ -1,4 +1,5 @@
 import { splitMetaDisplayValues, type AudioFileMetaInfo } from './audioFileMeta'
+import type { AudioMetaExtraTagRow } from './audioMetaExtraEdit'
 import { labelForCommonKey } from './audioMetaLabels'
 import { isDecryptableExtension } from './musicFormats'
 import { fileExtensionLower } from './pathLite'
@@ -74,6 +75,8 @@ export interface AudioMetaEditPayload {
     /** undefined = 保留原封面；null = 移除封面；string = base64（不含 data URL 前缀） */
     coverBase64?: string | null
     coverMime?: string
+    extendedNative?: AudioMetaExtraTagRow[]
+    otherExtra?: AudioMetaExtraTagRow[]
 }
 
 export interface WriteAudioMetaResult {

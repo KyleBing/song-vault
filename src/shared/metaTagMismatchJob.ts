@@ -6,7 +6,10 @@ import {
     walkLibraryAudioFiles
 } from './librarySyncJob'
 import { checkBatchCancelled } from './batchCancel'
-import { readAudioFileMetaBatch } from './readAudioFileMeta'
+import {
+    readAudioFileMetaBatch,
+    READ_AUDIO_META_FOR_SCAN
+} from './readAudioFileMeta'
 import { parseArtistTitleFromFilePath } from './audioMetaEdit'
 import {
     analyzeMetaTagMismatch,
@@ -37,9 +40,23 @@ export {
     tagArtistFromFilenameArtist
 } from './metaTagMismatch'
 
-/** 扫描目录内「文件名艺人 - 曲名」与内嵌标签不一致的音频 */
+export type MetaTagMismatchScanPhase = 'read' | 'compare'
+
+export type MetaTagMismatchScanProgress = (
+    done: number,
+    total: number,
+    phase: MetaTagMismatchScanPhase
+) => void
+
+/**
+ * 扫描目录内「文件名艺人 - 曲名」与内嵌标签不一致的音频。
+ * 阶段 1：全量读取内嵌标签（每个文件只读一次）；
+ * 阶段 2：在内存中与文件名对比，不再访问文件内容。
+ */
 export async function scanMetaTagMismatches(
-    params: ScanMetaTagMismatchParams
+    params: ScanMetaTagMismatchParams & {
+        onProgress?: MetaTagMismatchScanProgress
+    }
 ): Promise<ScanMetaTagMismatchResult> {
     const rootInput = (params?.root ?? '').trim()
     if (!rootInput) {
@@ -59,7 +76,18 @@ export async function scanMetaTagMismatches(
     const fullPaths = entries.map((entry) =>
         path.resolve(root, entry.relativePath)
     )
-    const metaByPath = await readAudioFileMetaBatch(fullPaths, 6)
+    const total = fullPaths.length
+    params.onProgress?.(0, total, 'read')
+
+    const metaByPath = await readAudioFileMetaBatch(
+        fullPaths,
+        8,
+        (done, batchTotal) => {
+            params.onProgress?.(done, batchTotal, 'read')
+        },
+        READ_AUDIO_META_FOR_SCAN
+    )
+
     /** 按解析后的绝对路径索引，避免 join / resolve 字符串不一致导致查不到元数据 */
     const metaByResolved = new Map<string, AudioFileMetaInfo>()
     for (const meta of Object.values(metaByPath)) {
@@ -72,30 +100,32 @@ export async function scanMetaTagMismatches(
     let parsedFilenameCount = 0
     let skippedCount = 0
 
-    for (const entry of entries) {
+    for (let i = 0; i < entries.length; i++) {
         checkBatchCancelled()
+        const entry = entries[i]!
         const fullPath = path.resolve(root, entry.relativePath)
         const meta =
             metaByPath[fullPath] ?? metaByResolved.get(fullPath)
         if (!meta?.ok) {
             skippedCount += 1
-            continue
+        } else {
+            if (parseArtistTitleFromFilePath(fullPath).split) {
+                parsedFilenameCount += 1
+            }
+
+            const mismatch = analyzeMetaTagMismatch(fullPath, meta)
+            if (mismatch) {
+                items.push({
+                    relativePath: entry.relativePath,
+                    fileName: entry.fileName,
+                    fullPath,
+                    ...mismatch
+                })
+            }
         }
-
-        if (parseArtistTitleFromFilePath(fullPath).split) {
-            parsedFilenameCount += 1
-        }
-
-        const mismatch = analyzeMetaTagMismatch(fullPath, meta)
-        if (!mismatch) continue
-
-        items.push({
-            relativePath: entry.relativePath,
-            fileName: entry.fileName,
-            fullPath,
-            ...mismatch
-        })
     }
+
+    params.onProgress?.(total, total, 'read')
 
     items.sort((a, b) =>
         a.relativePath.localeCompare(b.relativePath, undefined, {

@@ -216,63 +216,41 @@ const runSummaryText = computed(() => {
     </NAlert>
 
     <div v-if="showOrphanHint" class="orphan-actions">
-      <div v-if="showOrphanLrcHint" class="orphan-action-row">
-        <NPopconfirm @positive-click="deleteOrphans">
-          <template #trigger>
-            <NButton
-              block
-              type="error"
-              size="small"
-              :disabled="(selectedOrphanKeys?.length ?? 0) === 0"
-              :loading="deletingLrc"
-            >
-              <template #icon>
-                <NIcon><Trash /></NIcon>
-              </template>
-              {{ selectedOrphanKeys?.length ?? 0 }}
-            </NButton>
-          </template>
-          确定删除选中的 {{ selectedOrphanKeys?.length ?? 0 }} 个歌词文件？不可恢复。
-        </NPopconfirm>
-        <NButton
-          v-if="deletingLrc"
-          quaternary
-          size="tiny"
-          class="orphan-stop-btn"
-          @click="batchTask.cancel"
-        >
-          停止
-        </NButton>
-      </div>
+      <NPopconfirm v-if="showOrphanLrcHint" @positive-click="deleteOrphans">
+        <template #trigger>
+          <NButton
+            block
+            type="error"
+            size="small"
+            :disabled="(selectedOrphanKeys?.length ?? 0) === 0"
+            :loading="deletingLrc"
+          >
+            <template #icon>
+              <NIcon><Trash /></NIcon>
+            </template>
+            删除选中多余歌词 ({{ selectedOrphanKeys?.length ?? 0 }})
+          </NButton>
+        </template>
+        确定删除选中的 {{ selectedOrphanKeys?.length ?? 0 }} 个歌词文件？不可恢复。
+      </NPopconfirm>
 
-      <div v-if="showOrphanAudioHint" class="orphan-action-row">
-        <NPopconfirm @positive-click="deleteOrphanAudio">
-          <template #trigger>
-            <NButton
-              block
-              type="error"
-              size="small"
-              :disabled="(selectedOrphanAudioKeys?.length ?? 0) === 0"
-              :loading="deletingAudio"
-            >
-              <template #icon>
-                <NIcon><Trash /></NIcon>
-              </template>
-              {{ selectedOrphanAudioKeys?.length ?? 0 }}
-            </NButton>
-          </template>
-          确定删除选中的 {{ selectedOrphanAudioKeys?.length ?? 0 }} 个音频文件？不可恢复。
-        </NPopconfirm>
-        <NButton
-          v-if="deletingAudio"
-          quaternary
-          size="tiny"
-          class="orphan-stop-btn"
-          @click="batchTask.cancel"
-        >
-          停止
-        </NButton>
-      </div>
+      <NPopconfirm v-if="showOrphanAudioHint" @positive-click="deleteOrphanAudio">
+        <template #trigger>
+          <NButton
+            block
+            type="error"
+            size="small"
+            :disabled="(selectedOrphanAudioKeys?.length ?? 0) === 0"
+            :loading="deletingAudio"
+          >
+            <template #icon>
+              <NIcon><Trash /></NIcon>
+            </template>
+            删除选中多余音频 ({{ selectedOrphanAudioKeys?.length ?? 0 }})
+          </NButton>
+        </template>
+        确定删除选中的 {{ selectedOrphanAudioKeys?.length ?? 0 }} 个音频文件？不可恢复。
+      </NPopconfirm>
 
       <p class="orphan-tip">
         在右侧「多余」页勾选要删除的文件。重复副本需在搜索范围内找到同名且大小一致的 abc.* 才会列出。
@@ -342,23 +320,6 @@ const runSummaryText = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.orphan-action-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.orphan-action-row :deep(.n-button) {
-  flex: 1;
-  min-width: 0;
-}
-
-.orphan-stop-btn {
-  flex-shrink: 0;
-  font-size: 11px;
-  opacity: 0.72;
 }
 
 .orphan-tip {

@@ -1,7 +1,9 @@
 import fs from 'fs'
 import path from 'path'
 import { checkBatchCancelled } from './batchCancel'
-import { parseFile, type IAudioMetadata } from 'music-metadata'
+import type { IAudioMetadata } from 'music-metadata'
+import { readFirstFlacCoverDataUrl } from '../unlock-music/decrypt/flacRewrite'
+import { parseAudioFileSafe } from './parseAudioFileSafe'
 import {
   emptyAudioFileMeta,
   formatNativeTagValue,
@@ -46,10 +48,30 @@ function readFileSizeBytes(filePath: string): number | undefined {
   }
 }
 
+export interface ReadAudioFileMetaOptions {
+    /** 跳过封面解析（扫描批量对比时更快） */
+    skipCovers?: boolean
+    /** 跳过时长解析 */
+    duration?: boolean
+    /** FLAC 封面 fallback 会读整文件，扫描时应关闭 */
+    includeCoverFallback?: boolean
+}
+
+/** 扫描对比用：只读标签文本，不解析封面/时长 */
+export const READ_AUDIO_META_FOR_SCAN: ReadAudioFileMetaOptions = {
+    skipCovers: true,
+    duration: false,
+    includeCoverFallback: false
+}
+
 /** 读取单个音频文件的完整标签与格式信息 */
 export async function readAudioFileMeta(
-  filePath: string
+  filePath: string,
+  options: ReadAudioFileMetaOptions = {}
 ): Promise<AudioFileMetaInfo> {
+  const skipCovers = options.skipCovers ?? false
+  const duration = options.duration ?? true
+  const includeCoverFallback = options.includeCoverFallback ?? !skipCovers
   const resolved = path.resolve(filePath)
   const ext = path.extname(resolved).slice(1).toLowerCase()
   const fileSizeBytes = readFileSizeBytes(resolved)
@@ -63,15 +85,21 @@ export async function readAudioFileMeta(
   }
 
   try {
-    const meta = await parseFile(resolved, {
-      skipCovers: false,
-      duration: true
+    checkBatchCancelled()
+    const meta = await parseAudioFileSafe(resolved, {
+      skipCovers,
+      duration
     })
+    checkBatchCancelled()
+    let coverDataUrl = skipCovers ? undefined : coverDataUrlFromMeta(meta)
+    if (!coverDataUrl && includeCoverFallback && ext === 'flac') {
+      coverDataUrl = readFirstFlacCoverDataUrl(fs.readFileSync(resolved))
+    }
     return {
       filePath: resolved,
       ok: true,
       fileSizeBytes,
-      coverDataUrl: coverDataUrlFromMeta(meta),
+      coverDataUrl,
       common: recordFromMetaObject(
         meta.common as unknown as Record<string, unknown>
       ),
@@ -82,7 +110,11 @@ export async function readAudioFileMeta(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return { ...emptyAudioFileMeta(resolved, msg || '无法解析元数据'), fileSizeBytes }
+    const friendly =
+      msg.includes('offset') && msg.includes('out of range')
+        ? '文件元数据已损坏，请从备份恢复后再查看或编辑'
+        : msg || '无法解析元数据'
+    return { ...emptyAudioFileMeta(resolved, friendly), fileSizeBytes }
   }
 }
 
@@ -91,21 +123,45 @@ const DEFAULT_CONCURRENCY = 4
 /** 批量读取元数据（限制并发） */
 export async function readAudioFileMetaBatch(
   filePaths: string[],
-  concurrency = DEFAULT_CONCURRENCY
+  concurrency = DEFAULT_CONCURRENCY,
+  onProgress?: (done: number, total: number) => void,
+  readOptions: ReadAudioFileMetaOptions = {}
 ): Promise<Record<string, AudioFileMetaInfo>> {
   const unique = [...new Set(filePaths.filter(Boolean))]
   const out: Record<string, AudioFileMetaInfo> = {}
   if (unique.length === 0) return out
 
+  const total = unique.length
+  let done = 0
+  onProgress?.(0, total)
+
   let index = 0
+  let aborted = false
+
   async function worker(): Promise<void> {
     while (index < unique.length) {
-      checkBatchCancelled()
+      if (aborted) return
+      try {
+        checkBatchCancelled()
+      } catch (err) {
+        aborted = true
+        throw err
+      }
       const i = index++
+      if (i >= unique.length) break
       const p = unique[i]!
-      const meta = await readAudioFileMeta(p)
+      const meta = await readAudioFileMeta(p, readOptions)
+      if (aborted) return
+      try {
+        checkBatchCancelled()
+      } catch (err) {
+        aborted = true
+        throw err
+      }
       out[p] = meta
       out[path.resolve(p)] = meta
+      done += 1
+      onProgress?.(done, total)
     }
   }
 
@@ -113,6 +169,11 @@ export async function readAudioFileMetaBatch(
     { length: Math.min(concurrency, unique.length) },
     () => worker()
   )
-  await Promise.all(workers)
+  try {
+    await Promise.all(workers)
+  } catch (err) {
+    aborted = true
+    throw err
+  }
   return out
 }
