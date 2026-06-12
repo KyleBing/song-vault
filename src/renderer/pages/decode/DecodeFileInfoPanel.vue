@@ -47,7 +47,7 @@ const sizeLabel = computed(() => {
   grid-template-columns: 40px 1fr;
   column-gap: 8px;
   row-gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
   min-height: 0;
   overflow: auto;
@@ -66,7 +66,6 @@ const sizeLabel = computed(() => {
 
 .decode-file-info-panel__path {
   font-family: $font-mono;
-  font-size: 10px;
-  opacity: 0.85;
+  font-size: 12px;
 }
 </style>

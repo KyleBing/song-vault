@@ -1142,9 +1142,8 @@ onMounted(() => {
 
 .dir-stats {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.25;
-  opacity: 0.6;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;

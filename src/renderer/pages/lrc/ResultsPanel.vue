@@ -132,7 +132,7 @@ const pickRevision = ref(0)
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 /** 结果表格最大高度（随窗口高度变化） */
-const maxHeightForTable = computed(() => insets.value.windowHeight - 138)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 139)
 
 /** 列表容器底栏：随当前 Tab / 子 Tab 显示选中项路径 */
 const listSelectionPath = computed(() => {
@@ -966,7 +966,11 @@ function orphanAudioRowKey(row: { key: string }): string {
                 </div>
             </NTabPane>
         </NTabs>
-        <SelectionPathFooter :path="listSelectionPath" />
+        <footer v-if="listSelectionPath" class="files-foot">
+            <div class="files-foot__path">
+                <SelectionPathFooter :path="listSelectionPath" />
+            </div>
+        </footer>
     </div>
 </template>
 
@@ -1168,5 +1172,26 @@ function orphanAudioRowKey(row: { key: string }): string {
     justify-content: center;
     align-items: center;
     width: 100%;
+}
+
+.files-foot {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 10px 4px;
+    border-top: 1px solid $border-subtle;
+    font-size: 12px;
+}
+
+.files-foot__path {
+    flex: 1;
+    min-width: 0;
+
+    :deep(.selection-path-footer) {
+        border-top: none;
+        padding: 0;
+    }
 }
 </style>
