@@ -14,9 +14,15 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { PathFilterRule } from '@shared/appConfig'
 import {
+    artistHasNonRedundantUnderscoreSeparator,
+    artistHasRedundantUnderscoreTokens,
     countItemsByIssue,
+    dedupeUnderscoreArtistsForFilename,
+    dedupeUnderscoreArtistsForTag,
     META_TAG_MISMATCH_ISSUE_LABELS,
     normalizeFilenameArtist,
+    normalizeFilenameArtistFromUnderscore,
+    normalizeTagArtistFromUnderscore,
     tagArtistForMetaFromFilename,
     type MetaTagMismatchIssue,
     type MetaTagMismatchItem,
@@ -83,6 +89,26 @@ const ISSUE_FILTER_OPTIONS: {
 }[] = [
     {
         group: 'filename',
+        key: 'fileArtistUnderscoreDup',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.fileArtistUnderscoreDup,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项去掉与 & 写法重复的 _ 作者项并重命名？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「作者 _ 重复」（文件名），确定重命名？`
+    },
+    {
+        group: 'filename',
+        key: 'fileArtistUnderscoreSep',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.fileArtistUnderscoreSep,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的作者下划线分隔改为逗号连接并重命名？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「作者 _ 分隔」（文件名），确定重命名？`
+    },
+    {
+        group: 'filename',
         key: 'fileArtistSep',
         label: META_TAG_MISMATCH_ISSUE_LABELS.fileArtistSep,
         fixLabel: '执行',
@@ -109,6 +135,26 @@ const ISSUE_FILTER_OPTIONS: {
             `将全部 ${n} 个符合项的文件名（艺人 / 曲名）繁体转为简体并重命名？`,
         confirmSelected: (sel, n) =>
             `已选 ${sel} 条，其中 ${n} 条符合「文件名繁体」，确定繁转简并重命名？`
+    },
+    {
+        group: 'tag',
+        key: 'tagArtistUnderscoreDup',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.tagArtistUnderscoreDup,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项去掉与 & 写法重复的 _ 作者项？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「作者 _ 重复」（标签），确定修复标签艺人？`
+    },
+    {
+        group: 'tag',
+        key: 'tagArtistUnderscoreSep',
+        label: META_TAG_MISMATCH_ISSUE_LABELS.tagArtistUnderscoreSep,
+        fixLabel: '执行',
+        confirmAll: (n) =>
+            `将全部 ${n} 个符合项的标签作者下划线分隔改为「 & 」连接？`,
+        confirmSelected: (sel, n) =>
+            `已选 ${sel} 条，其中 ${n} 条符合「作者 _ 分隔」（标签），确定修复标签艺人？`
     },
     {
         group: 'tag',
@@ -365,6 +411,8 @@ function renderIssuesCell(row: MetaTagMismatchDisplayRow) {
             tableStatusPill(
                 META_TAG_MISMATCH_ISSUE_LABELS[issue],
                 issue === 'fileArtistSep' ||
+                issue === 'fileArtistUnderscoreSep' ||
+                issue === 'fileArtistUnderscoreDup' ||
                 issue === 'fileUnderscore' ||
                 issue === 'extArtistContent' ||
                 issue === 'extTitleContent' ||
@@ -1359,7 +1407,13 @@ function itemsWithIssue(issue: MetaTagMismatchIssue): MetaTagMismatchItem[] {
 
 function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
     const items = itemsWithIssue(issue)
-    if (issue === 'fileArtistSep' || issue === 'fileUnderscore' || issue === 'fileTraditional') {
+    if (
+        issue === 'fileArtistUnderscoreDup' ||
+        issue === 'fileArtistUnderscoreSep' ||
+        issue === 'fileArtistSep' ||
+        issue === 'fileUnderscore' ||
+        issue === 'fileTraditional'
+    ) {
         return items.length
     }
     if (issue === 'id3v1Tag') {
@@ -1377,6 +1431,22 @@ function fixableCountForIssue(issue: MetaTagMismatchIssue): number {
                     fieldHasEdgeUnderscore(row.tagTitle) ||
                     fieldHasEdgeUnderscore(row.extTagArtist) ||
                     fieldHasEdgeUnderscore(row.extTagTitle))
+        ).length
+    }
+    if (issue === 'tagArtistUnderscoreSep') {
+        return items.filter(
+            (row) =>
+                row.editable &&
+                (artistHasNonRedundantUnderscoreSeparator(row.tagArtist) ||
+                    artistHasNonRedundantUnderscoreSeparator(row.extTagArtist))
+        ).length
+    }
+    if (issue === 'tagArtistUnderscoreDup') {
+        return items.filter(
+            (row) =>
+                row.editable &&
+                (artistHasRedundantUnderscoreTokens(row.tagArtist) ||
+                    artistHasRedundantUnderscoreTokens(row.extTagArtist))
         ).length
     }
     return items.filter((row) => row.editable).length
@@ -1448,6 +1518,120 @@ async function fixTagArtistSepItems(items: MetaTagMismatchItem[]): Promise<void>
             batchTask.createCheck()()
             try {
                 const res = await writeTagsForRow(row)
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '标签艺人')
+}
+
+async function fixTagArtistUnderscoreSepItems(
+    items: MetaTagMismatchItem[]
+): Promise<void> {
+    const targets = items.filter(
+        (row) =>
+            row.editable &&
+            (artistHasNonRedundantUnderscoreSeparator(row.tagArtist) ||
+                artistHasNonRedundantUnderscoreSeparator(row.extTagArtist))
+    )
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
+        return
+    }
+
+    applyingFixIssue.value = 'tagArtistUnderscoreSep'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+                const source = artistHasNonRedundantUnderscoreSeparator(row.tagArtist)
+                    ? row.tagArtist
+                    : row.extTagArtist
+            const artist = normalizeTagArtistFromUnderscore(source)
+            try {
+                const res = await writeTagsForRow(row, artist)
+                if (res.ok) ok += 1
+                else {
+                    fail += 1
+                    if (res.message && failSamples.length < 3) {
+                        failSamples.push(`${row.fileName}: ${res.message}`)
+                    }
+                }
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, targets.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '标签艺人')
+}
+
+async function fixTagArtistUnderscoreDupItems(
+    items: MetaTagMismatchItem[]
+): Promise<void> {
+    const targets = items.filter(
+        (row) =>
+            row.editable &&
+            (artistHasRedundantUnderscoreTokens(row.tagArtist) ||
+                artistHasRedundantUnderscoreTokens(row.extTagArtist))
+    )
+    if (!targets.length) {
+        message.warning('没有可写入标签的文件（仅支持 MP3 / FLAC / OGG / M4A）')
+        return
+    }
+
+    applyingFixIssue.value = 'tagArtistUnderscoreDup'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: targets.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of targets) {
+            batchTask.createCheck()()
+            const source = artistHasRedundantUnderscoreTokens(row.tagArtist)
+                ? row.tagArtist
+                : row.extTagArtist
+            const artist = dedupeUnderscoreArtistsForTag(source)
+            try {
+                const res = await writeTagsForRow(row, artist)
                 if (res.ok) ok += 1
                 else {
                     fail += 1
@@ -1878,6 +2062,130 @@ async function fixFileArtistSepItems(items: MetaTagMismatchItem[]): Promise<void
     finishFixResult(ok, fail, started, failSamples, '文件名')
 }
 
+async function fixFileArtistUnderscoreSepItems(
+    items: MetaTagMismatchItem[]
+): Promise<void> {
+    if (!items.length) return
+
+    const root = (metaMismatchScanDir.value ?? '').trim()
+    if (!root) return
+
+    applyingFixIssue.value = 'fileArtistUnderscoreSep'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: items.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of items) {
+            batchTask.createCheck()()
+            const normalized = normalizeFilenameArtistFromUnderscore(row.fileArtist)
+            const newName = rebuildFileNameWithArtist(row.fullPath, normalized)
+            if (!newName) {
+                fail += 1
+                if (failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: 无法解析文件名结构`)
+                }
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            if (newName === row.fileName) {
+                ok += 1
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            try {
+                await window.electronAPI.browseRenamePath({
+                    browseRoots: [root],
+                    targetPath: row.fullPath,
+                    newName,
+                    disambiguateIfExists: true
+                })
+                ok += 1
+                invalidateMeta(row.fullPath)
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, items.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '文件名')
+}
+
+async function fixFileArtistUnderscoreDupItems(
+    items: MetaTagMismatchItem[]
+): Promise<void> {
+    if (!items.length) return
+
+    const root = (metaMismatchScanDir.value ?? '').trim()
+    if (!root) return
+
+    applyingFixIssue.value = 'fileArtistUnderscoreDup'
+    applyResult.value = null
+    applyTagsProgress.value = { done: 0, total: items.length }
+    applyTagsTiming.value = { elapsedMs: 0 }
+    const started = performance.now()
+    let ok = 0
+    let fail = 0
+    const failSamples: string[] = []
+
+    try {
+        for (const row of items) {
+            batchTask.createCheck()()
+            const normalized = dedupeUnderscoreArtistsForFilename(row.fileArtist)
+            const newName = rebuildFileNameWithArtist(row.fullPath, normalized)
+            if (!newName) {
+                fail += 1
+                if (failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: 无法解析文件名结构`)
+                }
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            if (newName === row.fileName) {
+                ok += 1
+                bumpApplyProgress(ok, fail, items.length, started)
+                continue
+            }
+            try {
+                await window.electronAPI.browseRenamePath({
+                    browseRoots: [root],
+                    targetPath: row.fullPath,
+                    newName,
+                    disambiguateIfExists: true
+                })
+                ok += 1
+                invalidateMeta(row.fullPath)
+            } catch (err) {
+                if (batchTask.notifyIfCancelled(err)) throw err
+                fail += 1
+                const msg = err instanceof Error ? err.message : String(err)
+                if (msg && failSamples.length < 3) {
+                    failSamples.push(`${row.fileName}: ${msg}`)
+                }
+            }
+            bumpApplyProgress(ok, fail, items.length, started)
+        }
+    } finally {
+        applyingFixIssue.value = null
+        applyTagsProgress.value = { done: 0, total: 0 }
+    }
+
+    finishFixResult(ok, fail, started, failSamples, '文件名')
+}
+
 async function fixFileTraditionalItems(items: MetaTagMismatchItem[]): Promise<void> {
     if (!items.length) return
 
@@ -2125,8 +2433,20 @@ async function fixIssue(issue: MetaTagMismatchIssue): Promise<void> {
             case 'tagArtistSep':
                 await fixTagArtistSepItems(items)
                 break
+            case 'tagArtistUnderscoreSep':
+                await fixTagArtistUnderscoreSepItems(items)
+                break
+            case 'tagArtistUnderscoreDup':
+                await fixTagArtistUnderscoreDupItems(items)
+                break
             case 'fileArtistSep':
                 await fixFileArtistSepItems(items)
+                break
+            case 'fileArtistUnderscoreSep':
+                await fixFileArtistUnderscoreSepItems(items)
+                break
+            case 'fileArtistUnderscoreDup':
+                await fixFileArtistUnderscoreDupItems(items)
                 break
             case 'fileUnderscore':
                 await fixFileUnderscoreItems(items)
@@ -2318,7 +2638,7 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                         >
                             <h3 class="mtm-usage-guide__title">用途</h3>
                             <p class="mtm-usage-guide__text">
-                                核对「艺人 - 曲名」类文件名与内嵌标签（及扩展标签）是否一致，并按你的命名规范批量修正。可发现文件名 / 标签内容不一致、多作者分隔符不规范、首尾下划线、繁体字、扩展标签重复、MP3 文件尾 ID3v1 标签（常为 ????）等问题。
+                                核对「艺人 - 曲名」类文件名与内嵌标签（及扩展标签）是否一致，并按你的命名规范批量修正。可发现文件名 / 标签内容不一致、多作者分隔符不规范（含 <code>_</code> 误作分隔）、首尾下划线、繁体字、扩展标签重复、MP3 文件尾 ID3v1 标签（常为 ????）等问题。
                             </p>
                             <h3 class="mtm-usage-guide__title">使用说明</h3>
                             <ol class="mtm-usage-guide__list">
@@ -2471,9 +2791,9 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                         <section v-if="scanResult" class="mtm-rules-panel">
                             <p class="mtm-rules-panel__title">艺人分隔规范</p>
                             <ul class="mtm-rules-panel__list">
-                                <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code></li>
+                                <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code>；作者名中间含 <code>_</code> 表示误用下划线分隔，应改为逗号；若同时存在 <code>李雨霏_晚饭</code> 与 <code>李雨霏 &amp; 晚饭</code>（或分开列出），去掉 <code>_</code> 写法（先修正文件名）</li>
                                 <li>文件名：扩展名前不得有多余 <code>_</code>（如 <code>曲名_.flac</code>）</li>
-                                <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code></li>
+                                <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code>；作者名中间含 <code>_</code> 应改为 <code> &amp; </code> 连接；若与 <code> &amp; </code> 写法重复则去掉 <code>_</code> 项（文件名已规范后再修正标签）</li>
                                 <li>列表：艺人 / 曲名列内纵向展示文件名、标签、扩展与写入；扩展≠文件名时标红；扩展同键或别名重复（如多个 ARTIST / ARTIST+ARTISTS）显示「扩展重复」，清理后每键只保留一条；文件名或扩展字段含繁体字分别显示「文件名繁体」「扩展繁体」，可批量繁转简；MP3 含文件尾 ID3v1 标签（常为 ????）显示「ID3v1 标签」，可批量删除</li>
                             </ul>
                         </section>

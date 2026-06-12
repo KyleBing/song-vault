@@ -1,5 +1,7 @@
 import path from 'path'
 import {
+    artistHasNonRedundantUnderscoreSeparator,
+    artistHasRedundantUnderscoreTokens,
     fileAndTagArtistsMatch,
     fileArtistHasSeparatorIssues,
     tagArtistFromFilenameArtist,
@@ -32,7 +34,11 @@ export type MetaTagMismatchIssue =
     | 'titleContent'
     | 'extArtistContent'
     | 'extTitleContent'
+    | 'fileArtistUnderscoreDup'
+    | 'fileArtistUnderscoreSep'
     | 'fileArtistSep'
+    | 'tagArtistUnderscoreDup'
+    | 'tagArtistUnderscoreSep'
     | 'tagArtistSep'
     | 'fileUnderscore'
     | 'tagUnderscore'
@@ -141,7 +147,11 @@ export const META_TAG_MISMATCH_ISSUE_LABELS: Record<MetaTagMismatchIssue, string
         titleContent: '标签曲名',
         extArtistContent: '扩展艺人',
         extTitleContent: '扩展曲名',
+        fileArtistUnderscoreDup: '作者 _ 重复',
+        fileArtistUnderscoreSep: '作者 _ 分隔',
         fileArtistSep: '文件名分隔',
+        tagArtistUnderscoreDup: '作者 _ 重复',
+        tagArtistUnderscoreSep: '作者 _ 分隔',
         tagArtistSep: '标签分隔',
         fileUnderscore: '文件名下划线',
         tagUnderscore: '标签下划线',
@@ -157,7 +167,11 @@ export function issuesToReasons(
     const artist =
         issues.includes('artistContent') ||
         issues.includes('extArtistContent') ||
+        issues.includes('fileArtistUnderscoreDup') ||
+        issues.includes('fileArtistUnderscoreSep') ||
         issues.includes('fileArtistSep') ||
+        issues.includes('tagArtistUnderscoreDup') ||
+        issues.includes('tagArtistUnderscoreSep') ||
         issues.includes('tagArtistSep') ||
         issues.includes('fileUnderscore') ||
         issues.includes('tagUnderscore')
@@ -177,7 +191,11 @@ function buildIssues(params: {
     extArtistContentMismatch: boolean
     titleMismatch: boolean
     extTitleContentMismatch: boolean
+    fileArtistUnderscoreDup: boolean
+    fileArtistUnderscoreSep: boolean
     fileArtistSep: boolean
+    tagArtistUnderscoreDup: boolean
+    tagArtistUnderscoreSep: boolean
     tagArtistSep: boolean
     fileUnderscore: boolean
     tagUnderscore: boolean
@@ -191,7 +209,11 @@ function buildIssues(params: {
     if (params.extArtistContentMismatch) out.push('extArtistContent')
     if (params.titleMismatch) out.push('titleContent')
     if (params.extTitleContentMismatch) out.push('extTitleContent')
+    if (params.fileArtistUnderscoreDup) out.push('fileArtistUnderscoreDup')
+    if (params.fileArtistUnderscoreSep) out.push('fileArtistUnderscoreSep')
     if (params.fileArtistSep) out.push('fileArtistSep')
+    if (params.tagArtistUnderscoreDup) out.push('tagArtistUnderscoreDup')
+    if (params.tagArtistUnderscoreSep) out.push('tagArtistUnderscoreSep')
     if (params.tagArtistSep) out.push('tagArtistSep')
     if (params.fileUnderscore) out.push('fileUnderscore')
     if (params.tagUnderscore) out.push('tagUnderscore')
@@ -262,10 +284,30 @@ export function analyzeMetaTagMismatch(
     const extTitleContentMismatch =
         Boolean(extTagTitle.trim()) && extTitleMismatchFilename
 
-    const fileArtistSep = fileArtistHasSeparatorIssues(parsed.artist)
+    const fileArtistUnderscoreDup = artistHasRedundantUnderscoreTokens(parsed.artist)
+    const fileArtistUnderscoreSep =
+        !fileArtistUnderscoreDup &&
+        artistHasNonRedundantUnderscoreSeparator(parsed.artist)
+    const fileArtistSep =
+        !fileArtistUnderscoreSep &&
+        !fileArtistUnderscoreDup &&
+        fileArtistHasSeparatorIssues(parsed.artist)
+    const tagArtistUnderscoreDup =
+        artistHasRedundantUnderscoreTokens(tagArtist) ||
+        Boolean(
+            extTagArtist && artistHasRedundantUnderscoreTokens(extTagArtist)
+        )
+    const tagArtistUnderscoreSep =
+        !tagArtistUnderscoreDup &&
+        (artistHasNonRedundantUnderscoreSeparator(tagArtist) ||
+            Boolean(
+                extTagArtist &&
+                    artistHasNonRedundantUnderscoreSeparator(extTagArtist)
+            ))
     const tagArtistSep =
-        tagArtistHasSeparatorIssues(tagArtist) ||
-        Boolean(extTagArtist && tagArtistHasSeparatorIssues(extTagArtist))
+        !tagArtistUnderscoreSep &&
+        (tagArtistHasSeparatorIssues(tagArtist) ||
+            Boolean(extTagArtist && tagArtistHasSeparatorIssues(extTagArtist)))
     const fileUnderscore =
         filenameStemHasTrailingUnderscore(filePath) ||
         fieldHasEdgeUnderscore(parsed.title) ||
@@ -293,7 +335,11 @@ export function analyzeMetaTagMismatch(
         extArtistContentMismatch,
         titleMismatch: tagTitleMismatch,
         extTitleContentMismatch,
+        fileArtistUnderscoreDup,
+        fileArtistUnderscoreSep,
         fileArtistSep,
+        tagArtistUnderscoreDup,
+        tagArtistUnderscoreSep,
         tagArtistSep,
         fileUnderscore,
         tagUnderscore,
@@ -331,7 +377,14 @@ export function countItemsByIssue(
 }
 
 export {
+    artistHasNonRedundantUnderscoreSeparator,
+    artistHasRedundantUnderscoreTokens,
+    artistHasUnderscoreSeparator,
     tagArtistFromFilenameArtist,
     tagArtistForMetaFromFilename,
-    normalizeFilenameArtist
+    normalizeFilenameArtist,
+    normalizeFilenameArtistFromUnderscore,
+    normalizeTagArtistFromUnderscore,
+    dedupeUnderscoreArtistsForFilename,
+    dedupeUnderscoreArtistsForTag
 } from './artistSeparatorRules'
