@@ -376,7 +376,7 @@ function plainTableRowProps(row: PlainMp3Item) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px 20px 0;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -396,6 +396,7 @@ function plainTableRowProps(row: PlainMp3Item) {
 
   :deep(.n-tabs-nav) {
     flex-shrink: 0;
+    padding-left: 10px;
   }
 
   :deep(.n-tab-pane) {
@@ -412,7 +413,6 @@ function plainTableRowProps(row: PlainMp3Item) {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 8px;
 }
 
 .tab-table-wrap {

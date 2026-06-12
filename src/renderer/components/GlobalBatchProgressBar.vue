@@ -12,7 +12,7 @@ const visible = computed(() => snapshot.value !== null)
 const progressPercent = computed(() => {
     const current = snapshot.value
     if (!current) return 0
-    if (current.indeterminate) return 100
+    if (current.indeterminate) return 0
     return current.percentage ?? 0
 })
 

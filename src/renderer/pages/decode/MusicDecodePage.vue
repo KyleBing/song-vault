@@ -82,7 +82,7 @@ const props = defineProps<{
 const message = useMessage()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 105)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 123)
 
 const selectedDecodeFile = computed(() => {
   const key = selectedFileKeys.value[0]
@@ -1155,10 +1155,10 @@ onMounted(() => {
 .files-pane {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 16px;
-  min-height: 0;
+  overflow: hidden;
 }
 
 .pane-toolbar {
@@ -1166,8 +1166,9 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
   flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid $border-subtle;
 }
 
 .pane-toolbar-leading {
@@ -1215,6 +1216,8 @@ onMounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 
   :deep(.n-spin-container),
   :deep(.n-spin-content) {

@@ -132,7 +132,7 @@ const pickRevision = ref(0)
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
 /** 结果表格最大高度（随窗口高度变化） */
-const maxHeightForTable = computed(() => insets.value.windowHeight - 150)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 138)
 
 /** 列表容器底栏：随当前 Tab / 子 Tab 显示选中项路径 */
 const listSelectionPath = computed(() => {
@@ -979,7 +979,7 @@ function orphanAudioRowKey(row: { key: string }): string {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 0 10px;
+    padding: 0;
     overflow: hidden;
 }
 
@@ -1013,7 +1013,6 @@ function orphanAudioRowKey(row: { key: string }): string {
 .result-tabs {
     flex: 1;
     min-height: 0;
-    margin-top: 2px;
 
     &--fill {
         flex: 1;
@@ -1032,6 +1031,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 
         :deep(.n-tabs-nav) {
             flex-shrink: 0;
+            padding-left: 10px;
         }
 
         :deep(.n-tabs-pane-wrapper) {
@@ -1042,7 +1042,7 @@ function orphanAudioRowKey(row: { key: string }): string {
 
         :deep(.n-tab-pane) {
             height: 100%;
-            padding-top: 8px !important;
+            padding-top: 0 !important;
             box-sizing: border-box;
         }
     }
@@ -1101,7 +1101,7 @@ function orphanAudioRowKey(row: { key: string }): string {
     }
 
     :deep(.n-tab-pane) {
-        padding-top: 8px !important;
+        padding-top: 0 !important;
         height: 100%;
         box-sizing: border-box;
     }

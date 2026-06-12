@@ -19,6 +19,35 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.2.10',
+    date: '2026-06-12',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '歌词查看：元数据块艺人头像点击可放大预览，大图下方显示对应人名'
+        ]
+      },
+      {
+        title: '变更',
+        items: [
+          '乐库管理：目录统计从左侧树底移至右侧列表底部靠右展示',
+          '列表：VirtualDataTable 去掉 bordered wrapper 圆角；乐库管理、LRC 归位、文件名与标签、音乐解密等页列表区域去掉多余内边距，贴边展示',
+          'LRC 歌词归位：Tab 栏保留左侧 10px 间距',
+          '文件名与标签：无数据时空状态仅保留文字，去掉圆角背景框',
+          '音乐解码：文件列表与结果 Tab 列表布局与乐库管理对齐'
+        ]
+      },
+      {
+        title: '修复',
+        items: [
+          '批处理：修复不确定进度（如统计文件总数前）显示为 100% 再回跳的问题',
+          '文件名与标签：修复再次扫描时进度条短暂沿用上次 100% 的问题'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.2.9',
     date: '2026-06-05',
     sections: [

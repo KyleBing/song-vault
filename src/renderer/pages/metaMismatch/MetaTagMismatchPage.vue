@@ -1256,8 +1256,8 @@ async function runScan(options?: {
     if (!validation.ok) return
 
     if (options?.scanLoading) scanButtonLoading.value = true
-    loading.value = true
     scanProgress.value = { done: 0, total: 0, phase: 'read' }
+    loading.value = true
     startScanTimingClock()
     batchTask.begin()
     activeScanJobId = batchTask.jobId
@@ -2883,11 +2883,7 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
 .mtm-table-wrap {
     flex: 1;
     min-height: 0;
-    margin: 12px;
-    border: 1px solid $border-subtle;
-    border-radius: $radius-panel;
     overflow: hidden;
-    background: $surface-panel;
     display: flex;
     flex-direction: column;
 }
@@ -2900,9 +2896,6 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    margin: 12px;
-    background: var(--app-placeholder-bg);
-    border-radius: $radius-panel;
 }
 
 .meta-mismatch-empty__title {
