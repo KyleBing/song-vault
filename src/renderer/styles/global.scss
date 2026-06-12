@@ -185,6 +185,18 @@ body,
   max-width: min(600px, 100vw);
 }
 
+.audio-cover-lightbox-caption {
+  margin: 10px 0 0;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: center;
+  user-select: none;
+  pointer-events: none;
+}
+
 .audio-cover-lightbox-meta {
   margin: 3px 0 0;
   padding: 0;

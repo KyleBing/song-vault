@@ -47,7 +47,12 @@ function heightForRow(): number {
 
 <style lang="scss">
 .n-data-table.virtual-data-table {
+    --n-border-radius: 0;
     font-size: var(--vdt-font-size);
+
+    &.n-data-table--bordered .n-data-table-wrapper {
+        border-radius: 0;
+    }
 
     .n-data-table-th {
         padding: var(--vdt-cell-padding) !important;

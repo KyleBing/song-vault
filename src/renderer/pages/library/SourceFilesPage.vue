@@ -74,7 +74,7 @@ const message = useMessage()
 const batchTask = useBatchTask()
 const layoutStore = useLayoutStore()
 const { insets } = storeToRefs(layoutStore)
-const maxHeightForTable = computed(() => insets.value.windowHeight - 150)
+const maxHeightForTable = computed(() => insets.value.windowHeight - 140)
 
 /** 元数据面板：多选时展示第一个选中文件 */
 const metaPanelFilePath = computed(() =>
@@ -903,18 +903,6 @@ async function refreshLibraryTree(): Promise<void> {
             class="tree-empty"
           />
         </div>
-        <footer v-if="selectedDir" class="tree-foot">
-          <NTooltip trigger="hover" :style="{ maxWidth: '420px' }">
-            <template #trigger>
-              <p class="dir-stats">{{ selectedDirStatsText }}</p>
-            </template>
-            {{
-              includeSubdirs
-                ? `当前目录及全部子文件夹：${selectedDirStats.count} 个音频，合计 ${selectedDirStats.sizeLabel}，${selectedDirStats.lrcCount} 个有同级歌词`
-                : `当前目录（不含子文件夹）：${selectedDirStats.count} 个音频，合计 ${selectedDirStats.sizeLabel}，${selectedDirStats.lrcCount} 个有同级歌词`
-            }}
-          </NTooltip>
-        </footer>
         <AudioMetaPanel v-if="!batchTask.active" :file-path="metaPanelFilePath" />
       </div>
 
@@ -1030,7 +1018,28 @@ async function refreshLibraryTree(): Promise<void> {
             该目录下没有音频文件
           </p>
         </NSpin>
-        <SelectionPathFooter :path="metaPanelFilePath" />
+        <footer
+          v-if="selectedDir || metaPanelFilePath"
+          class="files-foot"
+        >
+          <div class="files-foot__path">
+            <SelectionPathFooter :path="metaPanelFilePath" />
+          </div>
+          <NTooltip
+            v-if="selectedDir"
+            trigger="hover"
+            :style="{ maxWidth: '420px' }"
+          >
+            <template #trigger>
+              <p class="dir-stats">{{ selectedDirStatsText }}</p>
+            </template>
+            {{
+              includeSubdirs
+                ? `当前目录及全部子文件夹：${selectedDirStats.count} 个音频，合计 ${selectedDirStats.sizeLabel}，${selectedDirStats.lrcCount} 个有同级歌词`
+                : `当前目录（不含子文件夹）：${selectedDirStats.count} 个音频，合计 ${selectedDirStats.sizeLabel}，${selectedDirStats.lrcCount} 个有同级歌词`
+            }}
+          </NTooltip>
+        </footer>
       </section>
     </div>
   </div>
@@ -1174,7 +1183,7 @@ async function refreshLibraryTree(): Promise<void> {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 8px 10px;
+  padding: 0;
 
   :deep(.n-spin-container),
   :deep(.n-spin-content) {
@@ -1203,15 +1212,29 @@ async function refreshLibraryTree(): Promise<void> {
   padding: 24px 8px;
 }
 
-.tree-foot {
+.files-foot {
   flex-shrink: 0;
-  padding: 3px 10px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 10px 4px;
   border-top: 1px solid $border-subtle;
+  font-size: 12px;
+}
+
+.files-foot__path {
+  flex: 1;
+  min-width: 0;
+
+  :deep(.selection-path-footer) {
+    border-top: none;
+    padding: 0;
+  }
 }
 
 .dir-stats {
   margin: 0;
-  font-size: 11px;
   line-height: 1.25;
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
@@ -1219,6 +1242,9 @@ async function refreshLibraryTree(): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
+  text-align: right;
+  flex-shrink: 0;
+  max-width: min(100%, 420px);
 }
 
 :deep(.tree-dir-icon) {

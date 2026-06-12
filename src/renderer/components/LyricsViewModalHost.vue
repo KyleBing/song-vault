@@ -1,16 +1,28 @@
 <script setup lang="ts">
 import { NModal, NScrollbar, NSpin, useMessage } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
+import { useAudioCoverLightbox } from '@renderer/composables/useAudioCoverLightbox'
 import {
     closeLyricsViewModal,
     lyricsViewModalState
 } from '@renderer/composables/useLyricsViewModal'
 import {
     parseLyricsForDisplay,
+    type NeteaseLyricChunk,
     type ParsedLyricsLine
 } from '@renderer/utils/parseLyricsDisplay'
 
 const message = useMessage()
+const { open: openCoverLightbox } = useAudioCoverLightbox()
+
+function onMetaAvatarClick(chunk: NeteaseLyricChunk): void {
+    if (!chunk.imageUrl) {
+        return
+    }
+    openCoverLightbox(chunk.imageUrl, {
+        caption: chunk.text.trim() || undefined
+    })
+}
 
 const loading = ref(false)
 const text = ref('')
@@ -127,7 +139,9 @@ function onShowUpdate(value: boolean): void {
                                     class="lyrics-view-modal__meta-avatar"
                                     :src="chunk.imageUrl"
                                     alt=""
+                                    title="点击查看大图"
                                     loading="lazy"
+                                    @click.stop="onMetaAvatarClick(chunk)"
                                 >
                                 <span
                                     class="lyrics-view-modal__meta-text"
@@ -229,6 +243,7 @@ function onShowUpdate(value: boolean): void {
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
+    cursor: pointer;
 }
 
 .lyrics-view-modal__meta-text--artist {

@@ -17,7 +17,7 @@ defineProps<{
     flex-shrink: 0;
     margin: 0;
     padding: 2px 10px 4px;
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.2;
     opacity: 1;
     white-space: nowrap;

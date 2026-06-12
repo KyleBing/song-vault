@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useAudioCoverLightbox } from '@renderer/composables/useAudioCoverLightbox'
 import { formatCoverDataUrlMeta } from '@renderer/utils/coverDataUrlMeta'
 
-const { coverSrc, close } = useAudioCoverLightbox()
+const { coverSrc, coverCaption, close } = useAudioCoverLightbox()
 
 const naturalSize = ref<{ width: number; height: number } | null>(null)
 
@@ -39,10 +39,11 @@ function onImageLoad(event: Event): void {
         <img
           class="audio-cover-lightbox"
           :src="coverSrc"
-          alt="封面"
+          :alt="coverCaption ?? '封面'"
           @load="onImageLoad"
           @click.stop="close"
         />
+        <p v-if="coverCaption" class="audio-cover-lightbox-caption">{{ coverCaption }}</p>
         <p v-if="metaLine !== '—'" class="audio-cover-lightbox-meta">{{ metaLine }}</p>
       </div>
     </div>
