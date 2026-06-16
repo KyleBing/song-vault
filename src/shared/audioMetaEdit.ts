@@ -156,11 +156,17 @@ export function filenameStemHasTrailingUnderscore(filePath: string): boolean {
     return stem.endsWith('_')
 }
 
-/** 字段首尾是否含多余下划线，如 `_曲名` 或 `艺人_` */
+/** 字段首尾是否含多余下划线，如 `_曲名` 或 `艺人_`（G_E_M_ 类点号编码末尾 _ 除外） */
 export function fieldHasEdgeUnderscore(value: string): boolean {
     const trimmed = value.trim()
     if (!trimmed) return false
-    return trimmed.startsWith('_') || trimmed.endsWith('_')
+    if (trimmed.startsWith('_')) return true
+    if (trimmed.endsWith('_')) {
+        const withoutTrailing = trimmed.replace(/_+$/, '')
+        if (withoutTrailing.includes('_')) return false
+        return true
+    }
+    return false
 }
 
 /** 去掉字段首尾多余下划线，保留中间内容 */

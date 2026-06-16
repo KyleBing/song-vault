@@ -1,11 +1,34 @@
-/** 作者名中作多艺人分隔的下划线（两侧可有可无空格） */
-const UNDERSCORE_ARTIST_SEPARATOR = /\s*_\s*/
+/** 作者名中作多艺人分隔的下划线（两侧须各有 1～2 个空格；无空格则视为单人名） */
+const UNDERSCORE_ARTIST_SEPARATOR = / {1,2}_ {1,2}/
 
 function normalizeArtistToken(value: string): string {
     return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-/** 艺人名中间含 _，表示误用下划线分隔多艺人（首尾 _ 由「下划线」规则处理） */
+/** 作者项是否为紧挨 _ 的点号编码（如 G_E_M_），标签侧逐字对应为 . */
+export function artistTokenHasInlineUnderscore(token: string): boolean {
+    const trimmed = token.trim()
+    if (!trimmed.includes('_')) return false
+    return !artistHasUnderscoreSeparator(trimmed)
+}
+
+/** 文件名侧紧挨 _ 的单人名转为标签写法（每个 _ 对应一个 .，如 G_E_M_ → G.E.M.） */
+export function convertFilenameInlineUnderscoreToTag(token: string): string {
+    const trimmed = token.trim()
+    if (!artistTokenHasInlineUnderscore(trimmed)) return trimmed
+    return trimmed.replace(/_/g, '.')
+}
+
+/** 文件名作者项与标签作者项是否一致（含紧挨 _ ↔ 点号等价） */
+function artistPartTokensMatch(filePart: string, tagPart: string): boolean {
+    if (artistTokenHasInlineUnderscore(filePart)) {
+        const expectedTag = convertFilenameInlineUnderscoreToTag(filePart)
+        return normalizeArtistToken(tagPart) === normalizeArtistToken(expectedTag)
+    }
+    return normalizeArtistToken(filePart) === normalizeArtistToken(tagPart)
+}
+
+/** 艺人名中间含带空格的 _，表示误用下划线分隔多艺人（紧挨的 _ 算单人名；首尾 _ 由「下划线」规则处理） */
 export function artistHasUnderscoreSeparator(artist: string): boolean {
     const trimmed = artist.trim()
     if (!trimmed.includes('_')) return false
@@ -13,7 +36,7 @@ export function artistHasUnderscoreSeparator(artist: string): boolean {
     return UNDERSCORE_ARTIST_SEPARATOR.test(inner)
 }
 
-/** 按下划线解析多艺人名单（_ 两侧可有可无空格） */
+/** 按下划线解析多艺人名单（仅 _ 两侧各有 1～2 个空格时分隔） */
 export function parseUnderscoreArtistNames(artist: string): string[] {
     const trimmed = artist.trim()
     if (!trimmed) return []
@@ -42,7 +65,7 @@ export function parseTopLevelArtistTokens(artist: string): string[] {
     if (trimmed.includes('&')) {
         return trimmed.split(/\s*&\s*/).map((p) => p.trim()).filter(Boolean)
     }
-    // 整段仅含 _ 分隔时保留为一项（如「李雨霏 _ 晚饭」），由项内逻辑按 \s*_\s* 解析
+    // 整段仅含带空格的 _ 分隔时保留为一项（如「李雨霏 _ 晚饭」），由项内逻辑解析
     if (artistHasUnderscoreSeparator(trimmed)) {
         return [trimmed]
     }
@@ -228,12 +251,12 @@ function replaceUnderscoreTokensAndMerge(
     return parts.join(joiner)
 }
 
-/** 将含 _ 分隔的文件名艺人规范为逗号连接（A_B → A,B；混用时先加规范项再去 _） */
+/** 将含带空格 _ 分隔的文件名艺人规范为逗号连接（A _ B → A,B；混用时先加规范项再去 _） */
 export function normalizeFilenameArtistFromUnderscore(fileArtist: string): string {
     return replaceUnderscoreTokensAndMerge(fileArtist, ',')
 }
 
-/** 将含 _ 分隔的标签艺人规范为 & 连接（A_B → A & B；混用时先加 & 项再去 _） */
+/** 将含带空格 _ 分隔的标签艺人规范为 & 连接（A _ B → A & B；混用时先加 & 项再去 _） */
 export function normalizeTagArtistFromUnderscore(tagArtist: string): string {
     return replaceUnderscoreTokensAndMerge(tagArtist, ' & ')
 }
@@ -255,21 +278,27 @@ export function normalizeFilenameArtist(fileArtist: string): string {
     return parts.join(',')
 }
 
-/** 写入标签时用的艺人（先解析混用分隔符，再转为 & 连接） */
+/** 写入标签时用的艺人（先解析混用分隔符，再转为 & 连接；紧挨 _ 转为点号） */
 export function tagArtistForMetaFromFilename(fileArtist: string): string {
-    const parts = parseMixedArtistNames(fileArtist)
+    const parts = parseMixedArtistNames(fileArtist).map(
+        convertFilenameInlineUnderscoreToTag
+    )
     if (parts.length === 0) return ''
     if (parts.length === 1) return parts[0]
     return parts.join(' & ')
 }
 
-/** 将文件名中的艺人转为标签写法（A,B → A & B）；文件名格式非法时返回 null */
+/** 将文件名中的艺人转为标签写法（A,B → A & B；G_E_M → G.E.M.）；文件名格式非法时返回 null */
 export function tagArtistFromFilenameArtist(fileArtist: string): string | null {
     const trimmed = fileArtist.trim()
     if (!trimmed) return ''
     if (fileArtistHasSeparatorIssues(trimmed)) return null
     if (artistHasNonRedundantUnderscoreSeparator(trimmed)) return null
-    const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean)
+    const parts = trimmed
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map(convertFilenameInlineUnderscoreToTag)
     if (parts.length <= 1) return parts[0] ?? ''
     return parts.join(' & ')
 }
@@ -296,7 +325,7 @@ export function parseTagArtistNames(artist: string): string[] {
     return out.filter(Boolean)
 }
 
-/** 比较文件名与标签的艺人名单是否一致（忽略分隔符写法） */
+/** 比较文件名与标签的艺人名单是否一致（忽略分隔符写法；紧挨 _ 与点号写法等价） */
 export function fileAndTagArtistsMatch(
     filenameArtist: string,
     tagArtist: string
@@ -306,17 +335,12 @@ export function fileAndTagArtistsMatch(
     const tag = normalizeArtistToken(tagArtist)
     if (!tag) return false
 
-    const fileParts = parseFileArtistNames(filenameArtist).map(normalizeArtistToken)
-    const tagParts = parseTagArtistNames(tagArtist).map(normalizeArtistToken)
+    const fileRawParts = parseFileArtistNames(filenameArtist)
+    const tagRawParts = parseTagArtistNames(tagArtist)
 
-    if (fileParts.length > 1 || tagParts.length > 1) {
-        if (fileParts.length !== tagParts.length) return false
-        return fileParts.every((part, i) => part === tagParts[i])
-    }
-
-    if (fileParts.length === 1 && tagParts.length === 1) {
-        return fileParts[0] === tagParts[0]
-    }
-
-    return fn === tag
+    if (fileRawParts.length !== tagRawParts.length) return false
+    if (fileRawParts.length === 0) return fn === tag
+    return fileRawParts.every((part, i) =>
+        artistPartTokensMatch(part, tagRawParts[i])
+    )
 }

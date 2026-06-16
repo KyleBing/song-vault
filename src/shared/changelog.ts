@@ -19,6 +19,18 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    version: '1.3.1',
+    date: '2026-06-16',
+    sections: [
+      {
+        title: '变更',
+        items: [
+          '文件名与标签：作者名中仅 _ 前后各有 1～2 个空格时视为多作者分隔（如 李雨霏 _ 晚饭）；无空格的 _ 为点号编码，每个 _ 对应标签侧一个 .（如 G_E_M_ → G.E.M.）'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.3.0',
     date: '2026-06-12',
     sections: [

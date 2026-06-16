@@ -2791,9 +2791,9 @@ function mismatchTableRowProps(row: MetaTagMismatchTableRow) {
                         <section v-if="scanResult" class="mtm-rules-panel">
                             <p class="mtm-rules-panel__title">艺人分隔规范</p>
                             <ul class="mtm-rules-panel__list">
-                                <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code>；作者名中间含 <code>_</code> 表示误用下划线分隔，应改为逗号；若同时存在 <code>李雨霏_晚饭</code> 与 <code>李雨霏 &amp; 晚饭</code>（或分开列出），去掉 <code>_</code> 写法（先修正文件名）</li>
+                                <li>文件名：多作者用 <code>,</code> 连接，逗号两侧无空格；不得含 <code>;</code>、<code>&amp;</code>；作者名中间含带空格的 <code>_</code>（如 <code>李雨霏 _ 晚饭</code>，两侧各 1～2 个空格）表示误用下划线分隔，应改为逗号；无空格的 <code>_</code>（如 <code>G_E_M_</code>）表示点号编码，每个 <code>_</code> 对应标签侧一个 <code>.</code>（如 <code>G.E.M.</code>）；若同时存在 <code>李雨霏 _ 晚饭</code> 与 <code>李雨霏 &amp; 晚饭</code>（或分开列出），去掉 <code>_</code> 写法（先修正文件名）</li>
                                 <li>文件名：扩展名前不得有多余 <code>_</code>（如 <code>曲名_.flac</code>）</li>
-                                <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code>；作者名中间含 <code>_</code> 应改为 <code> &amp; </code> 连接；若与 <code> &amp; </code> 写法重复则去掉 <code>_</code> 项（文件名已规范后再修正标签）</li>
+                                <li>标签：多作者用 <code> &amp; </code> 连接，不用 <code>,</code>、<code>;</code>；作者名中间含带空格的 <code>_</code> 应改为 <code> &amp; </code> 连接；文件名用紧挨 <code>_</code> 的点号编码（如 <code>G_E_M_</code>）时，标签应逐字对应为点号（如 <code>G.E.M.</code>，每个 <code>_</code> 一个 <code>.</code>）；若与 <code> &amp; </code> 写法重复则去掉 <code>_</code> 项（文件名已规范后再修正标签）</li>
                                 <li>列表：艺人 / 曲名列内纵向展示文件名、标签、扩展与写入；扩展≠文件名时标红；扩展同键或别名重复（如多个 ARTIST / ARTIST+ARTISTS）显示「扩展重复」，清理后每键只保留一条；文件名或扩展字段含繁体字分别显示「文件名繁体」「扩展繁体」，可批量繁转简；MP3 含文件尾 ID3v1 标签（常为 ????）显示「ID3v1 标签」，可批量删除</li>
                             </ul>
                         </section>
