@@ -396,7 +396,7 @@ async function revealConfigFile(): Promise<void> {
                   </template>
                   <template v-else>
                     <p class="settings-group-desc settings-group-desc--block">
-                      输入 4 位解锁码以开启高级功能。
+                      输入 4 位解锁码以开启高级功能（提示：当前时间）。
                     </p>
                     <AdvancedUnlockPinInput
                       :reset-key="pinResetKey"
